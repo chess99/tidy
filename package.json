@@ -1,0 +1,23 @@
+{
+  "name": "tidy",
+  "version": "1.0.0",
+  "description": "",
+  "main": "a.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "posttest": "npm run format",
+    "format": "prettier --loglevel warn --write \"**/*.{js,css,md}\""
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "exif": "^0.6.0",
+    "exif-js": "^2.3.0",
+    "fs-extra": "^10.0.1",
+    "walker": "^1.0.8"
+  },
+  "devDependencies": {
+    "@types/node": "^17.0.23",
+    "prettier": "^2.6.1"
+  }
+}
