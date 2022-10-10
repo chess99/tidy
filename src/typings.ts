@@ -4,4 +4,5 @@ export interface FileObj {
     status?: number,
     data?: Object,
   }
+  md5?: string;
 }

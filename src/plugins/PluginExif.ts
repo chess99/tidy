@@ -2,29 +2,29 @@ import { FileObj } from "../typings";
 
 var ExifImage = require('exif').ExifImage;
 
-enum PluginExifStauts {
+enum pluginExifStauts {
   OK = 1,
   ERROR = 2,
 }
 
-const PluginExif = {
+export const pluginExif = {
   invoke(fileObj: FileObj) {
     if (!/\.jpg$/i.test(fileObj.fullPath)) {
       return
     }
     console.log('exifData', fileObj.exif && fileObj.exif.data)
-    if (fileObj.exif && fileObj.exif.status === PluginExifStauts.OK) {
+    if (fileObj.exif && fileObj.exif.status === pluginExifStauts.OK) {
       return
     }
     getExif(fileObj.fullPath, (err, exifData) => {
       if (err) {
         fileObj.exif = {
-          status: PluginExifStauts.ERROR,
+          status: pluginExifStauts.ERROR,
         }
         return
       }
       fileObj.exif = {
-        status: PluginExifStauts.OK,
+        status: pluginExifStauts.OK,
         data: exifData,
       }
     })
@@ -44,5 +44,3 @@ function getExif(filePath, callback) {
 
   });
 }
-
-export default PluginExif
