@@ -26,5 +26,9 @@ router.get('/status', (req, res) => {
   });
 });
 
-module.exports = router;
+// New endpoint to open system dialog (simulated for now as browser can't trigger system dialog directly via backend easily without native modules like electron or specialized calls, but we can accept input)
+// Actually, standard web apps can't trigger server-side file pickers easily. 
+// We will skip implementing a native OS picker for now unless we use Electron.
+// But we can implement a simple directory auto-complete or listing later.
 
+module.exports = router;

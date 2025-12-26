@@ -7,74 +7,124 @@ const { extractMetadata } = require('./metadata');
 const { generateThumbnail } = require('./thumbnail');
 const { getDB } = require('../db');
 
+const QUEUE_CONCURRENCY = 4;
+
 class Scanner {
   constructor() {
-    this.queue = fastq.promise(this.processFile.bind(this), 4); // 4 concurrent files
+    this.queue = fastq.promise(this.processFile.bind(this), QUEUE_CONCURRENCY);
     this.isScanning = false;
-    this.stats = { scanned: 0, new: 0, updated: 0, errors: 0 };
+    this.stats = { total: 0, walked: 0, scanned: 0, new: 0, updated: 0, skipped: 0, ignored: 0, errors: 0 };
   }
 
   async scanDirectory(dirPath) {
     if (this.isScanning) throw new Error('Scan already in progress');
     this.isScanning = true;
-    this.stats = { scanned: 0, new: 0, updated: 0, errors: 0 };
+    this.stats = { total: 0, walked: 0, scanned: 0, new: 0, updated: 0, skipped: 0, ignored: 0, errors: 0 };
     
     console.log(`Starting scan of ${dirPath}`);
     
     try {
+      // Phase 1: Count files
+      console.log('Counting files...');
+      await this.countFiles(dirPath);
+      console.log(`Found ${this.stats.total} files. Starting processing...`);
+
+      // Phase 2: Process files
       await this.walk(dirPath);
-      await this.queue.drain();
+      
+      console.log(`Walk finished. Walked: ${this.stats.walked}. Waiting for queue drain...`);
+      // NOTE: In fastq@1.x, `drain()` is NOT awaitable (returns undefined).
+      // Use `drained()` which returns a Promise that resolves when the queue is empty and idle.
+      await this.queue.drained();
     } catch (err) {
       console.error('Scan failed:', err);
+      this.queue.kill();
     } finally {
       this.isScanning = false;
       console.log('Scan complete', this.stats);
     }
   }
 
-  async walk(dir) {
-    const items = await fs.readdir(dir);
-    for (const item of items) {
-      const fullPath = path.join(dir, item);
-      try {
-        const stat = await fs.stat(fullPath);
-        if (stat.isDirectory()) {
-          // Skip hidden folders like .Trash, .git
-          if (item.startsWith('.')) continue;
-          await this.walk(fullPath);
-        } else if (stat.isFile()) {
-          this.queue.push({ filePath: fullPath, stat });
+  async countFiles(dir) {
+    try {
+      const items = await fs.readdir(dir);
+      for (const item of items) {
+        const fullPath = path.join(dir, item);
+        try {
+          const stat = await fs.stat(fullPath);
+          if (stat.isDirectory()) {
+            if (item.startsWith('.')) continue;
+            await this.countFiles(fullPath);
+          } else if (stat.isFile()) {
+            this.stats.total++;
+          }
+        } catch (e) {
+          // Ignore
         }
-      } catch (e) {
-        console.error(`Error accessing ${fullPath}:`, e.message);
       }
+    } catch (e) {
+      // Ignore
+    }
+  }
+
+  async walk(dir) {
+    if (!this.isScanning) return;
+
+    try {
+        const items = await fs.readdir(dir);
+        for (const item of items) {
+          const fullPath = path.join(dir, item);
+          try {
+            const stat = await fs.stat(fullPath);
+            if (stat.isDirectory()) {
+              if (item.startsWith('.')) continue;
+              await this.walk(fullPath);
+            } else if (stat.isFile()) {
+              this.stats.walked++; // DEBUG: Count walked files
+              this.queue.push({ filePath: fullPath, stat });
+            }
+          } catch (e) {
+            console.error(`Error accessing ${fullPath}:`, e.message);
+          }
+        }
+    } catch (e) {
+        console.error(`Error reading dir ${dir}:`, e.message);
     }
   }
 
   async processFile({ filePath, stat }) {
+    if (!this.isScanning) return;
+
     this.stats.scanned++;
     const db = getDB();
     
-    // Check extension
     const mimeType = mime.lookup(filePath);
     if (!mimeType || !mimeType.startsWith('image/')) {
-      return; // Skip non-images for now
+      this.stats.ignored++;
+      return; 
     }
 
     try {
-      // 1. Compute Hash
-      const hash = await computeHash(filePath);
+      const existingFile = db.prepare('SELECT * FROM files WHERE path = ?').get(filePath);
+      
+      let hash;
 
-      // 2. Check Asset Logic
+      if (existingFile) {
+          if (stat.mtimeMs <= existingFile.scanned_at) {
+              this.stats.skipped++;
+              db.prepare('UPDATE files SET missing = 0 WHERE id = ?').run(existingFile.id);
+              return;
+          }
+      }
+
+      hash = await computeHash(filePath);
+
       const existingAsset = db.prepare('SELECT * FROM assets WHERE hash = ?').get(hash);
       
       let status = 'inbox';
       if (existingAsset) {
-        // "Resurrection" check: if marked as trash, we might want to flag this file?
-        // For now, we just respect the existing asset status.
         status = existingAsset.status;
       } else {
-        // New Asset
         this.stats.new++;
         const metadata = await extractMetadata(filePath);
         const takenAt = metadata ? metadata.taken_at : stat.mtimeMs;
@@ -91,16 +141,11 @@ class Scanner {
           'inbox'
         );
 
-        // Generate Thumbnail for new assets
         await generateThumbnail(filePath, hash);
       }
 
-      // 3. Update Files Table
-      const existingFile = db.prepare('SELECT * FROM files WHERE path = ?').get(filePath);
-      
       if (existingFile) {
         if (existingFile.hash !== hash) {
-          // File changed content?
           db.prepare('UPDATE files SET hash = ?, scanned_at = ?, missing = 0 WHERE path = ?')
             .run(hash, Date.now(), filePath);
           this.stats.updated++;
@@ -121,4 +166,3 @@ class Scanner {
 }
 
 module.exports = new Scanner();
-
