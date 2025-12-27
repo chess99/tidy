@@ -15,6 +15,8 @@ export const getFiles = (page = 1, limit = 50, opts = {}) => {
   const { filter = 'all' } = opts || {};
   return api.get('/files', { params: { page, limit, filter } }).then(res => res.data);
 };
+export const getFilesDateIndex = (filter = 'all', granularity = 'month') =>
+  api.get('/files/date-index', { params: { filter, granularity } }).then(res => res.data);
 export const getFilesBatch = (ids = []) =>
   api.get('/files/batch', { params: { ids: ids.join(',') } }).then(res => res.data);
 
