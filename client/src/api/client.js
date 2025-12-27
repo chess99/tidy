@@ -12,7 +12,7 @@ export const getAssetsBatch = (hashes = []) =>
   api.get('/assets/batch', { params: { hashes: hashes.join(',') } }).then(res => res.data);
 
 export const getFiles = (page = 1, limit = 50, opts = {}) => {
-  const { filter = 'all', organized, from, to, hasDup, pathContains, hash } = opts || {};
+  const { filter = 'all', organized, from, to, hasDup, pathContains, hash, exts } = opts || {};
   const params = { page, limit, filter };
   if (organized != null) params.organized = organized;
   if (hasDup != null) params.hasDup = hasDup;
@@ -20,10 +20,11 @@ export const getFiles = (page = 1, limit = 50, opts = {}) => {
   if (to != null) params.to = to;
   if (pathContains) params.pathContains = pathContains;
   if (hash) params.hash = hash;
+  if (Array.isArray(exts) && exts.length) params.exts = exts.join(',');
   return api.get('/files', { params }).then(res => res.data);
 };
 export const getFilesDateIndex = (filter = 'all', granularity = 'month', opts = {}) => {
-  const { organized, from, to, hasDup, pathContains, hash } = opts || {};
+  const { organized, from, to, hasDup, pathContains, hash, exts } = opts || {};
   const params = { filter, granularity };
   if (organized != null) params.organized = organized;
   if (hasDup != null) params.hasDup = hasDup;
@@ -31,6 +32,7 @@ export const getFilesDateIndex = (filter = 'all', granularity = 'month', opts = 
   if (to != null) params.to = to;
   if (pathContains) params.pathContains = pathContains;
   if (hash) params.hash = hash;
+  if (Array.isArray(exts) && exts.length) params.exts = exts.join(',');
   return api.get('/files/date-index', { params }).then(res => res.data);
 };
 export const getFilesBatch = (ids = []) =>

@@ -63,6 +63,29 @@ function parseCsvParam(v) {
     .filter(Boolean);
 }
 
+function normalizeExt(raw) {
+  if (!raw) return null;
+  let s = String(raw).trim().toLowerCase();
+  if (!s) return null;
+  if (s.startsWith('.')) s = s.slice(1);
+  // conservative; supports mov/mp4/heic/jpeg/3gp...
+  if (!/^[a-z0-9]{1,10}$/.test(s)) return null;
+  return s;
+}
+
+function parseExtsParam(v) {
+  const raw = parseCsvParam(v);
+  const set = new Set();
+  for (const r of raw) {
+    const e = normalizeExt(r);
+    if (!e) continue;
+    // support either stored style: ".jpg" or "jpg"
+    set.add(`.${e}`);
+    set.add(e);
+  }
+  return Array.from(set).slice(0, 50);
+}
+
 function makeInClause(values) {
   // returns: { clause: "(?,?,?)", params: [...] }
   const params = values.slice();
@@ -118,6 +141,7 @@ router.get('/date-index', (req, res) => {
   const granularity = String(req.query.granularity || 'month');
   const organized = parseBool01(req.query.organized);
   const hasDup = parseBool01(req.query.hasDup);
+  const exts = parseExtsParam(req.query.exts);
   const hash = req.query.hash != null ? String(req.query.hash) : null;
   const pathContains = req.query.pathContains != null ? String(req.query.pathContains) : null;
   const fromMs = req.query.from != null ? Number(req.query.from) : null;
@@ -171,6 +195,12 @@ router.get('/date-index', (req, res) => {
     whereParams.push(`%${pathContains}%`);
   }
 
+  if (exts.length) {
+    const { clause, params } = makeInClause(exts);
+    where += ` AND LOWER(COALESCE(f.ext, '')) IN ${clause}`;
+    whereParams.push(...params);
+  }
+
   const totalQuery = `
     SELECT COUNT(*) as count
     FROM files f
@@ -214,6 +244,7 @@ router.get('/', (req, res) => {
   const filter = String(req.query.filter || 'all');
   const organized = parseBool01(req.query.organized);
   const hasDup = parseBool01(req.query.hasDup);
+  const exts = parseExtsParam(req.query.exts);
   const hash = req.query.hash != null ? String(req.query.hash) : null;
   const pathContains = req.query.pathContains != null ? String(req.query.pathContains) : null;
   const fromMs = req.query.from != null ? Number(req.query.from) : null;
@@ -262,6 +293,12 @@ router.get('/', (req, res) => {
   if (pathContains) {
     where += ` AND f.path LIKE ?`;
     whereParams.push(`%${pathContains}%`);
+  }
+
+  if (exts.length) {
+    const { clause, params } = makeInClause(exts);
+    where += ` AND LOWER(COALESCE(f.ext, '')) IN ${clause}`;
+    whereParams.push(...params);
   }
 
   const query = `

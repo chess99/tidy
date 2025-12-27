@@ -81,6 +81,7 @@ function Main() {
   const [activeTab, setActiveTab] = useState('files'); // files | albums
   const [filesQuery, setFilesQuery] = useState(() => ({
     filter: localStorage.getItem('filesFilter') || 'all',
+    exts: [],
     organized: undefined,
     hasDup: false,
     from: undefined,
@@ -90,6 +91,7 @@ function Main() {
   }));
   const qc = useQueryClient();
   const selectedAssetRef = useRef(null);
+  const [detailThumbErrorHash, setDetailThumbErrorHash] = useState(null);
 
   const scanMutation = useMutation({
     mutationFn: scanPath,
@@ -123,6 +125,8 @@ function Main() {
   useEffect(() => {
     selectedAssetRef.current = selectedAsset;
   }, [selectedAsset]);
+
+  // Track thumbnail errors per-asset without setState-in-effect (React compiler warning).
 
   useEffect(() => {
     try {
@@ -310,14 +314,19 @@ function Main() {
             
             <div className="p-4 flex-1 overflow-y-auto">
               <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden mb-4 border">
-                <img 
-                  src={`http://localhost:3001/api/assets/${selectedAsset.hash}/thumb?v=${selectedAsset.thumb_updated_at || selectedAsset.updated_at || 0}`} 
-                  className="w-full h-full object-contain" 
-                  alt="preview"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                  }}
-                />
+                {detailThumbErrorHash !== selectedAsset.hash ? (
+                  <img
+                    key={`${selectedAsset.hash}:${selectedAsset.thumb_updated_at || selectedAsset.updated_at || 0}`}
+                    src={`http://localhost:3001/api/assets/${selectedAsset.hash}/thumb?v=${selectedAsset.thumb_updated_at || selectedAsset.updated_at || 0}`}
+                    className="w-full h-full object-contain"
+                    alt="preview"
+                    onError={() => setDetailThumbErrorHash(selectedAsset.hash)}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-sm text-gray-500">
+                    无缩略图（可能是视频或暂不支持）
+                  </div>
+                )}
               </div>
               
               <div className="space-y-4 text-sm text-gray-600">

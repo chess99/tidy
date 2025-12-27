@@ -1,7 +1,7 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createAlbum, getAlbums, getFiles, getFilesDateIndex, organizeAssets, updateAssetsStatusBatch } from '../api/client';
 import { ThumbPlaceholder } from './ThumbPlaceholder';
 
@@ -205,6 +205,7 @@ export function FilesGrid({ onFileClick, queryOpts }) {
     const r = range || rangeNow;
     if (!total || !r) return [1];
 
+    const totalPages = Math.max(1, Math.ceil(total / LIMIT));
     const minRow = r.minRow ?? 0;
     const maxRow = r.maxRow ?? 0;
     const startItem = Math.max(0, minRow * COLUMNS);
@@ -215,7 +216,9 @@ export function FilesGrid({ onFileClick, queryOpts }) {
 
     const pages = [];
     const pageOverscan = scrolling ? 0 : 1;
-    for (let p = Math.max(1, p1 - pageOverscan); p <= p2 + pageOverscan; p++) pages.push(p);
+    const lo = Math.max(1, p1 - pageOverscan);
+    const hi = Math.min(totalPages, p2 + pageOverscan);
+    for (let p = lo; p <= hi; p++) pages.push(p);
     return Array.from(new Set(pages));
   }, [total, range, rangeNow, COLUMNS, LIMIT, scrolling]);
 
@@ -413,6 +416,11 @@ export function FilesGrid({ onFileClick, queryOpts }) {
               className="flex gap-4"
             >
               {items.map((file, idx) => {
+                const globalIndex = startIndex + idx;
+                // Don't render placeholders beyond the known total; keep layout stable without fake FILE tiles.
+                if (globalIndex >= total) {
+                  return <div key={`empty-${virtualRow.index}-${idx}`} className="flex-1" />;
+                }
                 const isPlaceholder = !file;
                 const name = isPlaceholder ? '—' : (file.file_name || file.path);
                 const dateText = !isPlaceholder && file.display_time ? new Date(file.display_time).toLocaleDateString() : null;

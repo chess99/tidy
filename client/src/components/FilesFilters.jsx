@@ -1,5 +1,5 @@
-import { X } from 'lucide-react';
-import { useMemo } from 'react';
+import { FilterX, Plus, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
@@ -8,18 +8,55 @@ import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Separator } from './ui/separator';
 
+const COMMON_EXTS = ['mov', 'mp4', 'heic', 'jpg', 'png', 'gif', 'webp'];
+
+function normExt(raw) {
+  if (!raw) return null;
+  let s = String(raw).trim().toLowerCase();
+  if (!s) return null;
+  if (s.startsWith('.')) s = s.slice(1);
+  // keep it conservative; extensions like "3gp" etc are fine
+  if (!/^[a-z0-9]{1,10}$/.test(s)) return null;
+  return s;
+}
+
 export function FilesFilters({ value, onChange }) {
+  "use no memo"
   const v = value || {};
+  const [extInput, setExtInput] = useState('');
 
   const rangeValue = useMemo(() => ({ from: v.from, to: v.to }), [v.from, v.to]);
+  const selectedExts = Array.isArray(v.exts) ? v.exts : [];
+  const selectedExtSet = new Set(selectedExts);
 
   const activeCount =
     (v.organized != null ? 1 : 0) +
     (v.hasDup ? 1 : 0) +
     (v.from ? 1 : 0) +
     (v.to ? 1 : 0) +
+    (selectedExts.length ? 1 : 0) +
     (v.pathContains ? 1 : 0) +
     (v.hash ? 1 : 0);
+
+  const toggleExt = (raw) => {
+    const e = normExt(raw);
+    if (!e) return;
+    const next = new Set(selectedExtSet);
+    if (next.has(e)) next.delete(e);
+    else next.add(e);
+    onChange({ ...v, exts: Array.from(next) });
+  };
+
+  const addExtFromInput = () => {
+    const e = normExt(extInput);
+    if (!e) return;
+    if (selectedExtSet.has(e)) {
+      setExtInput('');
+      return;
+    }
+    onChange({ ...v, exts: [...selectedExts, e] });
+    setExtInput('');
+  };
 
   return (
     <div className="h-full w-80 shrink-0 border-r bg-background p-4 overflow-auto">
@@ -38,12 +75,13 @@ export function FilesFilters({ value, onChange }) {
                 hasDup: false,
                 from: undefined,
                 to: undefined,
+                exts: [],
                 pathContains: '',
                 hash: '',
               })
             }
           >
-            <X className="h-4 w-4" />
+            <FilterX className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -66,6 +104,90 @@ export function FilesFilters({ value, onChange }) {
               <SelectItem value="camera">相机照片/视频</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold text-muted-foreground">后缀（扩展名）</div>
+            {/* Keep space reserved to avoid layout jump */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onChange({ ...v, exts: [] })}
+              title="清空后缀筛选"
+              className={selectedExts.length ? undefined : 'opacity-0 pointer-events-none'}
+              aria-hidden={!selectedExts.length}
+              tabIndex={selectedExts.length ? 0 : -1}
+            >
+              清空
+            </Button>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {COMMON_EXTS.map((e) => {
+              const on = selectedExtSet.has(e);
+              return (
+                <Button
+                  key={e}
+                  type="button"
+                  variant={on ? 'secondary' : 'outline'}
+                  size="sm"
+                  onClick={() => toggleExt(e)}
+                  title={`筛选 .${e}`}
+                >
+                  .{e}
+                </Button>
+              );
+            })}
+          </div>
+
+          {selectedExts.length ? (
+            <div className="flex flex-wrap gap-2">
+              {selectedExts.map((e) => (
+                <Badge key={e} variant="secondary" className="gap-1">
+                  .{e}
+                  <button
+                    type="button"
+                    className="ml-1 rounded hover:opacity-80"
+                    title={`移除 .${e}`}
+                    onClick={() => toggleExt(e)}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="flex gap-2">
+            <Input
+              value={extInput}
+              onChange={(e) => setExtInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addExtFromInput();
+                }
+              }}
+              placeholder="自定义：mov / .mov"
+            />
+            <Button type="button" variant="outline" size="icon" title="添加后缀" onClick={addExtFromInput}>
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="text-[11px] text-muted-foreground leading-4">
+            提示：后缀筛选会与“范围”叠加；若无结果可切回
+            <button
+              type="button"
+              className="ml-1 underline underline-offset-2"
+              onClick={() => onChange({ ...v, filter: 'all' })}
+              title="切回 全部文件"
+            >
+              全部文件
+            </button>
+          </div>
         </div>
 
         <div className="space-y-2">

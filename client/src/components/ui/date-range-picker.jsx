@@ -68,12 +68,18 @@ export function DateRangePicker({ value, onChange, className }) {
             )}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="p-0" align="start">
+        <PopoverContent className="w-[680px] max-w-[calc(100vw-2rem)] p-0" align="start">
           <Calendar
             initialFocus
             mode="range"
             defaultMonth={from}
             selected={selected}
+            // Don't change the shared Calendar component styles; only stretch layout for this picker.
+            classNames={{
+              root: "w-full",
+              months: "relative flex w-full flex-col gap-4 md:flex-row md:justify-between",
+              month: "flex w-full flex-col gap-4 md:w-1/2",
+            }}
             onSelect={(range) => {
               const f = range?.from
                 ? new Date(new Date(range.from).setHours(0, 0, 0, 0)).getTime()
