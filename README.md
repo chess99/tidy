@@ -14,6 +14,10 @@ A tool to scan, organize, and deduplicate photos using Content-Addressable Stora
 - **Server**: Node.js + Express + SQLite + Sharp (Image Processing).
 - **Client**: React + Vite + TailwindCSS + TanStack Query.
 
+## 文档
+
+- `docs/README.md`
+
 ## Setup & Run
 
 ### Prerequisites

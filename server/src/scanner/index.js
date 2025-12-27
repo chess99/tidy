@@ -16,6 +16,54 @@ class Scanner {
     this.stats = { total: 0, walked: 0, scanned: 0, new: 0, updated: 0, skipped: 0, ignored: 0, errors: 0 };
   }
 
+  _insertChange(entity, entityId, type) {
+    try {
+      const db = getDB();
+      db.prepare('INSERT INTO changes (entity, entity_id, type, ts) VALUES (?, ?, ?, ?)').run(
+        entity,
+        String(entityId),
+        type,
+        Date.now()
+      );
+    } catch (e) {
+      // ignore (changes table may not exist during early dev)
+    }
+  }
+
+  _upsertFileDiscovered(filePath, stat) {
+    const db = getDB();
+    const now = Date.now();
+    const ext = path.extname(filePath).toLowerCase() || null;
+    const mimeGuess = mime.lookup(filePath) || null;
+
+    const existing = db.prepare('SELECT id FROM files WHERE path = ?').get(filePath);
+    if (existing) {
+      db.prepare(`
+        UPDATE files
+        SET missing = 0,
+            size = ?,
+            mtime_ms = ?,
+            ext = COALESCE(ext, ?),
+            mime_guess = COALESCE(mime_guess, ?),
+            updated_at = ?,
+            discovered_at = COALESCE(discovered_at, ?)
+        WHERE id = ?
+      `).run(stat.size, stat.mtimeMs, ext, mimeGuess, now, now, existing.id);
+      this._insertChange('file', existing.id, 'upsert');
+      return existing.id;
+    }
+
+    const info = db.prepare(`
+      INSERT INTO files (
+        path, missing, size, mtime_ms, ext, mime_guess, discovered_at, updated_at, hash_status, thumb_status
+      ) VALUES (?, 0, ?, ?, ?, ?, ?, ?, 'pending', 'pending')
+    `).run(filePath, stat.size, stat.mtimeMs, ext, mimeGuess, now, now);
+
+    const id = info.lastInsertRowid;
+    this._insertChange('file', id, 'upsert');
+    return id;
+  }
+
   async scanDirectory(dirPath) {
     if (this.isScanning) throw new Error('Scan already in progress');
     this.isScanning = true;
@@ -81,7 +129,8 @@ class Scanner {
               await this.walk(fullPath);
             } else if (stat.isFile()) {
               this.stats.walked++; // DEBUG: Count walked files
-              this.queue.push({ filePath: fullPath, stat });
+              const fileId = this._upsertFileDiscovered(fullPath, stat);
+              this.queue.push({ fileId, filePath: fullPath, stat });
             }
           } catch (e) {
             console.error(`Error accessing ${fullPath}:`, e.message);
@@ -92,27 +141,34 @@ class Scanner {
     }
   }
 
-  async processFile({ filePath, stat }) {
+  async processFile({ fileId, filePath, stat }) {
     if (!this.isScanning) return;
 
     this.stats.scanned++;
     const db = getDB();
     
-    const mimeType = mime.lookup(filePath);
+    const mimeType = mime.lookup(filePath) || null;
     if (!mimeType || !mimeType.startsWith('image/')) {
+      // Keep this counter as “non-image encountered” for now (still processed for hash).
       this.stats.ignored++;
-      return; 
     }
 
     try {
-      const existingFile = db.prepare('SELECT * FROM files WHERE path = ?').get(filePath);
+      const existingFile = fileId
+        ? db.prepare('SELECT * FROM files WHERE id = ?').get(fileId)
+        : db.prepare('SELECT * FROM files WHERE path = ?').get(filePath);
       
       let hash;
 
       if (existingFile) {
           if (stat.mtimeMs <= existingFile.scanned_at) {
               this.stats.skipped++;
-              db.prepare('UPDATE files SET missing = 0 WHERE id = ?').run(existingFile.id);
+              try {
+                db.prepare('UPDATE files SET missing = 0, updated_at = ? WHERE id = ?').run(Date.now(), existingFile.id);
+              } catch (e) {
+                // ignore
+              }
+              this._insertChange('file', existingFile.id, 'upsert');
               return;
           }
       }
@@ -126,41 +182,117 @@ class Scanner {
         status = existingAsset.status;
       } else {
         this.stats.new++;
-        const metadata = await extractMetadata(filePath);
-        const takenAt = metadata ? metadata.taken_at : stat.mtimeMs;
-        
+      }
+
+      const metadata = mimeType && mimeType.startsWith('image/')
+        ? await extractMetadata(filePath)
+        : null;
+      const takenAt = (metadata && metadata.taken_at) ? metadata.taken_at : stat.mtimeMs;
+      const now = Date.now();
+
+      if (existingAsset) {
         db.prepare(`
-          INSERT INTO assets (hash, mime_type, size, metadata, taken_at, status)
-          VALUES (?, ?, ?, ?, ?, ?)
+          UPDATE assets
+          SET mime_type = COALESCE(mime_type, ?),
+              size = COALESCE(size, ?),
+              metadata = COALESCE(metadata, ?),
+              taken_at = COALESCE(taken_at, ?),
+              updated_at = ?
+          WHERE hash = ?
+        `).run(
+          mimeType,
+          stat.size,
+          JSON.stringify(metadata || {}),
+          takenAt,
+          now,
+          hash
+        );
+      } else {
+        db.prepare(`
+          INSERT INTO assets (hash, mime_type, size, metadata, taken_at, status, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
         `).run(
           hash,
           mimeType,
           stat.size,
-          JSON.stringify(metadata),
+          JSON.stringify(metadata || {}),
           takenAt,
-          'inbox'
+          status,
+          now
         );
-
-        await generateThumbnail(filePath, hash);
       }
 
       if (existingFile) {
         if (existingFile.hash !== hash) {
-          db.prepare('UPDATE files SET hash = ?, scanned_at = ?, missing = 0 WHERE path = ?')
-            .run(hash, Date.now(), filePath);
           this.stats.updated++;
-        } else {
-          db.prepare('UPDATE files SET scanned_at = ?, missing = 0 WHERE path = ?')
-            .run(Date.now(), filePath);
         }
+        db.prepare(`
+          UPDATE files
+          SET hash = ?,
+              scanned_at = ?,
+              updated_at = ?,
+              missing = 0,
+              hash_status = 'done'
+          WHERE id = ?
+        `).run(hash, now, now, existingFile.id);
+        this._insertChange('file', existingFile.id, 'upsert');
       } else {
-        db.prepare('INSERT INTO files (path, hash, scanned_at) VALUES (?, ?, ?)')
-          .run(filePath, hash, Date.now());
+        const info = db.prepare(`
+          INSERT INTO files (path, hash, scanned_at, missing, size, mtime_ms, ext, mime_guess, discovered_at, updated_at, hash_status, thumb_status)
+          VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 'done', 'pending')
+        `).run(
+          filePath,
+          hash,
+          now,
+          stat.size,
+          stat.mtimeMs,
+          path.extname(filePath).toLowerCase() || null,
+          mimeType,
+          now,
+          now
+        );
+        this._insertChange('file', info.lastInsertRowid, 'upsert');
+      }
+
+      this._insertChange('asset', hash, 'upsert');
+
+      // Best-effort thumbnail: try for image/*
+      if (mimeType && mimeType.startsWith('image/')) {
+        const thumbPath = await generateThumbnail(filePath, hash);
+        if (thumbPath) {
+          try {
+            db.prepare('UPDATE assets SET thumb_updated_at = ? WHERE hash = ?').run(Date.now(), hash);
+            if (existingFile) {
+              db.prepare('UPDATE files SET thumb_status = ?, thumb_updated_at = ? WHERE id = ?').run('ready', Date.now(), existingFile.id);
+              this._insertChange('file', existingFile.id, 'thumb_ready');
+            }
+          } catch (e) {
+            // ignore
+          }
+          this._insertChange('asset', hash, 'thumb_ready');
+        } else if (existingFile) {
+          try {
+            db.prepare('UPDATE files SET thumb_status = ? WHERE id = ?').run('unsupported', existingFile.id);
+          } catch (e) {
+            // ignore
+          }
+        }
+      } else if (existingFile) {
+        try {
+          db.prepare('UPDATE files SET thumb_status = ? WHERE id = ?').run('unsupported', existingFile.id);
+        } catch (e) {
+          // ignore
+        }
       }
 
     } catch (err) {
       console.error(`Error processing ${filePath}:`, err);
       this.stats.errors++;
+      try {
+        if (fileId) db.prepare('UPDATE files SET hash_status = ? WHERE id = ?').run('error', fileId);
+      } catch (e) {
+        // ignore
+      }
     }
   }
 }

@@ -6,6 +6,30 @@ const fs = require('fs-extra');
 
 const router = express.Router();
 
+function safeJsonParse(v) {
+  if (v == null) return null;
+  if (typeof v !== 'string') return v;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return null;
+  }
+}
+
+function parseCsvParam(v) {
+  if (!v) return [];
+  return String(v)
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function makeInClause(values) {
+  const params = values.slice();
+  const clause = `(${params.map(() => '?').join(',')})`;
+  return { clause, params };
+}
+
 // List assets
 router.get('/', (req, res) => {
   const db = getDB();
@@ -34,12 +58,28 @@ router.get('/', (req, res) => {
   // Parse metadata
   const results = assets.map(a => ({
     ...a,
-    metadata: JSON.parse(a.metadata)
+    metadata: safeJsonParse(a.metadata)
   }));
 
   res.json({
     data: results,
     pagination: { page, limit, total }
+  });
+});
+
+// Batch fetch assets by hashes
+router.get('/batch', (req, res) => {
+  const db = getDB();
+  const hashes = parseCsvParam(req.query.hashes).slice(0, 500);
+  if (hashes.length === 0) return res.json({ data: [] });
+
+  const { clause, params } = makeInClause(hashes);
+  const rows = db.prepare(`SELECT * FROM assets WHERE hash IN ${clause}`).all(...params);
+  res.json({
+    data: rows.map(a => ({
+      ...a,
+      metadata: safeJsonParse(a.metadata),
+    }))
   });
 });
 
@@ -55,7 +95,7 @@ router.get('/:hash', (req, res) => {
 
   res.json({
     ...asset,
-    metadata: JSON.parse(asset.metadata),
+    metadata: safeJsonParse(asset.metadata),
     files
   });
 });
