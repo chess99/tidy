@@ -2,7 +2,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createAlbum, getAlbums, getFiles, getFilesDateIndex, organizeAssets } from '../api/client';
+import { createAlbum, getAlbums, getFiles, getFilesDateIndex, organizeAssets, updateAssetsStatusBatch } from '../api/client';
 import { ThumbPlaceholder } from './ThumbPlaceholder';
 
 export function FilesGrid({ onFileClick, filter = 'all' }) {
@@ -17,11 +17,39 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
   const [showAdd, setShowAdd] = useState(false);
   const [addAlbumId, setAddAlbumId] = useState('');
   const [newAlbumName, setNewAlbumName] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterUnorganized, setFilterUnorganized] = useState(false);
+  const [filterDup, setFilterDup] = useState(false);
+  const [fromDate, setFromDate] = useState(''); // YYYY-MM-DD
+  const [toDate, setToDate] = useState(''); // YYYY-MM-DD
+
+  const filesQueryOpts = useMemo(() => {
+    const o = { filter };
+    if (filterUnorganized) o.organized = 0;
+    if (filterDup) o.hasDup = 1;
+
+    const toStartMs = (s) => {
+      if (!s) return null;
+      const t = new Date(`${s}T00:00:00`).getTime();
+      return Number.isFinite(t) ? t : null;
+    };
+    const toEndMs = (s) => {
+      if (!s) return null;
+      const t = new Date(`${s}T23:59:59.999`).getTime();
+      return Number.isFinite(t) ? t : null;
+    };
+
+    const fromMs = toStartMs(fromDate);
+    const toMs = toEndMs(toDate);
+    if (fromMs != null) o.from = fromMs;
+    if (toMs != null) o.to = toMs;
+    return o;
+  }, [filter, filterUnorganized, filterDup, fromDate, toDate]);
 
   // Always fetch page 1 to learn total and confirm applied filter.
   const page1 = useQuery({
-    queryKey: ['files', filter, 1],
-    queryFn: () => getFiles(1, LIMIT, { filter }),
+    queryKey: ['files', filesQueryOpts, 1],
+    queryFn: () => getFiles(1, LIMIT, filesQueryOpts),
   });
 
   const total = page1.data?.pagination?.total ?? 0;
@@ -31,7 +59,8 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
   const rowVirtualizer = useVirtualizer({
     count: rowCount || 0,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 200,
+    // Keep a stable row height; we show two lines of path text under the thumbnail.
+    estimateSize: () => 232,
     overscan: 5,
   });
 
@@ -57,8 +86,8 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
   const [showJump, setShowJump] = useState(false);
 
   const monthIndex = useQuery({
-    queryKey: ['filesDateIndex', filter, 'month'],
-    queryFn: () => getFilesDateIndex(filter, 'month'),
+    queryKey: ['filesDateIndex', filesQueryOpts, 'month'],
+    queryFn: () => getFilesDateIndex(filter, 'month', filesQueryOpts),
     staleTime: 10 * 60_000,
   });
 
@@ -94,6 +123,19 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
     },
   });
 
+  const batchTrashMutation = useMutation({
+    mutationFn: ({ hashes }) => updateAssetsStatusBatch(hashes, 'trash'),
+    onSuccess: () => {
+      try {
+        setSelectedIds(new Set());
+      } catch {
+        // ignore
+      }
+      qc.invalidateQueries({ queryKey: ['files'] });
+      qc.invalidateQueries({ queryKey: ['assets'] });
+    },
+  });
+
   const monthPoints = useMemo(() => monthIndex.data?.points || [], [monthIndex.data]);
 
   const monthFromIndex = useMemo(() => {
@@ -126,13 +168,19 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
 
   // Close month jump popover on outside click / escape.
   useEffect(() => {
-    if (!showJump) return;
+    if (!showJump && !showFilters) return;
     const onDown = (e) => {
       if (!overlayRef.current) return;
-      if (!overlayRef.current.contains(e.target)) setShowJump(false);
+      if (!overlayRef.current.contains(e.target)) {
+        setShowJump(false);
+        setShowFilters(false);
+      }
     };
     const onKey = (e) => {
-      if (e.key === 'Escape') setShowJump(false);
+      if (e.key === 'Escape') {
+        setShowJump(false);
+        setShowFilters(false);
+      }
     };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
@@ -140,7 +188,7 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [showJump]);
+  }, [showJump, showFilters]);
 
   // Throttle viewport range updates while scrolling to avoid spamming queries during scrollbar drag.
   useEffect(() => {
@@ -198,8 +246,8 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
 
   const pageQueries = useQueries({
     queries: neededPages.map((p) => ({
-      queryKey: ['files', filter, p],
-      queryFn: () => getFiles(p, LIMIT, { filter }),
+      queryKey: ['files', filesQueryOpts, p],
+      queryFn: () => getFiles(p, LIMIT, filesQueryOpts),
       enabled: !!total && p >= 1,
       staleTime: 30_000,
     })),
@@ -278,6 +326,12 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
     return '全部文件';
   }, [filter]);
 
+  const activeQuickFiltersCount =
+    (filterUnorganized ? 1 : 0) +
+    (filterDup ? 1 : 0) +
+    (fromDate ? 1 : 0) +
+    (toDate ? 1 : 0);
+
   const selectedCount = selectedIds.size;
 
   const selectedHashes = useMemo(() => {
@@ -312,7 +366,7 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
   return (
     <div ref={parentRef} className="h-full w-full overflow-auto bg-gray-100 p-4">
       <div className="sticky top-2 z-40 pointer-events-none">
-        <div ref={overlayRef} className="relative inline-block pointer-events-auto">
+        <div ref={overlayRef} className="relative inline-flex items-start gap-2 pointer-events-auto">
           <button
             type="button"
             onClick={() => setShowJump((v) => !v)}
@@ -369,6 +423,93 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
               )}
             </div>
           ) : null}
+
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowFilters((v) => !v)}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/90 border border-gray-200 shadow-sm backdrop-blur hover:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              title="快捷筛选"
+            >
+              <div className="text-sm font-semibold text-gray-900">筛选</div>
+              {activeQuickFiltersCount ? (
+                <div className="text-xs tabular-nums px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100">
+                  {activeQuickFiltersCount}
+                </div>
+              ) : null}
+            </button>
+
+            {showFilters ? (
+              <div
+                className="absolute right-0 mt-2 w-72 rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="px-3 py-2 text-xs text-gray-500 border-b border-gray-100">快捷筛选</div>
+                <div className="p-3 space-y-3">
+                  <label className="flex items-center justify-between text-sm">
+                    <span className="text-gray-800">仅未整理</span>
+                    <input
+                      type="checkbox"
+                      checked={filterUnorganized}
+                      onChange={(e) => setFilterUnorganized(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between text-sm">
+                    <span className="text-gray-800">仅重复</span>
+                    <input
+                      type="checkbox"
+                      checked={filterDup}
+                      onChange={(e) => setFilterDup(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <div className="text-xs text-gray-600">从</div>
+                      <input
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="w-full border rounded px-2 py-1 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-gray-600">到</div>
+                      <input
+                        type="date"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="w-full border rounded px-2 py-1 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      className="px-3 py-2 rounded bg-gray-100 text-gray-700 text-sm hover:bg-gray-200"
+                      onClick={() => {
+                        setFilterUnorganized(false);
+                        setFilterDup(false);
+                        setFromDate('');
+                        setToDate('');
+                      }}
+                    >
+                      清空
+                    </button>
+                    <button
+                      type="button"
+                      className="px-3 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700"
+                      onClick={() => setShowFilters(false)}
+                    >
+                      完成
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
       <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
@@ -467,23 +608,35 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
                       ) : null}
                     </div>
 
-                    <div className="p-2 text-xs flex flex-col gap-1">
+                    <div className="h-16 p-2 text-xs flex flex-col justify-between">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="truncate tabular-nums">{dateText || '—'}</span>
-                        {!isPlaceholder && !hasHash ? (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100">
-                            哈希中
-                          </span>
-                        ) : null}
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[11px] text-gray-900 truncate" title={file?.file_name || ''}>
+                            {file?.file_name || '—'}
+                          </div>
+                        </div>
+                        <div className="shrink-0 tabular-nums text-[11px] text-gray-700">
+                          {dateText || '—'}
+                        </div>
                       </div>
                       {!isPlaceholder ? (
                         organizedTo ? (
-                          <div className="text-[11px] text-green-700 truncate" title={organizedTo}>
-                            → {organizedTo}
+                          <div className="text-[11px] leading-4">
+                            <div className="text-green-700 truncate" title={organizedTo}>→ {organizedTo}</div>
+                            <div className="text-gray-600 truncate" title={file.path}>{file.path}</div>
                           </div>
                         ) : (
-                          <div className="text-[11px] text-gray-600 truncate" title={file.path}>
-                            {file.file_name || '—'} · {file.path}
+                          <div
+                            className="text-[11px] text-gray-600 leading-4"
+                            title={file.path}
+                            style={{
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            {file.path}
                           </div>
                         )
                       ) : null}
@@ -513,6 +666,20 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
               title={!selectedHashes.length ? '所选文件尚未完成哈希，暂不可整理' : '添加到文件夹'}
             >
               添加到…
+            </button>
+            <button
+              type="button"
+              className="px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+              disabled={!selectedHashes.length || batchTrashMutation.isPending}
+              onClick={() => {
+                if (!selectedHashes.length) return;
+                const ok = window.confirm(`确定将所选内容移入工具 Trash 吗？\n同一 hash 的所有物理副本都会被移动。`);
+                if (!ok) return;
+                batchTrashMutation.mutate({ hashes: selectedHashes });
+              }}
+              title={!selectedHashes.length ? '所选文件尚未完成哈希，暂不可删除' : '批量删除(入Trash)'}
+            >
+              删除
             </button>
             <button
               type="button"

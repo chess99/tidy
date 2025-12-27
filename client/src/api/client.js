@@ -20,12 +20,21 @@ export const getFiles = (page = 1, limit = 50, opts = {}) => {
   if (to != null) params.to = to;
   return api.get('/files', { params }).then(res => res.data);
 };
-export const getFilesDateIndex = (filter = 'all', granularity = 'month') =>
-  api.get('/files/date-index', { params: { filter, granularity } }).then(res => res.data);
+export const getFilesDateIndex = (filter = 'all', granularity = 'month', opts = {}) => {
+  const { organized, from, to, hasDup } = opts || {};
+  const params = { filter, granularity };
+  if (organized != null) params.organized = organized;
+  if (hasDup != null) params.hasDup = hasDup;
+  if (from != null) params.from = from;
+  if (to != null) params.to = to;
+  return api.get('/files/date-index', { params }).then(res => res.data);
+};
 export const getFilesBatch = (ids = []) =>
   api.get('/files/batch', { params: { ids: ids.join(',') } }).then(res => res.data);
 
 export const updateAssetStatus = (hash, status) => api.patch(`/assets/${hash}`, { status }).then(res => res.data);
+export const updateAssetsStatusBatch = (hashes = [], status) =>
+  api.post('/assets/batch-status', { hashes, status }).then(res => res.data);
 export const syncChanges = () => api.post('/sync').then(res => res.data);
 
 // Albums (folders)

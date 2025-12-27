@@ -1,0 +1,162 @@
+#!/usr/bin/env node
+/* eslint-disable no-console */
+const path = require('path');
+const fs = require('fs-extra');
+const Database = require('better-sqlite3');
+
+function getArg(name) {
+  const idx = process.argv.indexOf(name);
+  if (idx === -1) return null;
+  return process.argv[idx + 1] || '';
+}
+
+function hasFlag(name) {
+  return process.argv.includes(name);
+}
+
+function usage() {
+  console.log(`
+Usage:
+  node server/scripts/repair-db.js --report
+  node server/scripts/repair-db.js --report --db <path/to/tidy.db>
+  node server/scripts/repair-db.js --dedupe-case [--prefer-prefix "Z:\\\\Photos"] [--db ...]
+  node server/scripts/repair-db.js --mark-missing [--db ...]
+  node server/scripts/repair-db.js --delete-missing [--db ...]
+
+What it does:
+  - Finds duplicate rows that differ only by path case (group by lower(path)).
+  - Optionally deletes extra DB rows (does NOT modify the filesystem).
+  - Optionally marks or deletes rows whose paths are missing on disk.
+`);
+}
+
+function defaultDbPath() {
+  return process.env.DB_PATH || path.join(__dirname, '..', '..', 'tidy.db');
+}
+
+function normalizeLower(p) {
+  return String(p || '').toLowerCase();
+}
+
+function chooseKeepPath(paths, preferPrefix) {
+  if (!paths.length) return null;
+  const pref = preferPrefix ? normalizeLower(preferPrefix) : null;
+  if (pref) {
+    const hit = paths.find((p) => normalizeLower(p).startsWith(pref));
+    if (hit) return hit;
+  }
+  // Heuristic: prefer path containing "\Photos\" (common canonical casing)
+  const photosHit = paths.find((p) => normalizeLower(p).includes('\\photos\\'));
+  if (photosHit) return photosHit;
+  // Otherwise keep the shortest then lexicographically
+  return paths.slice().sort((a, b) => (a.length - b.length) || a.localeCompare(b))[0];
+}
+
+async function main() {
+  if (hasFlag('--help') || process.argv.length <= 2) {
+    usage();
+    process.exit(0);
+  }
+
+  const dbPath = getArg('--db') || defaultDbPath();
+  const doReport = hasFlag('--report');
+  const doDedupeCase = hasFlag('--dedupe-case');
+  const doMarkMissing = hasFlag('--mark-missing');
+  const doDeleteMissing = hasFlag('--delete-missing');
+  const preferPrefix = getArg('--prefer-prefix');
+
+  if (!doReport && !doDedupeCase && !doMarkMissing && !doDeleteMissing) {
+    console.error('No action specified. Use --report / --dedupe-case / --mark-missing / --delete-missing');
+    usage();
+    process.exit(1);
+  }
+
+  if (!fs.existsSync(dbPath)) {
+    console.error(`DB not found: ${dbPath}`);
+    process.exit(1);
+  }
+
+  console.log(`Opening DB: ${dbPath}`);
+  const db = new Database(dbPath);
+
+  const dupGroups = db.prepare(`
+    SELECT lower(path) AS key, COUNT(*) AS cnt
+    FROM files
+    GROUP BY lower(path)
+    HAVING cnt > 1
+    ORDER BY cnt DESC
+  `).all();
+
+  console.log(`Case-duplicate groups: ${dupGroups.length}`);
+
+  let totalDupRows = 0;
+  for (const g of dupGroups) totalDupRows += (g.cnt - 1);
+  console.log(`Extra duplicate rows (would remove): ${totalDupRows}`);
+
+  if (doReport) {
+    for (const g of dupGroups.slice(0, 50)) {
+      const rows = db.prepare('SELECT id, path, hash, size, mtime_ms FROM files WHERE lower(path) = ? ORDER BY id ASC').all(g.key);
+      console.log(`\n[dup] ${g.key} (${rows.length})`);
+      rows.forEach((r) => console.log(`  - id=${r.id} hash=${r.hash || '-'} path=${r.path}`));
+    }
+    if (dupGroups.length > 50) console.log(`\n... truncated (showing 50/${dupGroups.length})`);
+  }
+
+  if (doDedupeCase && dupGroups.length) {
+    console.log(`\nApplying --dedupe-case (DB rows only; filesystem untouched)`);
+    const tx = db.transaction((groups) => {
+      for (const g of groups) {
+        const rows = db.prepare('SELECT id, path FROM files WHERE lower(path) = ? ORDER BY id ASC').all(g.key);
+        const keepPath = chooseKeepPath(rows.map((r) => r.path), preferPrefix);
+        const keep = rows.find((r) => r.path === keepPath) || rows[0];
+        const toDelete = rows.filter((r) => r.id !== keep.id);
+        for (const r of toDelete) {
+          db.prepare('DELETE FROM files WHERE id = ?').run(r.id);
+        }
+      }
+    });
+    tx(dupGroups);
+    console.log(`Done. Removed duplicates by case.`);
+  }
+
+  if (doMarkMissing || doDeleteMissing) {
+    console.log(`\nScanning for missing files on disk...`);
+    const rows = db.prepare('SELECT id, path FROM files WHERE missing = 0').all();
+    let missingCount = 0;
+    const missingIds = [];
+    for (const r of rows) {
+      if (!r.path) continue;
+      // eslint-disable-next-line no-await-in-loop
+      const exists = await fs.pathExists(r.path);
+      if (!exists) {
+        missingCount++;
+        missingIds.push(r.id);
+      }
+    }
+    console.log(`Missing rows: ${missingCount}`);
+
+    if (missingIds.length) {
+      const tx2 = db.transaction((ids) => {
+        if (doDeleteMissing) {
+          const stmt = db.prepare('DELETE FROM files WHERE id = ?');
+          ids.forEach((id) => stmt.run(id));
+        } else {
+          const stmt = db.prepare('UPDATE files SET missing = 1, updated_at = ? WHERE id = ?');
+          const now = Date.now();
+          ids.forEach((id) => stmt.run(now, id));
+        }
+      });
+      tx2(missingIds);
+      console.log(doDeleteMissing ? 'Deleted missing rows.' : 'Marked missing=1 for missing rows.');
+    }
+  }
+
+  db.close();
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
+
+

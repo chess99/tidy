@@ -315,24 +315,83 @@ function Main() {
                 />
               </div>
               
-              <div className="space-y-3 text-sm text-gray-600">
-                <div className="grid grid-cols-3 gap-2">
-                   <div className="col-span-1 font-semibold">Date</div>
-                   <div className="col-span-2">{new Date(selectedAsset.taken_at).toLocaleString()}</div>
-                   
-                   <div className="col-span-1 font-semibold">Size</div>
-                   <div className="col-span-2">{(selectedAsset.size / 1024 / 1024).toFixed(2)} MB</div>
+              <div className="space-y-4 text-sm text-gray-600">
+                <div>
+                  <div className="text-xs font-semibold text-gray-500 mb-2">ASSET</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-1 font-semibold">Hash</div>
+                    <div className="col-span-2 font-mono text-xs break-all text-gray-800">{selectedAsset.hash}</div>
 
-                   <div className="col-span-1 font-semibold">Status</div>
-                   <div className="col-span-2 uppercase text-xs font-bold tracking-wider">
-                     <span className={`px-2 py-0.5 rounded ${
-                       selectedAsset.status === 'trash' ? 'bg-red-100 text-red-700' : 
-                       selectedAsset.status === 'sorted' ? 'bg-green-100 text-green-700' : 'bg-gray-100'
-                     }`}>
-                       {selectedAsset.status}
-                     </span>
-                   </div>
+                    <div className="col-span-1 font-semibold">Mime</div>
+                    <div className="col-span-2">{selectedAsset.mime_type || '—'}</div>
+
+                    <div className="col-span-1 font-semibold">Taken</div>
+                    <div className="col-span-2">
+                      {selectedAsset.taken_at ? new Date(selectedAsset.taken_at).toLocaleString() : '—'}
+                    </div>
+
+                    <div className="col-span-1 font-semibold">Size</div>
+                    <div className="col-span-2">
+                      {Number.isFinite(selectedAsset.size) ? `${(selectedAsset.size / 1024 / 1024).toFixed(2)} MB` : '—'}
+                    </div>
+
+                    <div className="col-span-1 font-semibold">Camera</div>
+                    <div className="col-span-2">
+                      {[selectedAsset.camera_make, selectedAsset.camera_model].filter(Boolean).join(' ') || '—'}
+                      {selectedAsset.is_camera ? <span className="ml-2 text-xs text-blue-600">(camera)</span> : null}
+                    </div>
+
+                    <div className="col-span-1 font-semibold">Status</div>
+                    <div className="col-span-2 uppercase text-xs font-bold tracking-wider">
+                      <span className={`px-2 py-0.5 rounded ${
+                        selectedAsset.status === 'trash' ? 'bg-red-100 text-red-700' :
+                        selectedAsset.status === 'sorted' ? 'bg-green-100 text-green-700' : 'bg-gray-100'
+                      }`}>
+                        {selectedAsset.status}
+                      </span>
+                    </div>
+
+                    <div className="col-span-1 font-semibold">Target</div>
+                    <div className="col-span-2 text-xs break-all">{selectedAsset.target_path || '—'}</div>
+
+                    <div className="col-span-1 font-semibold">Updated</div>
+                    <div className="col-span-2">
+                      {selectedAsset.updated_at ? new Date(selectedAsset.updated_at).toLocaleString() : '—'}
+                    </div>
+                  </div>
                 </div>
+
+                <div>
+                  <div className="text-xs font-semibold text-gray-500 mb-2">FILES</div>
+                  <div className="text-xs text-gray-500 mb-2">
+                    共 {Array.isArray(selectedAsset.files) ? selectedAsset.files.length : 0} 份物理文件
+                  </div>
+                  <div className="rounded-lg border bg-white max-h-40 overflow-auto">
+                    <div className="p-2 space-y-2">
+                      {(selectedAsset.files || []).map((f) => (
+                        <div key={f.id || f.path} className="text-xs">
+                          <div className="font-mono break-all text-gray-800">{f.path}</div>
+                          <div className="text-[11px] text-gray-500">
+                            {Number.isFinite(f.size) ? `${(f.size / 1024 / 1024).toFixed(2)} MB` : '—'}
+                            {f.mtime_ms ? <span className="ml-2">{new Date(f.mtime_ms).toLocaleString()}</span> : null}
+                          </div>
+                        </div>
+                      ))}
+                      {(!selectedAsset.files || selectedAsset.files.length === 0) ? (
+                        <div className="text-xs text-gray-500">—</div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                <details className="rounded-lg border bg-white">
+                  <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-gray-600">
+                    METADATA (JSON)
+                  </summary>
+                  <pre className="p-3 text-[11px] whitespace-pre-wrap break-words text-gray-700">
+{JSON.stringify(selectedAsset.metadata || {}, null, 2)}
+                  </pre>
+                </details>
               </div>
 
               <div className="mt-6 pt-6 border-t">

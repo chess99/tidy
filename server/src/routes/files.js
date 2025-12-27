@@ -116,6 +116,10 @@ router.get('/date-index', (req, res) => {
   const db = getDB();
   const filter = String(req.query.filter || 'all');
   const granularity = String(req.query.granularity || 'month');
+  const organized = parseBool01(req.query.organized);
+  const hasDup = parseBool01(req.query.hasDup);
+  const fromMs = req.query.from != null ? Number(req.query.from) : null;
+  const toMs = req.query.to != null ? Number(req.query.to) : null;
 
   if (granularity !== 'month' && granularity !== 'day') {
     return res.status(400).json({ error: 'Invalid granularity' });
@@ -130,6 +134,31 @@ router.get('/date-index', (req, res) => {
   }
 
   const timeExpr = `COALESCE(a.taken_at, f.mtime_ms, f.discovered_at, f.scanned_at)`;
+  const organizedExistsExpr = `EXISTS (SELECT 1 FROM album_assets aa WHERE aa.hash = f.hash)`;
+  const dupCountExpr = `(SELECT COUNT(*) FROM files f2 WHERE f2.hash = f.hash)`;
+
+  // Extend WHERE with additional filters (mirror /files list route)
+  if (!where) where = 'WHERE 1=1';
+  if (organized === 1) {
+    where += ` AND f.hash IS NOT NULL AND ${organizedExistsExpr}`;
+  } else if (organized === 0) {
+    where += ` AND (f.hash IS NULL OR NOT ${organizedExistsExpr})`;
+  }
+
+  if (hasDup === 1) {
+    where += ` AND f.hash IS NOT NULL AND ${dupCountExpr} > 1`;
+  } else if (hasDup === 0) {
+    where += ` AND (f.hash IS NULL OR ${dupCountExpr} <= 1)`;
+  }
+
+  if (Number.isFinite(fromMs)) {
+    where += ` AND ${timeExpr} >= ?`;
+    whereParams.push(fromMs);
+  }
+  if (Number.isFinite(toMs)) {
+    where += ` AND ${timeExpr} <= ?`;
+    whereParams.push(toMs);
+  }
 
   const totalQuery = `
     SELECT COUNT(*) as count
