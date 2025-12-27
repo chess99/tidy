@@ -235,7 +235,7 @@ export function FilesFilters({ value, onChange }) {
             <Input
               value={v.pathContains || ''}
               onChange={(e) => onChange({ ...v, pathContains: e.target.value })}
-              placeholder="例如：\\20100609 高中最后一天\\"
+              placeholder="例如：\\DCIM\\ 或 \\YYYYMMDD-Trip\\"
               className={v.pathContains ? 'pr-9' : undefined}
             />
             {v.pathContains ? (

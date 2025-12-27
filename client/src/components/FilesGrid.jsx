@@ -1,9 +1,14 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
+import { Check, ChevronsUpDown } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createAlbum, getAlbums, getFiles, getFilesDateIndex, organizeAssets, updateAssetsStatusBatch } from '../api/client';
+import { createAlbum, getAlbums, getFiles, getFilesBatch, getFilesDateIndex, organizeAssets, updateAssetsStatusBatch } from '../api/client';
+import { SelectedDrawer } from './SelectedDrawer';
 import { ThumbPlaceholder } from './ThumbPlaceholder';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 
 export function FilesGrid({ onFileClick, queryOpts }) {
   "use no memo";
@@ -12,11 +17,16 @@ export function FilesGrid({ onFileClick, queryOpts }) {
   const qc = useQueryClient();
   const LIMIT = 50;
   const COLUMNS = 4;
+  const SELECT_ALL_LIMIT = 500;
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [showSelected, setShowSelected] = useState(false);
+  const [showSelectAllTooLarge, setShowSelectAllTooLarge] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [addAlbumId, setAddAlbumId] = useState('');
   const [newAlbumName, setNewAlbumName] = useState('');
+  const [albumQuery, setAlbumQuery] = useState('');
+  const [albumOpen, setAlbumOpen] = useState(false);
 
   // Query options are owned by parent (left sidebar). Keep a stable object for query keys.
   const filesQueryOpts = useMemo(() => {
@@ -77,6 +87,19 @@ export function FilesGrid({ onFileClick, queryOpts }) {
     queryFn: () => getAlbums(),
     staleTime: 30_000,
   });
+
+  const filteredAlbums = useMemo(() => {
+    const list = albumsQuery.data?.data || [];
+    const q = albumQuery.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((a) => String(a?.name || '').toLowerCase().includes(q));
+  }, [albumsQuery.data, albumQuery]);
+
+  const selectedAlbum = useMemo(() => {
+    if (!addAlbumId) return null;
+    const list = albumsQuery.data?.data || [];
+    return list.find((a) => String(a.id) === String(addAlbumId)) || null;
+  }, [albumsQuery.data, addAlbumId]);
 
   const organizeMutation = useMutation({
     mutationFn: (payload) => organizeAssets(payload),
@@ -305,23 +328,72 @@ export function FilesGrid({ onFileClick, queryOpts }) {
   }, [filter]);
 
   const selectedCount = selectedIds.size;
+  const selectedIdsArr = useMemo(() => Array.from(selectedIds), [selectedIds]);
+  const selectedIdsKey = useMemo(() => selectedIdsArr.slice().sort((a, b) => a - b).join(','), [selectedIdsArr]);
+
+  const selectedFiles = useQuery({
+    queryKey: ['filesSelected', selectedIdsKey],
+    queryFn: () => getFilesBatch(selectedIdsArr),
+    enabled: selectedCount > 0,
+    staleTime: 5_000,
+  });
 
   const selectedHashes = useMemo(() => {
-    if (!selectedCount) return [];
-    const hashes = new Set();
-    for (const id of selectedIds) {
-      // Find the latest known row for this id across cached pages.
-      // This is best-effort; if not found we skip.
-      // NOTE: we rely on the current viewport/cached pages; users typically select visible items.
-      for (const arr of pageDataByPage.values()) {
-        const it = arr?.find?.((x) => x?.id === id);
-        if (it?.hash) hashes.add(it.hash);
-      }
+    const rows = selectedFiles.data?.data || [];
+    const set = new Set();
+    for (const r of rows) {
+      if (r?.hash) set.add(r.hash);
     }
-    return Array.from(hashes);
-  }, [selectedCount, selectedIds, pageDataByPage]);
+    return Array.from(set);
+  }, [selectedFiles.data]);
 
   const canOrganize = selectedHashes.length > 0 && !organizeMutation.isPending;
+
+  const canSelectAll = total > 0 && total <= SELECT_ALL_LIMIT;
+
+  const fetchAllFilteredIds = async () => {
+    if (!total) return [];
+    const pages = Math.ceil(total / LIMIT);
+    const ids = [];
+    for (let p = 1; p <= pages; p++) {
+      const res = await qc.fetchQuery({
+        queryKey: ['files', filesQueryOpts, p],
+        queryFn: () => getFiles(p, LIMIT, filesQueryOpts),
+        staleTime: 30_000,
+      });
+      for (const row of res?.data || []) ids.push(row.id);
+      if (ids.length >= total) break;
+    }
+    return ids.slice(0, total);
+  };
+
+  const onSelectAll = async () => {
+    if (!total) return;
+    if (!canSelectAll) {
+      setShowSelectAllTooLarge(true);
+      return;
+    }
+    const ids = await fetchAllFilteredIds();
+    setSelectedIds(new Set(ids));
+  };
+
+  const onInvertAll = async () => {
+    if (!total) return;
+    if (!canSelectAll) {
+      setShowSelectAllTooLarge(true);
+      return;
+    }
+    const ids = await fetchAllFilteredIds();
+    setSelectedIds((prev) => {
+      const next = new Set();
+      for (const id of ids) {
+        if (!prev.has(id)) next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const onClearSelection = () => setSelectedIds(new Set());
 
   const submitOrganize = async () => {
     if (!canOrganize) return;
@@ -541,13 +613,59 @@ export function FilesGrid({ onFileClick, queryOpts }) {
 
       {/* no infinite paging footer; viewport-driven page queries handle loading */}
 
-      {/* Selection action bar */}
-      {selectedCount ? (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
-          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/95 border border-gray-200 shadow-lg backdrop-blur">
-            <div className="text-sm text-gray-800">
-              已选择 <span className="font-semibold tabular-nums">{selectedCount}</span> 个
+      {/* Selection action bar (persistent) */}
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/95 border border-gray-200 shadow-lg backdrop-blur">
+            <div className="text-xs text-gray-500 tabular-nums">
+              筛选结果 {total}
             </div>
+
+            <div className="w-px h-6 bg-gray-200" />
+
+            {/* Selection ops */}
+            <button
+              type="button"
+              className="px-3 py-2 rounded-lg bg-white text-gray-800 border border-gray-200 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+              onClick={onSelectAll}
+              disabled={!total}
+              title={canSelectAll ? '全选当前筛选结果' : `结果过多（>${SELECT_ALL_LIMIT}）请进一步筛选`}
+            >
+              全选
+            </button>
+            <button
+              type="button"
+              className="px-3 py-2 rounded-lg bg-white text-gray-800 border border-gray-200 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+              onClick={onInvertAll}
+              disabled={!total}
+              title={canSelectAll ? '反选当前筛选结果' : `结果过多（>${SELECT_ALL_LIMIT}）请进一步筛选`}
+            >
+              反选
+            </button>
+            <button
+              type="button"
+              className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 disabled:opacity-50"
+              onClick={onClearSelection}
+              disabled={!selectedCount}
+              title={!selectedCount ? '暂无选中' : '清空所有选中'}
+            >
+              清空选择
+            </button>
+
+            <div className="w-px h-6 bg-gray-200" />
+
+            {/* Review */}
+            <button
+              type="button"
+              className="px-3 py-2 rounded-lg bg-gray-100 text-gray-800 text-sm font-medium hover:bg-gray-200 disabled:opacity-50"
+              onClick={() => setShowSelected(true)}
+              disabled={!selectedCount}
+              title={!selectedCount ? '暂无选中' : '查看已选中项'}
+            >
+              已选中 <span className="font-semibold tabular-nums">{selectedCount}</span>
+            </button>
+
+            <div className="w-px h-6 bg-gray-200" />
+
             <button
               type="button"
               className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
@@ -571,16 +689,39 @@ export function FilesGrid({ onFileClick, queryOpts }) {
             >
               删除
             </button>
-            <button
-              type="button"
-              className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200"
-              onClick={() => setSelectedIds(new Set())}
-            >
-              清空
-            </button>
-          </div>
         </div>
-      ) : null}
+      </div>
+
+      <SelectedDrawer
+        open={showSelected}
+        onOpenChange={setShowSelected}
+        selectedIds={selectedIdsArr}
+        onClear={onClearSelection}
+        onRemoveId={(id) =>
+          setSelectedIds((prev) => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          })
+        }
+        onItemClick={(file) => {
+          setShowSelected(false);
+          onFileClick?.(file);
+        }}
+      />
+
+      <Dialog open={showSelectAllTooLarge} onOpenChange={setShowSelectAllTooLarge}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>结果过多，无法一键全选</DialogTitle>
+          </DialogHeader>
+          <div className="text-sm text-muted-foreground leading-6">
+            当前筛选结果共有 <span className="font-semibold tabular-nums">{total}</span> 项，超过全选上限
+            <span className="font-semibold tabular-nums"> {SELECT_ALL_LIMIT}</span>。
+            <div className="mt-2">建议进一步收窄筛选（例如增加后缀/日期/路径），再执行全选。</div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Add-to dialog */}
       {showAdd ? (
@@ -609,18 +750,59 @@ export function FilesGrid({ onFileClick, queryOpts }) {
 
               <div className="space-y-2">
                 <div className="text-sm font-medium text-gray-800">选择已有文件夹</div>
-                <select
-                  value={addAlbumId}
-                  onChange={(e) => setAddAlbumId(e.target.value)}
-                  className="w-full border rounded px-3 py-2 text-sm bg-white"
-                >
-                  <option value="">（不选）</option>
-                  {(albumsQuery.data?.data || []).map((al) => (
-                    <option key={al.id} value={String(al.id)}>
-                      {al.name} ({al.count || 0})
-                    </option>
-                  ))}
-                </select>
+                <Popover open={albumOpen} onOpenChange={setAlbumOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="w-full flex items-center justify-between border rounded px-3 py-2 text-sm bg-white hover:bg-gray-50"
+                      title="输入关键词过滤并选择"
+                    >
+                      <span className="truncate">
+                        {selectedAlbum ? `${selectedAlbum.name} (${selectedAlbum.count || 0})` : '（不选）'}
+                      </span>
+                      <ChevronsUpDown className="h-4 w-4 opacity-60" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[420px] p-0" align="start">
+                    <Command>
+                      <CommandInput
+                        value={albumQuery}
+                        onValueChange={setAlbumQuery}
+                        placeholder="输入名称关键词过滤…"
+                      />
+                      <CommandList>
+                        <CommandEmpty>无匹配文件夹</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value="(none)"
+                            onSelect={() => {
+                              setAddAlbumId('');
+                              setAlbumOpen(false);
+                              setAlbumQuery('');
+                            }}
+                          >
+                            <Check className={clsx("h-4 w-4", !addAlbumId ? "opacity-100" : "opacity-0")} />
+                            （不选）
+                          </CommandItem>
+                          {filteredAlbums.map((al) => (
+                            <CommandItem
+                              key={al.id}
+                              value={al.name}
+                              onSelect={() => {
+                                setAddAlbumId(String(al.id));
+                                setAlbumOpen(false);
+                              }}
+                            >
+                              <Check className={clsx("h-4 w-4", String(addAlbumId) === String(al.id) ? "opacity-100" : "opacity-0")} />
+                              <span className="truncate">{al.name}</span>
+                              <span className="ml-auto text-xs text-gray-500 tabular-nums">{al.count || 0}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               <div className="space-y-2">
@@ -630,7 +812,7 @@ export function FilesGrid({ onFileClick, queryOpts }) {
                     value={newAlbumName}
                     onChange={(e) => setNewAlbumName(e.target.value)}
                     className="flex-1 border rounded px-3 py-2 text-sm"
-                    placeholder="例如：20251213-阿那亚"
+                    placeholder="例如：20251213-Trip"
                   />
                   <button
                     type="button"
