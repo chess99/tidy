@@ -1,16 +1,22 @@
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { getFiles, getFilesDateIndex } from '../api/client';
+import { createAlbum, getAlbums, getFiles, getFilesDateIndex, organizeAssets } from '../api/client';
 import { ThumbPlaceholder } from './ThumbPlaceholder';
 
 export function FilesGrid({ onFileClick, filter = 'all' }) {
   "use no memo";
   const parentRef = useRef(null);
   const overlayRef = useRef(null);
+  const qc = useQueryClient();
   const LIMIT = 50;
   const COLUMNS = 4;
+
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [showAdd, setShowAdd] = useState(false);
+  const [addAlbumId, setAddAlbumId] = useState('');
+  const [newAlbumName, setNewAlbumName] = useState('');
 
   // Always fetch page 1 to learn total and confirm applied filter.
   const page1 = useQuery({
@@ -54,6 +60,38 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
     queryKey: ['filesDateIndex', filter, 'month'],
     queryFn: () => getFilesDateIndex(filter, 'month'),
     staleTime: 10 * 60_000,
+  });
+
+  const albumsQuery = useQuery({
+    queryKey: ['albums'],
+    queryFn: () => getAlbums(),
+    staleTime: 30_000,
+  });
+
+  const organizeMutation = useMutation({
+    mutationFn: (payload) => organizeAssets(payload),
+    onSuccess: () => {
+      try {
+        setSelectedIds(new Set());
+        setShowAdd(false);
+        setAddAlbumId('');
+        setNewAlbumName('');
+      } catch {
+        // ignore
+      }
+      qc.invalidateQueries({ queryKey: ['files'] });
+      qc.invalidateQueries({ queryKey: ['albums'] });
+      qc.invalidateQueries({ queryKey: ['assets'] });
+    },
+  });
+
+  const createAlbumMutation = useMutation({
+    mutationFn: (name) => createAlbum(name),
+    onSuccess: (res) => {
+      const id = res?.data?.id;
+      if (id != null) setAddAlbumId(String(id));
+      qc.invalidateQueries({ queryKey: ['albums'] });
+    },
   });
 
   const monthPoints = useMemo(() => monthIndex.data?.points || [], [monthIndex.data]);
@@ -240,6 +278,37 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
     return '全部文件';
   }, [filter]);
 
+  const selectedCount = selectedIds.size;
+
+  const selectedHashes = useMemo(() => {
+    if (!selectedCount) return [];
+    const hashes = new Set();
+    for (const id of selectedIds) {
+      // Find the latest known row for this id across cached pages.
+      // This is best-effort; if not found we skip.
+      // NOTE: we rely on the current viewport/cached pages; users typically select visible items.
+      for (const arr of pageDataByPage.values()) {
+        const it = arr?.find?.((x) => x?.id === id);
+        if (it?.hash) hashes.add(it.hash);
+      }
+    }
+    return Array.from(hashes);
+  }, [selectedCount, selectedIds, pageDataByPage]);
+
+  const canOrganize = selectedHashes.length > 0 && !organizeMutation.isPending;
+
+  const submitOrganize = async () => {
+    if (!canOrganize) return;
+    const albumIdNum = addAlbumId ? Number(addAlbumId) : null;
+    if (albumIdNum && Number.isFinite(albumIdNum)) {
+      organizeMutation.mutate({ hashes: selectedHashes, albumId: albumIdNum });
+      return;
+    }
+    const name = String(newAlbumName || '').trim();
+    if (!name) return;
+    organizeMutation.mutate({ hashes: selectedHashes, albumName: name });
+  };
+
   return (
     <div ref={parentRef} className="h-full w-full overflow-auto bg-gray-100 p-4">
       <div className="sticky top-2 z-40 pointer-events-none">
@@ -326,6 +395,9 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
                 const dateText = !isPlaceholder && file.display_time ? new Date(file.display_time).toLocaleDateString() : null;
                 const hasHash = !!file?.hash;
                 const thumbV = file ? (file.asset_thumb_updated_at || file.asset_updated_at || 0) : 0;
+                const isSelected = !isPlaceholder && selectedIds.has(file.id);
+                const organizedTo = !isPlaceholder ? (file.organized_to || null) : null;
+                const dupCount = !isPlaceholder ? (Number(file.dup_count) || 0) : 0;
 
                 return (
                   <div
@@ -333,7 +405,8 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
                     className={clsx(
                       'flex-1 relative bg-white shadow rounded overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-500',
                       isPlaceholder ? 'cursor-default hover:ring-0 opacity-80' : null,
-                      file?.missing ? 'opacity-50 grayscale' : null
+                      file?.missing ? 'opacity-50 grayscale' : null,
+                      isSelected ? 'ring-2 ring-blue-600' : null
                     )}
                     onClick={() => (isPlaceholder ? null : onFileClick?.(file))}
                   >
@@ -357,14 +430,62 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
                           }}
                         />
                       ) : null}
+
+                      {!isPlaceholder ? (
+                        <button
+                          type="button"
+                          className={clsx(
+                            'absolute top-2 left-2 z-20 w-6 h-6 rounded-full border flex items-center justify-center text-xs font-bold shadow-sm',
+                            isSelected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/90 text-gray-700 border-gray-200'
+                          )}
+                          title={isSelected ? '取消选择' : '选择'}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setSelectedIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(file.id)) next.delete(file.id);
+                              else next.add(file.id);
+                              return next;
+                            });
+                          }}
+                        >
+                          {isSelected ? '✓' : ''}
+                        </button>
+                      ) : null}
+
+                      {!isPlaceholder && organizedTo ? (
+                        <div className="absolute top-2 right-2 z-20 text-[10px] px-2 py-0.5 rounded bg-green-50 text-green-700 border border-green-200 shadow-sm">
+                          已整理
+                        </div>
+                      ) : null}
+
+                      {!isPlaceholder && dupCount > 1 ? (
+                        <div className="absolute bottom-2 right-2 z-20 text-[10px] px-2 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200 shadow-sm">
+                          重复×{dupCount}
+                        </div>
+                      ) : null}
                     </div>
 
-                    <div className="p-2 text-xs truncate flex items-center justify-between gap-2">
-                      <span className="truncate">{dateText || '—'}</span>
-                      {!isPlaceholder && !hasHash ? (
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100">
-                          哈希中
-                        </span>
+                    <div className="p-2 text-xs flex flex-col gap-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate tabular-nums">{dateText || '—'}</span>
+                        {!isPlaceholder && !hasHash ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100">
+                            哈希中
+                          </span>
+                        ) : null}
+                      </div>
+                      {!isPlaceholder ? (
+                        organizedTo ? (
+                          <div className="text-[11px] text-green-700 truncate" title={organizedTo}>
+                            → {organizedTo}
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-gray-600 truncate" title={file.path}>
+                            {file.file_name || '—'} · {file.path}
+                          </div>
+                        )
                       ) : null}
                     </div>
                   </div>
@@ -376,6 +497,124 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
       </div>
 
       {/* no infinite paging footer; viewport-driven page queries handle loading */}
+
+      {/* Selection action bar */}
+      {selectedCount ? (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/95 border border-gray-200 shadow-lg backdrop-blur">
+            <div className="text-sm text-gray-800">
+              已选择 <span className="font-semibold tabular-nums">{selectedCount}</span> 个
+            </div>
+            <button
+              type="button"
+              className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+              onClick={() => setShowAdd(true)}
+              disabled={!selectedHashes.length}
+              title={!selectedHashes.length ? '所选文件尚未完成哈希，暂不可整理' : '添加到文件夹'}
+            >
+              添加到…
+            </button>
+            <button
+              type="button"
+              className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              清空
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Add-to dialog */}
+      {showAdd ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+          onMouseDown={() => setShowAdd(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-xl bg-white shadow-xl border border-gray-200"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <div className="font-semibold text-gray-900">添加到文件夹</div>
+              <button
+                type="button"
+                className="text-sm text-gray-500 hover:text-gray-900"
+                onClick={() => setShowAdd(false)}
+              >
+                关闭
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="text-xs text-gray-500">
+                将按内容哈希归档：同一 hash 只保留一份，其余副本将移动到工具 Trash。
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-gray-800">选择已有文件夹</div>
+                <select
+                  value={addAlbumId}
+                  onChange={(e) => setAddAlbumId(e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm bg-white"
+                >
+                  <option value="">（不选）</option>
+                  {(albumsQuery.data?.data || []).map((al) => (
+                    <option key={al.id} value={String(al.id)}>
+                      {al.name} ({al.count || 0})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-gray-800">或新建文件夹</div>
+                <div className="flex gap-2">
+                  <input
+                    value={newAlbumName}
+                    onChange={(e) => setNewAlbumName(e.target.value)}
+                    className="flex-1 border rounded px-3 py-2 text-sm"
+                    placeholder="例如：20251213-阿那亚"
+                  />
+                  <button
+                    type="button"
+                    className="px-3 py-2 rounded bg-gray-100 text-gray-700 text-sm hover:bg-gray-200 disabled:opacity-50"
+                    disabled={!newAlbumName.trim() || createAlbumMutation.isPending}
+                    onClick={() => createAlbumMutation.mutate(newAlbumName.trim())}
+                    title="先创建，方便选择"
+                  >
+                    创建
+                  </button>
+                </div>
+              </div>
+
+              {organizeMutation.isPending ? (
+                <div className="text-sm text-blue-600">整理中…</div>
+              ) : null}
+              {organizeMutation.isError ? (
+                <div className="text-sm text-red-600">整理失败，请查看服务端日志</div>
+              ) : null}
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  className="px-3 py-2 rounded bg-gray-100 text-gray-700 text-sm hover:bg-gray-200"
+                  onClick={() => setShowAdd(false)}
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                  disabled={!canOrganize || (!addAlbumId && !newAlbumName.trim())}
+                  onClick={submitOrganize}
+                >
+                  确认添加
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

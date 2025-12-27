@@ -1,13 +1,11 @@
 const express = require('express');
 const scanner = require('../scanner');
+const { WORK_ROOT } = require('../config');
 const router = express.Router();
 
 router.post('/', async (req, res) => {
-  const { path: scanPath } = req.body;
-  
-  if (!scanPath) {
-    return res.status(400).json({ error: 'Path is required' });
-  }
+  // Ignore user-provided path: always scan fixed WORK_ROOT for consistency.
+  const scanPath = WORK_ROOT;
 
   if (scanner.isScanning) {
     return res.status(409).json({ error: 'Scan already in progress' });

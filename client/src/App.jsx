@@ -2,8 +2,8 @@ import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient
 import { AlertTriangle, CheckCircle, FolderCheck, Loader2, RefreshCw, Trash2, X } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { getAsset, getAssetsBatch, getFilesBatch, getScanStatus, scanPath, syncChanges, updateAssetStatus } from './api/client';
+import { AlbumsView } from './components/AlbumsView';
 import { FilesGrid } from './components/FilesGrid';
-import { VirtualGrid } from './components/VirtualGrid';
 
 const queryClient = new QueryClient();
 
@@ -75,8 +75,7 @@ function ScanProgress() {
 
 function Main() {
   const [selectedAsset, setSelectedAsset] = useState(null);
-  const [activeTab, setActiveTab] = useState('files'); // files | assets
-  const [pathInput, setPathInput] = useState('D:\\Photos'); // Default example
+  const [activeTab, setActiveTab] = useState('files'); // files | albums
   const [filesFilter, setFilesFilter] = useState(() => localStorage.getItem('filesFilter') || 'all'); // all | media | camera
   const qc = useQueryClient();
   const selectedAssetRef = useRef(null);
@@ -246,10 +245,10 @@ function Main() {
               全部文件
             </button>
             <button
-              onClick={() => setActiveTab('assets')}
-              className={`px-3 py-1 rounded text-sm ${activeTab === 'assets' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+              onClick={() => setActiveTab('albums')}
+              className={`px-3 py-1 rounded text-sm ${activeTab === 'albums' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
             >
-              图库
+              文件夹/归档
             </button>
           </div>
           {activeTab === 'files' ? (
@@ -266,15 +265,8 @@ function Main() {
               </select>
             </div>
           ) : null}
-          <input 
-            type="text" 
-            value={pathInput} 
-            onChange={e => setPathInput(e.target.value)} 
-            placeholder="要扫描的目录（服务器路径）..."
-            className="border rounded px-3 py-1 w-80 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          />
           <button 
-            onClick={() => scanMutation.mutate(pathInput)}
+            onClick={() => scanMutation.mutate()}
             disabled={scanMutation.isPending}
             className="bg-blue-600 text-white px-4 py-1 rounded hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
           >
@@ -298,7 +290,7 @@ function Main() {
           {activeTab === 'files' ? (
             <FilesGrid onFileClick={handleFileClick} filter={filesFilter} />
           ) : (
-            <VirtualGrid onAssetClick={setSelectedAsset} />
+            <AlbumsView onAssetClick={setSelectedAsset} />
           )}
         </div>
 

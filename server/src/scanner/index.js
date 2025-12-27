@@ -7,6 +7,7 @@ const { extractMetadata } = require('./metadata');
 const { extractVideoMetadata } = require('./videoMetadata');
 const { generateThumbnail } = require('./thumbnail');
 const { getDB } = require('../db');
+const { MANAGED_ROOT, TRASH_DIR } = require('../config');
 
 const QUEUE_CONCURRENCY = 4;
 
@@ -71,6 +72,13 @@ class Scanner {
     this.stats = { total: 0, walked: 0, scanned: 0, new: 0, updated: 0, skipped: 0, ignored: 0, errors: 0 };
     
     console.log(`Starting scan of ${dirPath}`);
+    try {
+      // Ensure tool directories exist (best-effort).
+      fs.ensureDirSync(MANAGED_ROOT);
+      fs.ensureDirSync(TRASH_DIR);
+    } catch {
+      // ignore
+    }
     
     try {
       // Phase 1: Count files
@@ -103,6 +111,8 @@ class Scanner {
           const stat = await fs.stat(fullPath);
           if (stat.isDirectory()) {
             if (item.startsWith('.')) continue;
+            // Skip managed root to avoid re-scanning files we already organized.
+            if (this._isUnderManagedRoot(fullPath)) continue;
             await this.countFiles(fullPath);
           } else if (stat.isFile()) {
             this.stats.total++;
@@ -127,6 +137,7 @@ class Scanner {
             const stat = await fs.stat(fullPath);
             if (stat.isDirectory()) {
               if (item.startsWith('.')) continue;
+              if (this._isUnderManagedRoot(fullPath)) continue;
               await this.walk(fullPath);
             } else if (stat.isFile()) {
               this.stats.walked++; // DEBUG: Count walked files
@@ -311,6 +322,19 @@ class Scanner {
       } catch (e) {
         // ignore
       }
+    }
+  }
+
+  _isUnderManagedRoot(p) {
+    try {
+      const managed = path.resolve(MANAGED_ROOT);
+      const abs = path.resolve(p);
+      // Case-insensitive on Windows; safe elsewhere.
+      const m = managed.toLowerCase();
+      const a = abs.toLowerCase();
+      return a === m || a.startsWith(m + path.sep);
+    } catch {
+      return false;
     }
   }
 }

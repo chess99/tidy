@@ -32,6 +32,14 @@ function makeWhere(filter) {
   return { where, params };
 }
 
+function parseBool01(v) {
+  if (v == null) return null;
+  const s = String(v);
+  if (s === '1' || s === 'true') return 1;
+  if (s === '0' || s === 'false') return 0;
+  return null;
+}
+
 function pad2(n) {
   return String(n).padStart(2, '0');
 }
@@ -89,6 +97,10 @@ function toFileRow(r) {
     thumb_status: r.thumb_status,
     thumb_updated_at: r.thumb_updated_at,
     display_time: displayTime,
+
+    // derived fields
+    organized_to: r.organized_to ?? null,
+    dup_count: r.dup_count ?? 0,
 
     // joined asset fields (nullable)
     asset_status: r.asset_status,
@@ -160,6 +172,10 @@ router.get('/', (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 50, 200);
   const offset = (page - 1) * limit;
   const filter = String(req.query.filter || 'all');
+  const organized = parseBool01(req.query.organized);
+  const hasDup = parseBool01(req.query.hasDup);
+  const fromMs = req.query.from != null ? Number(req.query.from) : null;
+  const toMs = req.query.to != null ? Number(req.query.to) : null;
 
   let where = '';
   let whereParams = [];
@@ -169,6 +185,34 @@ router.get('/', (req, res) => {
     return res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
   }
 
+  const timeExpr = `COALESCE(a.taken_at, f.mtime_ms, f.discovered_at, f.scanned_at)`;
+  const organizedExistsExpr = `EXISTS (SELECT 1 FROM album_assets aa WHERE aa.hash = f.hash)`;
+  const dupCountExpr = `(SELECT COUNT(*) FROM files f2 WHERE f2.hash = f.hash)`;
+
+  // Extend WHERE with additional filters.
+  if (!where) where = 'WHERE 1=1';
+
+  if (organized === 1) {
+    where += ` AND f.hash IS NOT NULL AND ${organizedExistsExpr}`;
+  } else if (organized === 0) {
+    where += ` AND (f.hash IS NULL OR NOT ${organizedExistsExpr})`;
+  }
+
+  if (hasDup === 1) {
+    where += ` AND f.hash IS NOT NULL AND ${dupCountExpr} > 1`;
+  } else if (hasDup === 0) {
+    where += ` AND (f.hash IS NULL OR ${dupCountExpr} <= 1)`;
+  }
+
+  if (Number.isFinite(fromMs)) {
+    where += ` AND ${timeExpr} >= ?`;
+    whereParams.push(fromMs);
+  }
+  if (Number.isFinite(toMs)) {
+    where += ` AND ${timeExpr} <= ?`;
+    whereParams.push(toMs);
+  }
+
   const query = `
     SELECT
       f.*,
@@ -176,11 +220,20 @@ router.get('/', (req, res) => {
       a.taken_at AS asset_taken_at,
       a.mime_type AS asset_mime_type,
       a.updated_at AS asset_updated_at,
-      a.thumb_updated_at AS asset_thumb_updated_at
+      a.thumb_updated_at AS asset_thumb_updated_at,
+      CASE WHEN f.hash IS NULL THEN 0 ELSE ${dupCountExpr} END AS dup_count,
+      (
+        SELECT al.name
+        FROM album_assets aa2
+        JOIN albums al ON al.id = aa2.album_id
+        WHERE aa2.hash = f.hash
+        ORDER BY COALESCE(aa2.added_at, 0) DESC, aa2.album_id DESC
+        LIMIT 1
+      ) AS organized_to
     FROM files f
     LEFT JOIN assets a ON a.hash = f.hash
     ${where}
-    ORDER BY COALESCE(a.taken_at, f.mtime_ms, f.discovered_at, f.scanned_at) DESC
+    ORDER BY ${timeExpr} DESC
     LIMIT ? OFFSET ?
   `;
 
@@ -208,6 +261,8 @@ router.get('/batch', (req, res) => {
   const limited = ids.slice(0, 500);
   if (limited.length === 0) return res.json({ data: [] });
 
+  const dupCountExpr = `(SELECT COUNT(*) FROM files f2 WHERE f2.hash = f.hash)`;
+
   const { clause, params } = makeInClause(limited);
   const query = `
     SELECT
@@ -216,7 +271,16 @@ router.get('/batch', (req, res) => {
       a.taken_at AS asset_taken_at,
       a.mime_type AS asset_mime_type,
       a.updated_at AS asset_updated_at,
-      a.thumb_updated_at AS asset_thumb_updated_at
+      a.thumb_updated_at AS asset_thumb_updated_at,
+      CASE WHEN f.hash IS NULL THEN 0 ELSE ${dupCountExpr} END AS dup_count,
+      (
+        SELECT al.name
+        FROM album_assets aa2
+        JOIN albums al ON al.id = aa2.album_id
+        WHERE aa2.hash = f.hash
+        ORDER BY COALESCE(aa2.added_at, 0) DESC, aa2.album_id DESC
+        LIMIT 1
+      ) AS organized_to
     FROM files f
     LEFT JOIN assets a ON a.hash = f.hash
     WHERE f.id IN ${clause}
