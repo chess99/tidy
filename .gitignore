@@ -13,3 +13,6 @@ data/
 tidy.db
 tidy.db-shm
 tidy.db-wal
+
+# Development PID file
+.dev-pids.json
