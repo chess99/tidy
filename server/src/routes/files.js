@@ -118,6 +118,8 @@ router.get('/date-index', (req, res) => {
   const granularity = String(req.query.granularity || 'month');
   const organized = parseBool01(req.query.organized);
   const hasDup = parseBool01(req.query.hasDup);
+  const hash = req.query.hash != null ? String(req.query.hash) : null;
+  const pathContains = req.query.pathContains != null ? String(req.query.pathContains) : null;
   const fromMs = req.query.from != null ? Number(req.query.from) : null;
   const toMs = req.query.to != null ? Number(req.query.to) : null;
 
@@ -158,6 +160,15 @@ router.get('/date-index', (req, res) => {
   if (Number.isFinite(toMs)) {
     where += ` AND ${timeExpr} <= ?`;
     whereParams.push(toMs);
+  }
+
+  if (hash) {
+    where += ` AND f.hash = ?`;
+    whereParams.push(hash);
+  }
+  if (pathContains) {
+    where += ` AND f.path LIKE ?`;
+    whereParams.push(`%${pathContains}%`);
   }
 
   const totalQuery = `
@@ -203,6 +214,8 @@ router.get('/', (req, res) => {
   const filter = String(req.query.filter || 'all');
   const organized = parseBool01(req.query.organized);
   const hasDup = parseBool01(req.query.hasDup);
+  const hash = req.query.hash != null ? String(req.query.hash) : null;
+  const pathContains = req.query.pathContains != null ? String(req.query.pathContains) : null;
   const fromMs = req.query.from != null ? Number(req.query.from) : null;
   const toMs = req.query.to != null ? Number(req.query.to) : null;
 
@@ -240,6 +253,15 @@ router.get('/', (req, res) => {
   if (Number.isFinite(toMs)) {
     where += ` AND ${timeExpr} <= ?`;
     whereParams.push(toMs);
+  }
+
+  if (hash) {
+    where += ` AND f.hash = ?`;
+    whereParams.push(hash);
+  }
+  if (pathContains) {
+    where += ` AND f.path LIKE ?`;
+    whereParams.push(`%${pathContains}%`);
   }
 
   const query = `

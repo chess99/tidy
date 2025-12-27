@@ -1,9 +1,12 @@
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle, FolderCheck, Loader2, RefreshCw, Trash2, X } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getAsset, getAssetsBatch, getFilesBatch, getScanStatus, scanPath, syncChanges, updateAssetStatus } from './api/client';
 import { AlbumsView } from './components/AlbumsView';
+import { FilesFilters } from './components/FilesFilters';
 import { FilesGrid } from './components/FilesGrid';
+import { Button } from './components/ui/button';
+import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
 
 const queryClient = new QueryClient();
 
@@ -76,7 +79,15 @@ function ScanProgress() {
 function Main() {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [activeTab, setActiveTab] = useState('files'); // files | albums
-  const [filesFilter, setFilesFilter] = useState(() => localStorage.getItem('filesFilter') || 'all'); // all | media | camera
+  const [filesQuery, setFilesQuery] = useState(() => ({
+    filter: localStorage.getItem('filesFilter') || 'all',
+    organized: undefined,
+    hasDup: false,
+    from: undefined,
+    to: undefined,
+    pathContains: '',
+    hash: '',
+  }));
   const qc = useQueryClient();
   const selectedAssetRef = useRef(null);
 
@@ -115,11 +126,14 @@ function Main() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('filesFilter', filesFilter);
+      localStorage.setItem('filesFilter', filesQuery.filter || 'all');
     } catch {
       // ignore
     }
-  }, [filesFilter]);
+  }, [filesQuery.filter]);
+
+  // Keep query.filter in sync with the range selector (until we fully remove it from header).
+  // Avoid setState in an effect (React compiler warning); update both states at the event source instead.
 
   // SSE incremental updates: only patch changed items into react-query cache.
   useEffect(() => {
@@ -230,6 +244,19 @@ function Main() {
     }
   };
 
+  const applyFilter = (patch) => {
+    setActiveTab('files');
+    setFilesQuery((prev) => ({ ...prev, ...patch }));
+  };
+
+  const dirPrefixOf = (p) => {
+    if (!p) return '';
+    const s = String(p);
+    const idx = Math.max(s.lastIndexOf('\\'), s.lastIndexOf('/'));
+    if (idx <= 0) return s;
+    return s.slice(0, idx + 1);
+  };
+
   return (
     <div className="flex h-screen flex-col">
       <header className="bg-white border-b p-4 flex items-center justify-between shadow-sm z-10">
@@ -237,58 +264,36 @@ function Main() {
           📸 Tidy <span className="text-xs font-normal text-gray-500">v0.1</span>
         </h1>
         <div className="flex gap-2">
-          <div className="flex items-center gap-1 bg-gray-100 border border-gray-200 rounded p-1">
-            <button
-              onClick={() => setActiveTab('files')}
-              className={`px-3 py-1 rounded text-sm ${activeTab === 'files' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
-            >
-              全部文件
-            </button>
-            <button
-              onClick={() => setActiveTab('albums')}
-              className={`px-3 py-1 rounded text-sm ${activeTab === 'albums' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
-            >
-              文件夹/归档
-            </button>
-          </div>
-          {activeTab === 'files' ? (
-            <div className="flex items-center gap-2">
-              <select
-                value={filesFilter}
-                onChange={(e) => setFilesFilter(e.target.value)}
-                className="border rounded px-2 py-1 text-sm bg-white"
-                title="筛选"
-              >
-                <option value="all">全部文件</option>
-                <option value="media">全部图片/视频</option>
-                <option value="camera">相机照片/视频</option>
-              </select>
-            </div>
-          ) : null}
-          <button 
-            onClick={() => scanMutation.mutate()}
-            disabled={scanMutation.isPending}
-            className="bg-blue-600 text-white px-4 py-1 rounded hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
-          >
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList>
+              <TabsTrigger value="files">全部文件</TabsTrigger>
+              <TabsTrigger value="albums">文件夹/归档</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <Button onClick={() => scanMutation.mutate()} disabled={scanMutation.isPending}>
             {scanMutation.isPending ? '启动中...' : '扫描'}
-          </button>
+          </Button>
           <div className="w-px bg-gray-300 mx-2"></div>
-          <button 
+          <Button
+            variant="secondary"
             onClick={() => syncMutation.mutate()}
             disabled={syncMutation.isPending}
-            className="bg-gray-100 text-gray-700 border border-gray-300 px-4 py-1 rounded hover:bg-gray-200 flex items-center gap-2 text-sm font-medium"
           >
-            <RefreshCw size={14}/> 同步变更
-          </button>
+            <RefreshCw size={14} /> 同步变更
+          </Button>
         </div>
       </header>
 
       <ScanProgress />
       
       <div className="flex-1 flex overflow-hidden">
+        {activeTab === 'files' ? (
+          <FilesFilters value={filesQuery} onChange={setFilesQuery} />
+        ) : null}
+
         <div className="flex-1 relative">
           {activeTab === 'files' ? (
-            <FilesGrid onFileClick={handleFileClick} filter={filesFilter} />
+            <FilesGrid onFileClick={handleFileClick} queryOpts={filesQuery} />
           ) : (
             <AlbumsView onAssetClick={setSelectedAsset} />
           )}
@@ -320,14 +325,41 @@ function Main() {
                   <div className="text-xs font-semibold text-gray-500 mb-2">ASSET</div>
                   <div className="grid grid-cols-3 gap-2">
                     <div className="col-span-1 font-semibold">Hash</div>
-                    <div className="col-span-2 font-mono text-xs break-all text-gray-800">{selectedAsset.hash}</div>
+                    <div className="col-span-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="font-mono text-xs break-all text-gray-800">{selectedAsset.hash}</div>
+                        <Button variant="outline" size="sm" onClick={() => applyFilter({ hash: selectedAsset.hash })}>
+                          仅看
+                        </Button>
+                      </div>
+                    </div>
 
                     <div className="col-span-1 font-semibold">Mime</div>
                     <div className="col-span-2">{selectedAsset.mime_type || '—'}</div>
 
                     <div className="col-span-1 font-semibold">Taken</div>
                     <div className="col-span-2">
-                      {selectedAsset.taken_at ? new Date(selectedAsset.taken_at).toLocaleString() : '—'}
+                      <div className="flex items-center justify-between gap-2">
+                        <div>{selectedAsset.taken_at ? new Date(selectedAsset.taken_at).toLocaleString() : '—'}</div>
+                        {selectedAsset.taken_at ? (
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => applyFilter({ from: new Date(selectedAsset.taken_at).setHours(0, 0, 0, 0) })}
+                            >
+                              设为从
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => applyFilter({ to: new Date(selectedAsset.taken_at).setHours(23, 59, 59, 999) })}
+                            >
+                              设为到
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div className="col-span-1 font-semibold">Size</div>
@@ -370,7 +402,17 @@ function Main() {
                     <div className="p-2 space-y-2">
                       {(selectedAsset.files || []).map((f) => (
                         <div key={f.id || f.path} className="text-xs">
-                          <div className="font-mono break-all text-gray-800">{f.path}</div>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="font-mono break-all text-gray-800">{f.path}</div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => applyFilter({ pathContains: dirPrefixOf(f.path) })}
+                              title="筛选同目录"
+                            >
+                              同目录
+                            </Button>
+                          </div>
                           <div className="text-[11px] text-gray-500">
                             {Number.isFinite(f.size) ? `${(f.size / 1024 / 1024).toFixed(2)} MB` : '—'}
                             {f.mtime_ms ? <span className="ml-2">{new Date(f.mtime_ms).toLocaleString()}</span> : null}

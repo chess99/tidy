@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createAlbum, getAlbums, getFiles, getFilesDateIndex, organizeAssets, updateAssetsStatusBatch } from '../api/client';
 import { ThumbPlaceholder } from './ThumbPlaceholder';
 
-export function FilesGrid({ onFileClick, filter = 'all' }) {
+export function FilesGrid({ onFileClick, queryOpts }) {
   "use no memo";
   const parentRef = useRef(null);
   const overlayRef = useRef(null);
@@ -17,34 +17,15 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
   const [showAdd, setShowAdd] = useState(false);
   const [addAlbumId, setAddAlbumId] = useState('');
   const [newAlbumName, setNewAlbumName] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
-  const [filterUnorganized, setFilterUnorganized] = useState(false);
-  const [filterDup, setFilterDup] = useState(false);
-  const [fromDate, setFromDate] = useState(''); // YYYY-MM-DD
-  const [toDate, setToDate] = useState(''); // YYYY-MM-DD
 
+  // Query options are owned by parent (left sidebar). Keep a stable object for query keys.
   const filesQueryOpts = useMemo(() => {
-    const o = { filter };
-    if (filterUnorganized) o.organized = 0;
-    if (filterDup) o.hasDup = 1;
-
-    const toStartMs = (s) => {
-      if (!s) return null;
-      const t = new Date(`${s}T00:00:00`).getTime();
-      return Number.isFinite(t) ? t : null;
-    };
-    const toEndMs = (s) => {
-      if (!s) return null;
-      const t = new Date(`${s}T23:59:59.999`).getTime();
-      return Number.isFinite(t) ? t : null;
-    };
-
-    const fromMs = toStartMs(fromDate);
-    const toMs = toEndMs(toDate);
-    if (fromMs != null) o.from = fromMs;
-    if (toMs != null) o.to = toMs;
+    const o = { ...(queryOpts || {}) };
+    if (!o.filter) o.filter = 'all';
     return o;
-  }, [filter, filterUnorganized, filterDup, fromDate, toDate]);
+  }, [queryOpts]);
+
+  const filter = filesQueryOpts.filter || 'all';
 
   // Always fetch page 1 to learn total and confirm applied filter.
   const page1 = useQuery({
@@ -168,19 +149,13 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
 
   // Close month jump popover on outside click / escape.
   useEffect(() => {
-    if (!showJump && !showFilters) return;
+    if (!showJump) return;
     const onDown = (e) => {
       if (!overlayRef.current) return;
-      if (!overlayRef.current.contains(e.target)) {
-        setShowJump(false);
-        setShowFilters(false);
-      }
+      if (!overlayRef.current.contains(e.target)) setShowJump(false);
     };
     const onKey = (e) => {
-      if (e.key === 'Escape') {
-        setShowJump(false);
-        setShowFilters(false);
-      }
+      if (e.key === 'Escape') setShowJump(false);
     };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
@@ -188,7 +163,7 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [showJump, showFilters]);
+  }, [showJump]);
 
   // Throttle viewport range updates while scrolling to avoid spamming queries during scrollbar drag.
   useEffect(() => {
@@ -326,12 +301,6 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
     return '全部文件';
   }, [filter]);
 
-  const activeQuickFiltersCount =
-    (filterUnorganized ? 1 : 0) +
-    (filterDup ? 1 : 0) +
-    (fromDate ? 1 : 0) +
-    (toDate ? 1 : 0);
-
   const selectedCount = selectedIds.size;
 
   const selectedHashes = useMemo(() => {
@@ -423,93 +392,6 @@ export function FilesGrid({ onFileClick, filter = 'all' }) {
               )}
             </div>
           ) : null}
-
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowFilters((v) => !v)}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/90 border border-gray-200 shadow-sm backdrop-blur hover:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              title="快捷筛选"
-            >
-              <div className="text-sm font-semibold text-gray-900">筛选</div>
-              {activeQuickFiltersCount ? (
-                <div className="text-xs tabular-nums px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100">
-                  {activeQuickFiltersCount}
-                </div>
-              ) : null}
-            </button>
-
-            {showFilters ? (
-              <div
-                className="absolute right-0 mt-2 w-72 rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden"
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="px-3 py-2 text-xs text-gray-500 border-b border-gray-100">快捷筛选</div>
-                <div className="p-3 space-y-3">
-                  <label className="flex items-center justify-between text-sm">
-                    <span className="text-gray-800">仅未整理</span>
-                    <input
-                      type="checkbox"
-                      checked={filterUnorganized}
-                      onChange={(e) => setFilterUnorganized(e.target.checked)}
-                      className="h-4 w-4"
-                    />
-                  </label>
-                  <label className="flex items-center justify-between text-sm">
-                    <span className="text-gray-800">仅重复</span>
-                    <input
-                      type="checkbox"
-                      checked={filterDup}
-                      onChange={(e) => setFilterDup(e.target.checked)}
-                      className="h-4 w-4"
-                    />
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <div className="text-xs text-gray-600">从</div>
-                      <input
-                        type="date"
-                        value={fromDate}
-                        onChange={(e) => setFromDate(e.target.value)}
-                        className="w-full border rounded px-2 py-1 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <div className="text-xs text-gray-600">到</div>
-                      <input
-                        type="date"
-                        value={toDate}
-                        onChange={(e) => setToDate(e.target.value)}
-                        className="w-full border rounded px-2 py-1 text-sm"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-end gap-2 pt-1">
-                    <button
-                      type="button"
-                      className="px-3 py-2 rounded bg-gray-100 text-gray-700 text-sm hover:bg-gray-200"
-                      onClick={() => {
-                        setFilterUnorganized(false);
-                        setFilterDup(false);
-                        setFromDate('');
-                        setToDate('');
-                      }}
-                    >
-                      清空
-                    </button>
-                    <button
-                      type="button"
-                      className="px-3 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700"
-                      onClick={() => setShowFilters(false)}
-                    >
-                      完成
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
         </div>
       </div>
       <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>

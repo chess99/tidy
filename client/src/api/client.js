@@ -12,21 +12,25 @@ export const getAssetsBatch = (hashes = []) =>
   api.get('/assets/batch', { params: { hashes: hashes.join(',') } }).then(res => res.data);
 
 export const getFiles = (page = 1, limit = 50, opts = {}) => {
-  const { filter = 'all', organized, from, to, hasDup } = opts || {};
+  const { filter = 'all', organized, from, to, hasDup, pathContains, hash } = opts || {};
   const params = { page, limit, filter };
   if (organized != null) params.organized = organized;
   if (hasDup != null) params.hasDup = hasDup;
   if (from != null) params.from = from;
   if (to != null) params.to = to;
+  if (pathContains) params.pathContains = pathContains;
+  if (hash) params.hash = hash;
   return api.get('/files', { params }).then(res => res.data);
 };
 export const getFilesDateIndex = (filter = 'all', granularity = 'month', opts = {}) => {
-  const { organized, from, to, hasDup } = opts || {};
+  const { organized, from, to, hasDup, pathContains, hash } = opts || {};
   const params = { filter, granularity };
   if (organized != null) params.organized = organized;
   if (hasDup != null) params.hasDup = hasDup;
   if (from != null) params.from = from;
   if (to != null) params.to = to;
+  if (pathContains) params.pathContains = pathContains;
+  if (hash) params.hash = hash;
   return api.get('/files/date-index', { params }).then(res => res.data);
 };
 export const getFilesBatch = (ids = []) =>
