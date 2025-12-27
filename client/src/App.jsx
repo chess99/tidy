@@ -77,6 +77,8 @@ function Main() {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [activeTab, setActiveTab] = useState('files'); // files | assets
   const [pathInput, setPathInput] = useState('D:\\Photos'); // Default example
+  const [filesFilter, setFilesFilter] = useState(() => localStorage.getItem('filesFilter') || 'all'); // all | media | camera
+  const [filesView, setFilesView] = useState(() => localStorage.getItem('filesView') || 'tile'); // tile | byDateSimple
   const qc = useQueryClient();
   const selectedAssetRef = useRef(null);
 
@@ -112,6 +114,15 @@ function Main() {
   useEffect(() => {
     selectedAssetRef.current = selectedAsset;
   }, [selectedAsset]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('filesFilter', filesFilter);
+      localStorage.setItem('filesView', filesView);
+    } catch {
+      // ignore
+    }
+  }, [filesFilter, filesView]);
 
   // SSE incremental updates: only patch changed items into react-query cache.
   useEffect(() => {
@@ -243,6 +254,29 @@ function Main() {
               图库
             </button>
           </div>
+          {activeTab === 'files' ? (
+            <div className="flex items-center gap-2">
+              <select
+                value={filesFilter}
+                onChange={(e) => setFilesFilter(e.target.value)}
+                className="border rounded px-2 py-1 text-sm bg-white"
+                title="筛选"
+              >
+                <option value="all">全部文件</option>
+                <option value="media">全部图片/视频</option>
+                <option value="camera">相机照片/视频</option>
+              </select>
+              <select
+                value={filesView}
+                onChange={(e) => setFilesView(e.target.value)}
+                className="border rounded px-2 py-1 text-sm bg-white"
+                title="视图"
+              >
+                <option value="tile">连续平铺</option>
+                <option value="byDateSimple">按日期分开</option>
+              </select>
+            </div>
+          ) : null}
           <input 
             type="text" 
             value={pathInput} 
@@ -273,7 +307,7 @@ function Main() {
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 relative">
           {activeTab === 'files' ? (
-            <FilesGrid onFileClick={handleFileClick} />
+            <FilesGrid onFileClick={handleFileClick} filter={filesFilter} view={filesView} />
           ) : (
             <VirtualGrid onAssetClick={setSelectedAsset} />
           )}

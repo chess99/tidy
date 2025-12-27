@@ -14,6 +14,7 @@ function topLabelFromMime(mime) {
 }
 
 export function VirtualGrid({ onAssetClick }) {
+  "use no memo";
   const parentRef = useRef(null);
 
   const {

@@ -11,7 +11,10 @@ export const getAsset = (hash) => api.get(`/assets/${hash}`).then(res => res.dat
 export const getAssetsBatch = (hashes = []) =>
   api.get('/assets/batch', { params: { hashes: hashes.join(',') } }).then(res => res.data);
 
-export const getFiles = (page = 1, limit = 50) => api.get('/files', { params: { page, limit } }).then(res => res.data);
+export const getFiles = (page = 1, limit = 50, opts = {}) => {
+  const { filter = 'all' } = opts || {};
+  return api.get('/files', { params: { page, limit, filter } }).then(res => res.data);
+};
 export const getFilesBatch = (ids = []) =>
   api.get('/files/batch', { params: { ids: ids.join(',') } }).then(res => res.data);
 

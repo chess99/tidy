@@ -62,6 +62,31 @@ router.get('/', (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = Math.min(parseInt(req.query.limit) || 50, 200);
   const offset = (page - 1) * limit;
+  const filter = String(req.query.filter || 'all');
+
+  let where = '';
+  const whereParams = [];
+
+  if (filter === 'media') {
+    // include images + videos; prefer asset mime (hashed), fallback to file mime_guess (unhashed)
+    where = `
+      WHERE (
+        COALESCE(a.mime_type, f.mime_guess) LIKE 'image/%'
+        OR COALESCE(a.mime_type, f.mime_guess) LIKE 'video/%'
+      )
+    `;
+  } else if (filter === 'camera') {
+    // camera-tagged assets only (images via EXIF; videos via ffprobe tags)
+    where = `
+      WHERE (
+        a.is_camera = 1
+        OR a.camera_make IS NOT NULL
+        OR a.camera_model IS NOT NULL
+      )
+    `;
+  } else if (filter !== 'all') {
+    return res.status(400).json({ error: 'Invalid filter' });
+  }
 
   const query = `
     SELECT
@@ -73,12 +98,20 @@ router.get('/', (req, res) => {
       a.thumb_updated_at AS asset_thumb_updated_at
     FROM files f
     LEFT JOIN assets a ON a.hash = f.hash
+    ${where}
     ORDER BY COALESCE(a.taken_at, f.mtime_ms, f.discovered_at, f.scanned_at) DESC
     LIMIT ? OFFSET ?
   `;
 
-  const rows = db.prepare(query).all(limit, offset);
-  const total = db.prepare('SELECT COUNT(*) as count FROM files').get().count;
+  const rows = db.prepare(query).all(...whereParams, limit, offset);
+
+  const totalQuery = `
+    SELECT COUNT(*) as count
+    FROM files f
+    LEFT JOIN assets a ON a.hash = f.hash
+    ${where}
+  `;
+  const total = db.prepare(totalQuery).get(...whereParams).count;
 
   res.json({
     data: rows.map(toFileRow),

@@ -8,6 +8,9 @@ const dbSchema = `
     status TEXT CHECK(status IN ('inbox', 'sorted', 'trash', 'ignored')) DEFAULT 'inbox',
     rating INTEGER DEFAULT 0,
     target_path TEXT,
+    camera_make TEXT,
+    camera_model TEXT,
+    is_camera INTEGER DEFAULT 0,
     updated_at INTEGER,
     thumb_updated_at INTEGER
   );

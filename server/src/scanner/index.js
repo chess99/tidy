@@ -4,6 +4,7 @@ const fastq = require('fastq');
 const mime = require('mime-types');
 const { computeHash } = require('./hasher');
 const { extractMetadata } = require('./metadata');
+const { extractVideoMetadata } = require('./videoMetadata');
 const { generateThumbnail } = require('./thumbnail');
 const { getDB } = require('../db');
 
@@ -186,8 +187,12 @@ class Scanner {
 
       const metadata = mimeType && mimeType.startsWith('image/')
         ? await extractMetadata(filePath)
-        : null;
+        : (mimeType && mimeType.startsWith('video/') ? await extractVideoMetadata(filePath) : null);
+
       const takenAt = (metadata && metadata.taken_at) ? metadata.taken_at : stat.mtimeMs;
+      const cameraMake = metadata && metadata.camera_make ? String(metadata.camera_make) : null;
+      const cameraModel = metadata && metadata.camera_model ? String(metadata.camera_model) : null;
+      const isCamera = (cameraMake || cameraModel) ? 1 : 0;
       const now = Date.now();
 
       if (existingAsset) {
@@ -197,6 +202,13 @@ class Scanner {
               size = COALESCE(size, ?),
               metadata = COALESCE(metadata, ?),
               taken_at = COALESCE(taken_at, ?),
+              camera_make = COALESCE(camera_make, ?),
+              camera_model = COALESCE(camera_model, ?),
+              is_camera = CASE
+                WHEN COALESCE(is_camera, 0) = 1 THEN 1
+                WHEN ? = 1 THEN 1
+                ELSE COALESCE(is_camera, 0)
+              END,
               updated_at = ?
           WHERE hash = ?
         `).run(
@@ -204,13 +216,16 @@ class Scanner {
           stat.size,
           JSON.stringify(metadata || {}),
           takenAt,
+          cameraMake,
+          cameraModel,
+          isCamera,
           now,
           hash
         );
       } else {
         db.prepare(`
-          INSERT INTO assets (hash, mime_type, size, metadata, taken_at, status, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO assets (hash, mime_type, size, metadata, taken_at, status, camera_make, camera_model, is_camera, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           hash,
           mimeType,
@@ -218,6 +233,9 @@ class Scanner {
           JSON.stringify(metadata || {}),
           takenAt,
           status,
+          cameraMake,
+          cameraModel,
+          isCamera,
           now
         );
       }

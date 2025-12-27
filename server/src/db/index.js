@@ -28,6 +28,9 @@ function migrateDB(dbConn) {
   ensureColumns(dbConn, 'assets', [
     { name: 'updated_at', type: 'INTEGER' },
     { name: 'thumb_updated_at', type: 'INTEGER' },
+    { name: 'camera_make', type: 'TEXT' },
+    { name: 'camera_model', type: 'TEXT' },
+    { name: 'is_camera', type: 'INTEGER', defaultSql: '0' },
   ]);
 
   ensureColumns(dbConn, 'files', [
@@ -64,10 +67,29 @@ function migrateDB(dbConn) {
     // ignore
   }
 
+  // Best-effort backfill camera_* from metadata JSON (only if JSON functions available).
+  try {
+    dbConn.exec(`
+      UPDATE assets
+      SET camera_make = COALESCE(camera_make, json_extract(metadata, '$.camera_make')),
+          camera_model = COALESCE(camera_model, json_extract(metadata, '$.camera_model')),
+          is_camera = CASE
+            WHEN COALESCE(is_camera, 0) = 1 THEN 1
+            WHEN json_extract(metadata, '$.camera_make') IS NOT NULL THEN 1
+            WHEN json_extract(metadata, '$.camera_model') IS NOT NULL THEN 1
+            ELSE 0
+          END
+      WHERE metadata IS NOT NULL;
+    `);
+  } catch {
+    // ignore (json_extract may be unavailable)
+  }
+
   // Indexes that depend on newly added columns must be created after ALTER TABLE.
   try {
     dbConn.exec(`
       CREATE INDEX IF NOT EXISTS idx_assets_updated_at ON assets(updated_at);
+      CREATE INDEX IF NOT EXISTS idx_assets_is_camera ON assets(is_camera);
       CREATE INDEX IF NOT EXISTS idx_files_discovered_at ON files(discovered_at);
       CREATE INDEX IF NOT EXISTS idx_files_updated_at ON files(updated_at);
     `);
