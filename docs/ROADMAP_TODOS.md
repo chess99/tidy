@@ -47,8 +47,8 @@
 
 - [ ] **P1 视频与 RAW 格式缩略图策略**
   - 目标：对常见视频生成封面缩略图（或抽帧），对 RAW 格式（CR2/NEF/ARW 等）生成预览缩略图，避免大量"无缩略图"的体验落差。
-  - 方式：best-effort（视频用 ffmpeg 抽帧，RAW 用 exiftool/raw-thumbnail-extractor），失败保持 `thumb_status='unsupported'`。
-  - 状态：当前仅支持图片格式（sharp），视频和 RAW 格式未实现
+  - 方式：best-effort（视频用 ffmpeg 抽帧；RAW 优先提取内嵌预览 JPEG（exiftool），提取失败再视情况引入更重的 RAW 解码），失败保持 `thumb_status='unsupported'`。
+  - 状态：RAW 已支持（优先 sharp，失败则 exiftool 提取内嵌预览生成）；视频仍未实现
 
 - [x] **滚动与日期定位（date-index + overlay）** ✅
   - 目标：大库滚动时随机访问可视区域页；日期提示稳定不跳动；支持"跳到某月"。

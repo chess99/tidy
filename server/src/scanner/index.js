@@ -5,7 +5,7 @@ const mime = require('mime-types');
 const { computeHash } = require('./hasher');
 const { extractMetadata } = require('./metadata');
 const { extractVideoMetadata } = require('./videoMetadata');
-const { generateThumbnail } = require('./thumbnail');
+const { generateThumbnail, getThumbnailPath, RAW_EXTS } = require('./thumbnail');
 const { getDB } = require('../db');
 const { MANAGED_ROOT, TRASH_DIR } = require('../config');
 
@@ -180,6 +180,34 @@ class Scanner {
               } catch (e) {
                 // ignore
               }
+
+              // Backfill thumbnails even when file contents are unchanged:
+              // this allows newly-added thumb strategies (e.g. RAW preview extraction) to apply on next scan.
+              try {
+                const hash = existingFile.hash;
+                if (hash && existingFile.thumb_status !== 'ready') {
+                  const thumbPath = getThumbnailPath(hash);
+                  const thumbExists = await fs.pathExists(thumbPath);
+                  if (!thumbExists) {
+                    const mimeGuess = existingFile.mime_guess || mimeType || null;
+                    const extLower = path.extname(filePath).toLowerCase();
+                    const shouldTryThumb = (mimeGuess && String(mimeGuess).startsWith('image/')) || RAW_EXTS.has(extLower);
+                    if (shouldTryThumb) {
+                      // eslint-disable-next-line no-await-in-loop
+                      const created = await generateThumbnail(filePath, hash, { ext: extLower });
+                      if (created) {
+                        db.prepare('UPDATE assets SET thumb_updated_at = ? WHERE hash = ?').run(Date.now(), hash);
+                        db.prepare('UPDATE files SET thumb_status = ?, thumb_updated_at = ? WHERE id = ?').run('ready', Date.now(), existingFile.id);
+                        this._insertChange('file', existingFile.id, 'thumb_ready');
+                        this._insertChange('asset', hash, 'thumb_ready');
+                      }
+                    }
+                  }
+                }
+              } catch {
+                // ignore (best-effort)
+              }
+
               this._insertChange('file', existingFile.id, 'upsert');
               return;
           }
@@ -285,9 +313,13 @@ class Scanner {
 
       this._insertChange('asset', hash, 'upsert');
 
-      // Best-effort thumbnail: try for image/*
-      if (mimeType && mimeType.startsWith('image/')) {
-        const thumbPath = await generateThumbnail(filePath, hash);
+      // Best-effort thumbnail:
+      // - try for image/* (sharp supports most common images)
+      // - also try for RAW extensions even if mime guess is missing/incorrect
+      const extLower = path.extname(filePath).toLowerCase();
+      const shouldTryThumb = (mimeType && mimeType.startsWith('image/')) || RAW_EXTS.has(extLower);
+      if (shouldTryThumb) {
+        const thumbPath = await generateThumbnail(filePath, hash, { ext: extLower });
         if (thumbPath) {
           try {
             db.prepare('UPDATE assets SET thumb_updated_at = ? WHERE hash = ?').run(Date.now(), hash);

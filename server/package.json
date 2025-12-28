@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"No automated test suite. Try: npm run test:rawthumbs\"",
+    "test:rawthumbs": "node scripts/test-raw-thumbs.js"
   },
   "keywords": [],
   "author": "",
@@ -16,9 +17,10 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "exifr": "^7.1.3",
+    "exiftool-vendored": "^34.2.0",
     "express": "^5.2.1",
-    "ffprobe-static": "^3.1.0",
     "fastq": "^1.20.1",
+    "ffprobe-static": "^3.1.0",
     "fs-extra": "^11.3.3",
     "mime-types": "^3.0.2",
     "sharp": "^0.34.5"
