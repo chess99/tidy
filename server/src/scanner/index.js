@@ -6,6 +6,7 @@ const { computeHash } = require('./hasher');
 const { extractMetadata } = require('./metadata');
 const { extractVideoMetadata } = require('./videoMetadata');
 const { generateThumbnail, getThumbnailPath, RAW_EXTS } = require('./thumbnail');
+const { normalizePathForDb } = require('../utils/normalizePath');
 const { getDB } = require('../db');
 const { MANAGED_ROOT, TRASH_DIR } = require('../config');
 
@@ -37,8 +38,21 @@ class Scanner {
     const now = Date.now();
     const ext = path.extname(filePath).toLowerCase() || null;
     const mimeGuess = mime.lookup(filePath) || null;
+    const normPath = normalizePathForDb(filePath);
 
-    const existing = db.prepare('SELECT id FROM files WHERE path = ?').get(filePath);
+    // On Windows we canonicalize path casing for DB keys. For older DB rows with non-canonical casing,
+    // fall back to a lower(path) lookup and then update the stored path to the canonical form.
+    let existing = db.prepare('SELECT id, path FROM files WHERE path = ?').get(normPath);
+    if (!existing && process.platform === 'win32') {
+      existing = db.prepare('SELECT id, path FROM files WHERE lower(path) = lower(?)').get(normPath);
+      if (existing) {
+        try {
+          db.prepare('UPDATE files SET path = ? WHERE id = ?').run(normPath, existing.id);
+        } catch {
+          // ignore
+        }
+      }
+    }
     if (existing) {
       db.prepare(`
         UPDATE files
@@ -59,7 +73,7 @@ class Scanner {
       INSERT INTO files (
         path, missing, size, mtime_ms, ext, mime_guess, discovered_at, updated_at, hash_status, thumb_status
       ) VALUES (?, 0, ?, ?, ?, ?, ?, ?, 'pending', 'pending')
-    `).run(filePath, stat.size, stat.mtimeMs, ext, mimeGuess, now, now);
+    `).run(normPath, stat.size, stat.mtimeMs, ext, mimeGuess, now, now);
 
     const id = info.lastInsertRowid;
     this._insertChange('file', id, 'upsert');

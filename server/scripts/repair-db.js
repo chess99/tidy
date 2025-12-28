@@ -20,12 +20,14 @@ Usage:
   node server/scripts/repair-db.js --report
   node server/scripts/repair-db.js --report --db <path/to/tidy.db>
   node server/scripts/repair-db.js --dedupe-case [--prefer-prefix "Z:\\\\Photos"] [--db ...]
+  node server/scripts/repair-db.js --normalize-path-case [--db ...]
   node server/scripts/repair-db.js --mark-missing [--db ...]
   node server/scripts/repair-db.js --delete-missing [--db ...]
 
 What it does:
   - Finds duplicate rows that differ only by path case (group by lower(path)).
   - Optionally deletes extra DB rows (does NOT modify the filesystem).
+  - On Windows, can canonicalize paths to lower-case across the DB (after dedupe-case).
   - Optionally marks or deletes rows whose paths are missing on disk.
 `);
 }
@@ -61,12 +63,13 @@ async function main() {
   const dbPath = getArg('--db') || defaultDbPath();
   const doReport = hasFlag('--report');
   const doDedupeCase = hasFlag('--dedupe-case');
+  const doNormalizePathCase = hasFlag('--normalize-path-case');
   const doMarkMissing = hasFlag('--mark-missing');
   const doDeleteMissing = hasFlag('--delete-missing');
   const preferPrefix = getArg('--prefer-prefix');
 
-  if (!doReport && !doDedupeCase && !doMarkMissing && !doDeleteMissing) {
-    console.error('No action specified. Use --report / --dedupe-case / --mark-missing / --delete-missing');
+  if (!doReport && !doDedupeCase && !doNormalizePathCase && !doMarkMissing && !doDeleteMissing) {
+    console.error('No action specified. Use --report / --dedupe-case / --normalize-path-case / --mark-missing / --delete-missing');
     usage();
     process.exit(1);
   }
@@ -117,6 +120,64 @@ async function main() {
     });
     tx(dupGroups);
     console.log(`Done. Removed duplicates by case.`);
+  }
+
+  if (doNormalizePathCase) {
+    if (process.platform !== 'win32') {
+      console.error('--normalize-path-case is Windows-only (this tool keeps case-sensitive semantics on macOS/Linux).');
+      process.exit(1);
+    }
+
+    // Ensure we don't trip UNIQUE(path) by first removing case-only duplicates.
+    if (!doDedupeCase) {
+      console.log(`\nApplying implicit --dedupe-case before --normalize-path-case...`);
+      const tx = db.transaction((groups) => {
+        for (const g of groups) {
+          const rows = db.prepare('SELECT id, path FROM files WHERE lower(path) = ? ORDER BY id ASC').all(g.key);
+          const keepPath = chooseKeepPath(rows.map((r) => r.path), preferPrefix);
+          const keep = rows.find((r) => r.path === keepPath) || rows[0];
+          const toDelete = rows.filter((r) => r.id !== keep.id);
+          for (const r of toDelete) {
+            db.prepare('DELETE FROM files WHERE id = ?').run(r.id);
+          }
+        }
+      });
+      tx(dupGroups);
+      console.log(`Done. Removed duplicates by case.`);
+    }
+
+    console.log(`\nNormalizing path casing to lower-case across DB (Windows-only)`);
+    const now = Date.now();
+    const tx3 = db.transaction(() => {
+      // files.path (also bump updated_at)
+      db.exec(`
+        UPDATE files
+        SET path = lower(path),
+            updated_at = COALESCE(updated_at, ${now})
+        WHERE path IS NOT NULL AND path <> lower(path);
+      `);
+
+      // file_ops paths
+      db.exec(`
+        UPDATE file_ops
+        SET from_path = CASE WHEN from_path IS NULL THEN NULL ELSE lower(from_path) END,
+            to_path   = CASE WHEN to_path IS NULL THEN NULL ELSE lower(to_path) END,
+            updated_at = COALESCE(updated_at, ${now})
+        WHERE
+          (from_path IS NOT NULL AND from_path <> lower(from_path))
+          OR (to_path IS NOT NULL AND to_path <> lower(to_path));
+      `);
+
+      // assets.target_path
+      db.exec(`
+        UPDATE assets
+        SET target_path = CASE WHEN target_path IS NULL THEN NULL ELSE lower(target_path) END,
+            updated_at = COALESCE(updated_at, ${now})
+        WHERE target_path IS NOT NULL AND target_path <> lower(target_path);
+      `);
+    });
+    tx3();
+    console.log(`Done. Normalized path casing.`);
   }
 
   if (doMarkMissing || doDeleteMissing) {
