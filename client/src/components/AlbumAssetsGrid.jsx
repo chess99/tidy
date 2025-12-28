@@ -1,9 +1,11 @@
+"use no memo";
+
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { getAlbumAssets } from '../api/client';
-import { ThumbPlaceholder } from './ThumbPlaceholder';
+import { AssetThumbCard } from './AssetThumbCard';
 
 function topLabelFromMime(mime) {
   if (!mime) return 'FILE';
@@ -13,9 +15,19 @@ function topLabelFromMime(mime) {
   return (parts[1] || parts[0] || 'FILE').toUpperCase().slice(0, 8);
 }
 
+function fileNameFromPath(p) {
+  if (!p) return '';
+  const s = String(p);
+  const i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+  return i >= 0 ? s.slice(i + 1) : s;
+}
+
 export function AlbumAssetsGrid({ albumId, onAssetClick }) {
   "use no memo";
   const parentRef = useRef(null);
+  // Same card as FilesGrid: thumb(160) + bottom(64) = 224. Add row gap so rings/badges don't overlap between rows.
+  const ROW_GAP_PX = 16;
+  const ROW_HEIGHT_PX = 224 + ROW_GAP_PX;
 
   const {
     data,
@@ -40,7 +52,7 @@ export function AlbumAssetsGrid({ albumId, onAssetClick }) {
   const rowVirtualizer = useVirtualizer({
     count,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 200,
+    estimateSize: () => ROW_HEIGHT_PX,
     overscan: 5,
   });
 
@@ -72,38 +84,37 @@ export function AlbumAssetsGrid({ albumId, onAssetClick }) {
                 height: `${virtualRow.size}px`,
                 transform: `translateY(${virtualRow.start}px)`,
               }}
-              className="flex gap-4"
+              className="flex gap-4 items-start"
             >
               {items.map((asset) => (
                 <div
                   key={asset.hash}
-                  className={clsx(
-                    'flex-1 relative bg-white shadow rounded overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-500',
-                    asset.status === 'trash' && 'opacity-50 grayscale'
-                  )}
-                  onClick={() => onAssetClick?.(asset)}
+                  className={clsx('flex-1')}
                 >
-                  <div className="relative w-full h-40 bg-gray-100">
-                    <div className="absolute inset-0">
-                      <ThumbPlaceholder
-                        topLabel={topLabelFromMime(asset.mime_type)}
-                        bottomText={asset.hash}
-                        dateText={asset.taken_at ? new Date(asset.taken_at).toLocaleDateString() : null}
-                      />
-                    </div>
-                    <img
-                      src={`http://localhost:3001/api/assets/${asset.hash}/thumb?v=${asset.thumb_updated_at || asset.updated_at || 0}`}
-                      alt={asset.hash}
-                      className="relative z-10 w-full h-40 object-cover"
-                      loading="lazy"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                      }}
-                    />
-                  </div>
-                  <div className="p-2 text-xs truncate">
-                    {asset.taken_at ? new Date(asset.taken_at).toLocaleDateString() : '—'}
-                  </div>
+                  <AssetThumbCard
+                    hash={asset.hash}
+                    thumbVersion={asset.thumb_updated_at || asset.updated_at || 0}
+                    topLabel={topLabelFromMime(asset.mime_type) || (asset.sample_ext || 'FILE')}
+                    placeholderBottomText={asset.sample_path || asset.hash}
+                    dateText={asset.taken_at ? new Date(asset.taken_at).toLocaleDateString() : null}
+                    dimmed={asset.status === 'trash'}
+                    onClick={() => onAssetClick?.(asset)}
+                    bottomPrimary={fileNameFromPath(asset.sample_path) || asset.hash}
+                    bottomSecondary={asset.sample_path || null}
+                    bottomSecondaryTitle={asset.sample_path || ''}
+                    badges={[
+                      asset.status === 'trash'
+                        ? { key: 'trash', text: '已删除', className: 'top-2 right-2 bg-red-50 text-red-700 border border-red-200' }
+                        : null,
+                      Number(asset.file_count) > 1
+                        ? {
+                            key: 'dups',
+                            text: `重复×${Number(asset.file_count)}`,
+                            className: 'bottom-2 right-2 bg-orange-50 text-orange-700 border border-orange-200',
+                          }
+                        : null,
+                    ]}
+                  />
                 </div>
               ))}
               {Array.from({ length: COLUMNS - items.length }).map((_, i) => (

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import React, { useMemo, useState } from 'react';
 import { getAlbums } from '../api/client';
 import { AlbumAssetsGrid } from './AlbumAssetsGrid';
+import { AssetThumbCard } from './AssetThumbCard';
 
 export function AlbumsView({ onAssetClick }) {
   const [activeAlbum, setActiveAlbum] = useState(null); // {id,name,...} | null
@@ -44,34 +45,29 @@ export function AlbumsView({ onAssetClick }) {
       ) : albums.length ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {albums.map((al) => {
-            const cover = al.cover_hash
-              ? `http://localhost:3001/api/assets/${al.cover_hash}/thumb?v=1`
-              : null;
             return (
-              <button
+              <div
                 key={al.id}
-                type="button"
-                className="text-left bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden hover:ring-2 hover:ring-blue-500"
-                onClick={() => setActiveAlbum(al)}
+                className="flex"
               >
-                <div className="w-full h-32 bg-gray-100">
-                  {cover ? (
-                    <img
-                      src={cover}
-                      alt={al.name}
-                      className="w-full h-32 object-cover"
-                      loading="lazy"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                      }}
-                    />
-                  ) : null}
-                </div>
-                <div className="p-3">
-                  <div className="font-semibold text-gray-900 truncate">{al.name}</div>
-                  <div className="text-xs text-gray-500 tabular-nums mt-1">{al.count || 0} 项</div>
-                </div>
-              </button>
+                <AssetThumbCard
+                  hash={al.cover_hash || null}
+                  thumbVersion={1}
+                  topLabel="ALBUM"
+                  placeholderBottomText={al.name}
+                  dateText={null}
+                  onClick={() => setActiveAlbum(al)}
+                  bottomPrimary={al.name}
+                  bottomSecondary={null}
+                  badges={[
+                    {
+                      key: 'count',
+                      text: `${al.count || 0} 项`,
+                      className: 'top-2 right-2 bg-white/90 text-gray-700 border border-gray-200',
+                    },
+                  ]}
+                />
+              </div>
             );
           })}
         </div>

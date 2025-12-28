@@ -65,7 +65,27 @@ router.get('/:id/assets', (req, res) => {
 
   const total = db.prepare(`SELECT COUNT(*) AS count FROM album_assets WHERE album_id = ?`).get(id)?.count || 0;
   const rows = db.prepare(`
-    SELECT a.*
+    SELECT
+      a.*,
+      (
+        SELECT f.path
+        FROM files f
+        WHERE f.hash = a.hash
+        ORDER BY COALESCE(f.mtime_ms, f.updated_at, f.discovered_at, f.scanned_at, 0) DESC, f.id DESC
+        LIMIT 1
+      ) AS sample_path,
+      (
+        SELECT f.ext
+        FROM files f
+        WHERE f.hash = a.hash
+        ORDER BY COALESCE(f.mtime_ms, f.updated_at, f.discovered_at, f.scanned_at, 0) DESC, f.id DESC
+        LIMIT 1
+      ) AS sample_ext,
+      (
+        SELECT COUNT(*)
+        FROM files f2
+        WHERE f2.hash = a.hash
+      ) AS file_count
     FROM album_assets aa
     JOIN assets a ON a.hash = aa.hash
     WHERE aa.album_id = ?

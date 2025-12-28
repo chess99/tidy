@@ -4,8 +4,8 @@ import clsx from 'clsx';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createAlbum, getAlbums, getFiles, getFilesBatch, getFilesDateIndex, organizeAssets, updateAssetsStatusBatch } from '../api/client';
+import { AssetThumbCard } from './AssetThumbCard';
 import { SelectedDrawer } from './SelectedDrawer';
-import { ThumbPlaceholder } from './ThumbPlaceholder';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
@@ -18,6 +18,9 @@ export function FilesGrid({ onFileClick, queryOpts }) {
   const LIMIT = 50;
   const COLUMNS = 4;
   const SELECT_ALL_LIMIT = 500;
+  // Card layout: thumb(160) + bottom(64) = 224. Add row gap so rings/badges don't get overlapped by next row.
+  const ROW_GAP_PX = 16;
+  const ROW_HEIGHT_PX = 224 + ROW_GAP_PX;
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [showSelected, setShowSelected] = useState(false);
@@ -51,7 +54,7 @@ export function FilesGrid({ onFileClick, queryOpts }) {
     count: rowCount || 0,
     getScrollElement: () => parentRef.current,
     // Keep a stable row height; we show two lines of path text under the thumbnail.
-    estimateSize: () => 232,
+    estimateSize: () => ROW_HEIGHT_PX,
     overscan: 5,
   });
 
@@ -485,7 +488,7 @@ export function FilesGrid({ onFileClick, queryOpts }) {
                 height: `${virtualRow.size}px`,
                 transform: `translateY(${virtualRow.start}px)`,
               }}
-              className="flex gap-4"
+              className="flex gap-4 items-start"
             >
               {items.map((file, idx) => {
                 const globalIndex = startIndex + idx;
@@ -496,92 +499,54 @@ export function FilesGrid({ onFileClick, queryOpts }) {
                 const isPlaceholder = !file;
                 const name = isPlaceholder ? '—' : (file.file_name || file.path);
                 const dateText = !isPlaceholder && file.display_time ? new Date(file.display_time).toLocaleDateString() : null;
-                const hasHash = !!file?.hash;
                 const thumbV = file ? (file.asset_thumb_updated_at || file.asset_updated_at || 0) : 0;
                 const isSelected = !isPlaceholder && selectedIds.has(file.id);
                 const organizedTo = !isPlaceholder ? (file.organized_to || null) : null;
                 const dupCount = !isPlaceholder ? (Number(file.dup_count) || 0) : 0;
 
                 return (
-                  <div
+                  <AssetThumbCard
                     key={file?.id || `ph-${virtualRow.index}-${idx}`}
-                    className={clsx(
-                      'flex-1 relative bg-white shadow rounded overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-500',
-                      isPlaceholder ? 'cursor-default hover:ring-0 opacity-80' : null,
-                      file?.missing ? 'opacity-50 grayscale' : null,
-                      isSelected ? 'ring-2 ring-blue-600' : null
-                    )}
-                    onClick={() => (isPlaceholder ? null : onFileClick?.(file))}
-                  >
-                    <div className="relative w-full h-40 bg-gray-100">
-                      <div className="absolute inset-0">
-                        <ThumbPlaceholder
-                          topLabel={isPlaceholder ? 'FILE' : ((file.ext || '').replace('.', '').toUpperCase() || 'FILE')}
-                          bottomText={name}
-                          dateText={dateText}
-                        />
-                      </div>
-                      {hasHash ? (
-                        <img
-                          src={`http://localhost:3001/api/assets/${file.hash}/thumb?v=${thumbV}`}
-                          alt={file.hash}
-                          className="relative z-10 w-full h-40 object-cover"
-                          loading="lazy"
-                          onError={(e) => {
-                            // Hide broken thumb and fall back to placeholder.
-                            e.currentTarget.style.display = 'none';
-                          }}
-                        />
-                      ) : null}
-
-                      {!isPlaceholder ? (
-                        <button
-                          type="button"
-                          className={clsx(
-                            'absolute top-2 left-2 z-20 w-6 h-6 rounded-full border flex items-center justify-center text-xs font-bold shadow-sm',
-                            isSelected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/90 text-gray-700 border-gray-200'
-                          )}
-                          title={isSelected ? '取消选择' : '选择'}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
+                    isPlaceholder={isPlaceholder}
+                    hash={file?.hash}
+                    thumbVersion={thumbV}
+                    topLabel={isPlaceholder ? 'FILE' : ((file.ext || '').replace('.', '').toUpperCase() || 'FILE')}
+                    placeholderBottomText={name}
+                    dateText={dateText}
+                    dimmed={!!file?.missing}
+                    selected={isSelected}
+                    onClick={() => onFileClick?.(file)}
+                    onToggleSelected={
+                      isPlaceholder
+                        ? undefined
+                        : () => {
                             setSelectedIds((prev) => {
                               const next = new Set(prev);
                               if (next.has(file.id)) next.delete(file.id);
                               else next.add(file.id);
                               return next;
                             });
-                          }}
-                        >
-                          {isSelected ? '✓' : ''}
-                        </button>
-                      ) : null}
-
-                      {!isPlaceholder && organizedTo ? (
-                        <div className="absolute top-2 right-2 z-20 text-[10px] px-2 py-0.5 rounded bg-green-50 text-green-700 border border-green-200 shadow-sm">
-                          已整理
-                        </div>
-                      ) : null}
-
-                      {!isPlaceholder && dupCount > 1 ? (
-                        <div className="absolute bottom-2 right-2 z-20 text-[10px] px-2 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200 shadow-sm">
-                          重复×{dupCount}
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div className="h-16 p-2 text-xs flex flex-col justify-between">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[11px] text-gray-900 truncate" title={file?.file_name || ''}>
-                            {file?.file_name || '—'}
-                          </div>
-                        </div>
-                        <div className="shrink-0 tabular-nums text-[11px] text-gray-700">
-                          {dateText || '—'}
-                        </div>
-                      </div>
-                      {!isPlaceholder ? (
+                          }
+                    }
+                    badges={[
+                      !isPlaceholder && organizedTo
+                        ? {
+                            key: 'organized',
+                            text: '已整理',
+                            className: 'top-2 right-2 bg-green-50 text-green-700 border border-green-200',
+                          }
+                        : null,
+                      !isPlaceholder && dupCount > 1
+                        ? {
+                            key: 'dups',
+                            text: `重复×${dupCount}`,
+                            className: 'bottom-2 right-2 bg-orange-50 text-orange-700 border border-orange-200',
+                          }
+                        : null,
+                    ]}
+                    bottomPrimary={file?.file_name || '—'}
+                    bottomContent={
+                      !isPlaceholder ? (
                         organizedTo ? (
                           <div className="text-[11px] leading-4">
                             <div className="text-green-700 truncate" title={organizedTo}>→ {organizedTo}</div>
@@ -601,9 +566,9 @@ export function FilesGrid({ onFileClick, queryOpts }) {
                             {file.path}
                           </div>
                         )
-                      ) : null}
-                    </div>
-                  </div>
+                      ) : null
+                    }
+                  />
                 );
               })}
             </div>
