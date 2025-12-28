@@ -5,29 +5,13 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
 import { useEffect, useRef } from 'react';
 import { getAlbumAssets } from '../api/client';
+import { GRID_COLUMNS, ROW_HEIGHT_PX } from '../utils/gridLayout';
+import { fileNameFromPath, preferredTopLabel } from '../utils/mediaLabel';
 import { AssetThumbCard } from './AssetThumbCard';
-
-function topLabelFromMime(mime) {
-  if (!mime) return 'FILE';
-  if (mime.startsWith('image/')) return 'IMG';
-  if (mime.startsWith('video/')) return 'VID';
-  const parts = mime.split('/');
-  return (parts[1] || parts[0] || 'FILE').toUpperCase().slice(0, 8);
-}
-
-function fileNameFromPath(p) {
-  if (!p) return '';
-  const s = String(p);
-  const i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
-  return i >= 0 ? s.slice(i + 1) : s;
-}
 
 export function AlbumAssetsGrid({ albumId, onAssetClick }) {
   "use no memo";
   const parentRef = useRef(null);
-  // Same card as FilesGrid: thumb(160) + bottom(64) = 224. Add row gap so rings/badges don't overlap between rows.
-  const ROW_GAP_PX = 16;
-  const ROW_HEIGHT_PX = 224 + ROW_GAP_PX;
 
   const {
     data,
@@ -46,7 +30,7 @@ export function AlbumAssetsGrid({ albumId, onAssetClick }) {
 
   const allRows = data ? data.pages.flatMap((d) => d.data) : [];
 
-  const COLUMNS = 4;
+  const COLUMNS = GRID_COLUMNS;
   const count = Math.ceil(allRows.length / COLUMNS);
 
   const rowVirtualizer = useVirtualizer({
@@ -94,7 +78,7 @@ export function AlbumAssetsGrid({ albumId, onAssetClick }) {
                   <AssetThumbCard
                     hash={asset.hash}
                     thumbVersion={asset.thumb_updated_at || asset.updated_at || 0}
-                    topLabel={topLabelFromMime(asset.mime_type) || (asset.sample_ext || 'FILE')}
+                    topLabel={preferredTopLabel({ ext: asset.sample_ext, path: asset.sample_path, mime: asset.mime_type })}
                     placeholderBottomText={asset.sample_path || asset.hash}
                     dateText={asset.taken_at ? new Date(asset.taken_at).toLocaleDateString() : null}
                     dimmed={asset.status === 'trash'}

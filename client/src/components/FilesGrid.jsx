@@ -4,6 +4,7 @@ import clsx from 'clsx';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createAlbum, getAlbums, getFiles, getFilesBatch, getFilesDateIndex, organizeAssets, updateAssetsStatusBatch } from '../api/client';
+import { GRID_COLUMNS, ROW_HEIGHT_PX } from '../utils/gridLayout';
 import { AssetThumbCard } from './AssetThumbCard';
 import { SelectedDrawer } from './SelectedDrawer';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command';
@@ -16,11 +17,8 @@ export function FilesGrid({ onFileClick, queryOpts }) {
   const overlayRef = useRef(null);
   const qc = useQueryClient();
   const LIMIT = 50;
-  const COLUMNS = 4;
+  const COLUMNS = GRID_COLUMNS;
   const SELECT_ALL_LIMIT = 500;
-  // Card layout: thumb(160) + bottom(64) = 224. Add row gap so rings/badges don't get overlapped by next row.
-  const ROW_GAP_PX = 16;
-  const ROW_HEIGHT_PX = 224 + ROW_GAP_PX;
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [showSelected, setShowSelected] = useState(false);

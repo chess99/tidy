@@ -1,13 +1,6 @@
 import clsx from 'clsx';
-import React from 'react';
+import { fileNameFromPath } from '../utils/mediaLabel';
 import { ThumbPlaceholder } from './ThumbPlaceholder';
-
-function fileNameFromPath(p) {
-  if (!p) return '';
-  const s = String(p);
-  const i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
-  return i >= 0 ? s.slice(i + 1) : s;
-}
 
 /**
  * Shared thumbnail card used by both `FilesGrid` and album asset grids.
