@@ -20,7 +20,8 @@ const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
-export const scanPath = () => api.post('/scan', {});
+// Scan: optionally pass a root (absolute path) to scan.
+export const scanPath = ({ root } = {}) => api.post('/scan', root ? { root } : {});
 export const getScanStatus = () => api.get('/scan/status').then(res => res.data);
 export const getAssets = (page = 1, limit = 50) => api.get('/assets', { params: { page, limit } }).then(res => res.data);
 export const getAsset = (hash) => api.get(`/assets/${hash}`).then(res => res.data);
@@ -58,6 +59,12 @@ export const updateAssetStatus = (hash, status) => api.patch(`/assets/${hash}`, 
 export const updateAssetsStatusBatch = (hashes = [], status) =>
   api.post('/assets/batch-status', { hashes, status }).then(res => res.data);
 export const syncChanges = () => api.post('/sync').then(res => res.data);
+
+// Config / library maintenance
+export const getConfig = () => api.get('/config').then((res) => res.data);
+export const addScanRoot = ({ root, setActive = false }) => api.post('/config/scan-root', { root, setActive }).then((res) => res.data);
+export const setActiveScanRoot = ({ root }) => api.post('/config/active-scan-root', { root }).then((res) => res.data);
+export const clearLibraryByRoot = ({ root, dryRun = false }) => api.post('/library/clear', { root, dryRun }).then((res) => res.data);
 
 // Albums (folders)
 export const getAlbums = () => api.get('/albums').then(res => res.data);

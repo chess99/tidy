@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle, FolderCheck, Loader2, RefreshCw, Trash2, X 
 import { useEffect, useRef, useState } from 'react';
 import { apiUrl, getAsset, getAssetsBatch, getFilesBatch, getScanStatus, scanPath, syncChanges, updateAssetStatus } from './api/client';
 import { AlbumsView } from './components/AlbumsView';
+import { ConfigView } from './components/ConfigView';
 import { FilesFilters } from './components/FilesFilters';
 import { FilesGrid } from './components/FilesGrid';
 import { Button } from './components/ui/button';
@@ -78,7 +79,7 @@ function ScanProgress() {
 
 function Main() {
   const [selectedAsset, setSelectedAsset] = useState(null);
-  const [activeTab, setActiveTab] = useState('files'); // files | albums
+  const [activeTab, setActiveTab] = useState('config'); // config | files | albums
   const [filesQuery, setFilesQuery] = useState(() => ({
     filter: localStorage.getItem('filesFilter') || 'all',
     exts: [],
@@ -270,14 +271,11 @@ function Main() {
         <div className="flex gap-2">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList>
+              <TabsTrigger value="config">配置&扫描</TabsTrigger>
               <TabsTrigger value="files">全部文件</TabsTrigger>
               <TabsTrigger value="albums">文件夹/归档</TabsTrigger>
             </TabsList>
           </Tabs>
-          <Button onClick={() => scanMutation.mutate()} disabled={scanMutation.isPending}>
-            {scanMutation.isPending ? '启动中...' : '扫描'}
-          </Button>
-          <div className="w-px bg-gray-300 mx-2"></div>
           <Button
             variant="secondary"
             onClick={() => syncMutation.mutate()}
@@ -288,7 +286,7 @@ function Main() {
         </div>
       </header>
 
-      <ScanProgress />
+      {activeTab === 'config' ? <ScanProgress /> : null}
       
       <div className="flex-1 flex overflow-hidden">
         {activeTab === 'files' ? (
@@ -296,14 +294,23 @@ function Main() {
         ) : null}
 
         <div className="flex-1 relative">
-          {activeTab === 'files' ? (
+          {activeTab === 'config' ? (
+            <ConfigView
+              onScan={(root) => scanMutation.mutate({ root })}
+              onAfterClear={() => {
+                qc.invalidateQueries({ queryKey: ['files'] });
+                qc.invalidateQueries({ queryKey: ['assets'] });
+                qc.invalidateQueries({ queryKey: ['albums'] });
+              }}
+            />
+          ) : activeTab === 'files' ? (
             <FilesGrid onFileClick={handleFileClick} queryOpts={filesQuery} />
           ) : (
             <AlbumsView onAssetClick={setSelectedAsset} />
           )}
         </div>
 
-        {selectedAsset && (
+        {selectedAsset && activeTab !== 'config' && (
           <aside className="w-96 bg-white border-l shadow-xl z-20 flex flex-col h-full">
             <div className="p-4 border-b flex justify-between items-center bg-gray-50">
               <h2 className="font-bold text-gray-700">详情</h2>

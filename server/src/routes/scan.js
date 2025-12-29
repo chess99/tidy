@@ -1,11 +1,26 @@
 const express = require('express');
 const scanner = require('../scanner');
 const { WORK_ROOT } = require('../config');
+const { loadConfig, getEffectiveScanRoot, validateScanRoot } = require('../configStore');
 const router = express.Router();
 
 router.post('/', async (req, res) => {
-  // Ignore user-provided path: always scan fixed WORK_ROOT for consistency.
-  const scanPath = WORK_ROOT;
+  // Choose scan root:
+  // 1) request body root (explicit per-request)
+  // 2) persisted activeScanRoot (config.json)
+  // 3) WORK_ROOT (env / default)
+  let scanPath = WORK_ROOT;
+  try {
+    const reqRoot = req.body?.root;
+    if (reqRoot) {
+      scanPath = validateScanRoot(reqRoot);
+    } else {
+      const cfg = await loadConfig();
+      scanPath = getEffectiveScanRoot(cfg);
+    }
+  } catch (e) {
+    return res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
+  }
 
   if (scanner.isScanning) {
     return res.status(409).json({ error: 'Scan already in progress' });

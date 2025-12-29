@@ -32,8 +32,12 @@ const changeRoutes = require('./src/routes/changes');
 const albumRoutes = require('./src/routes/albums');
 const organizeRoutes = require('./src/routes/organize');
 const tagRoutes = require('./src/routes/tags');
+const configRoutes = require('./src/routes/config');
+const libraryRoutes = require('./src/routes/library');
 
 app.use('/api/scan', scanRoutes);
+app.use('/api/config', configRoutes);
+app.use('/api/library', libraryRoutes);
 app.use('/api/assets', assetRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/files', fileRoutes);

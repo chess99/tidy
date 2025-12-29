@@ -56,8 +56,9 @@ A tool to scan, organize, and deduplicate photos using Content-Addressable Stora
 
 4. **Usage**
    - Open the web interface.
-   - Enter a directory path (absolute path on server machine) to scan.
-   - Click "Scan". Check server console for progress.
+   - Go to **“配置&扫描”**:
+     - Add an **absolute path** as a scan root and set it active.
+     - Click **“开始扫描（当前目录）”**.
    - Browse photos. Click to view details.
    - Mark photos as "Trash" or "Keep".
    - Click "Sync" to apply changes (moves trash files to `server/data/trash`).
@@ -65,3 +66,22 @@ A tool to scan, organize, and deduplicate photos using Content-Addressable Stora
 ## Database
 
 Data is stored in `server/data/tidy.db`. Thumbnails in `server/data/thumbnails`.
+
+## Config (cross-platform)
+
+The server reads base paths from env/defaults, and scan roots from a persisted JSON file:
+
+- `WORK_ROOT`: default scan root fallback (default: `~/Pictures`)
+- `DATA_DIR`: server-local data dir (default: `server/data`)
+- `DB_PATH`: default: `${DATA_DIR}/tidy.db`
+- `THUMB_DIR`: default: `${DATA_DIR}/thumbnails`
+- `config.json`: `${DATA_DIR}/config.json`
+  - `scanRoots: string[]`
+  - `activeScanRoot: string | null`
+
+## Clear records for a directory (DB only)
+
+In **“配置&扫描”** you can clear DB records for a directory prefix:
+
+- It deletes rows in SQLite (`files` and related orphan `assets`/links), **does not delete disk files**.
+- Use **dry-run** first to see the estimated counts.
