@@ -2,7 +2,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
 import React, { useEffect, useRef } from 'react';
-import { getAssets } from '../api/client';
+import { apiUrl, getAssets } from '../api/client';
 import { ThumbPlaceholder } from './ThumbPlaceholder';
 
 function topLabelFromMime(mime) {
@@ -116,7 +116,7 @@ export function VirtualGrid({ onAssetClick }) {
                       />
                     </div>
                     <img
-                      src={`http://localhost:3001/api/assets/${asset.hash}/thumb?v=${asset.thumb_updated_at || asset.updated_at || 0}`}
+                      src={apiUrl(`/assets/${asset.hash}/thumb?v=${asset.thumb_updated_at || asset.updated_at || 0}`)}
                       alt={asset.hash}
                       className="relative z-10 w-full h-40 object-cover"
                       loading="lazy"

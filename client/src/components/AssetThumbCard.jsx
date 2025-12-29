@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import { apiUrl } from '../api/client';
 import { fileNameFromPath } from '../utils/mediaLabel';
 import { ThumbPlaceholder } from './ThumbPlaceholder';
 
@@ -47,7 +48,7 @@ export function AssetThumbCard({
 
         {hasHash ? (
           <img
-            src={`http://localhost:3001/api/assets/${hash}/thumb?v=${thumbVersion || 0}`}
+            src={apiUrl(`/assets/${hash}/thumb?v=${thumbVersion || 0}`)}
             alt={hash}
             className="relative z-10 w-full h-40 object-cover"
             loading="lazy"

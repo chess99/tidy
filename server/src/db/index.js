@@ -2,6 +2,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs-extra');
 const schema = require('./schema');
+const { DB_PATH } = require('../config');
 
 let db;
 
@@ -99,7 +100,7 @@ function migrateDB(dbConn) {
 }
 
 function initDB() {
-  const dbPath = process.env.DB_PATH || path.join(__dirname, '../../tidy.db');
+  const dbPath = process.env.DB_PATH ? path.resolve(String(process.env.DB_PATH)) : DB_PATH;
   console.log(`Initializing database at ${dbPath}`);
   
   fs.ensureDirSync(path.dirname(dbPath));

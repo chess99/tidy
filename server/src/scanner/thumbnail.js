@@ -4,7 +4,7 @@ const fs = require('fs-extra');
 const { execFile } = require('child_process');
 const { exiftoolPath: exiftoolPathFn } = require('exiftool-vendored');
 
-const THUMB_DIR = path.join(process.cwd(), 'data', 'thumbnails');
+const { THUMB_DIR } = require('../config');
 
 // Ensure thumb dir exists
 fs.ensureDirSync(THUMB_DIR);

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle, FolderCheck, Loader2, RefreshCw, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { getAsset, getAssetsBatch, getFilesBatch, getScanStatus, scanPath, syncChanges, updateAssetStatus } from './api/client';
+import { apiUrl, getAsset, getAssetsBatch, getFilesBatch, getScanStatus, scanPath, syncChanges, updateAssetStatus } from './api/client';
 import { AlbumsView } from './components/AlbumsView';
 import { FilesFilters } from './components/FilesFilters';
 import { FilesGrid } from './components/FilesGrid';
@@ -142,7 +142,7 @@ function Main() {
   // SSE incremental updates: only patch changed items into react-query cache.
   useEffect(() => {
     const saved = Number(localStorage.getItem('changesCursor') || 0);
-    const es = new EventSource(`http://localhost:3001/api/changes/stream?cursor=${saved}`);
+    const es = new EventSource(apiUrl(`/changes/stream?cursor=${saved}`));
 
     let pendingFileIds = new Set();
     let pendingAssetHashes = new Set();
@@ -317,7 +317,7 @@ function Main() {
                 {detailThumbErrorHash !== selectedAsset.hash ? (
                   <img
                     key={`${selectedAsset.hash}:${selectedAsset.thumb_updated_at || selectedAsset.updated_at || 0}`}
-                    src={`http://localhost:3001/api/assets/${selectedAsset.hash}/thumb?v=${selectedAsset.thumb_updated_at || selectedAsset.updated_at || 0}`}
+                    src={apiUrl(`/assets/${selectedAsset.hash}/thumb?v=${selectedAsset.thumb_updated_at || selectedAsset.updated_at || 0}`)}
                     className="w-full h-full object-contain"
                     alt="preview"
                     onError={() => setDetailThumbErrorHash(selectedAsset.hash)}

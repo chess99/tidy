@@ -1,7 +1,23 @@
 import axios from 'axios';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+
+function joinUrl(base, p) {
+  const b = String(base || '').replace(/\/+$/, '');
+  const path = String(p || '');
+  if (!path) return b || '';
+  if (/^https?:\/\//i.test(path)) return path;
+  if (!b) return path.startsWith('/') ? path : `/${path}`;
+  if (path.startsWith('/')) return `${b}${path}`;
+  return `${b}/${path}`;
+}
+
+export function apiUrl(p) {
+  return joinUrl(API_BASE_URL, p);
+}
+
 const api = axios.create({
-  baseURL: 'http://localhost:3001/api',
+  baseURL: API_BASE_URL,
 });
 
 export const scanPath = () => api.post('/scan', {});
