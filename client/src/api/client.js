@@ -38,10 +38,11 @@ export const getFiles = (page = 1, limit = 50, opts = {}) => {
   if (pathContains) params.pathContains = pathContains;
   if (hash) params.hash = hash;
   if (Array.isArray(exts) && exts.length) params.exts = exts.join(',');
+  if (Array.isArray(opts.people) && opts.people.length) params.people = opts.people.join(',');
   return api.get('/files', { params }).then(res => res.data);
 };
 export const getFilesDateIndex = (filter = 'all', granularity = 'month', opts = {}) => {
-  const { organized, from, to, hasDup, pathContains, hash, exts } = opts || {};
+  const { organized, from, to, hasDup, pathContains, hash, exts, people } = opts || {};
   const params = { filter, granularity };
   if (organized != null) params.organized = organized;
   if (hasDup) params.hasDup = hasDup;
@@ -50,6 +51,7 @@ export const getFilesDateIndex = (filter = 'all', granularity = 'month', opts = 
   if (pathContains) params.pathContains = pathContains;
   if (hash) params.hash = hash;
   if (Array.isArray(exts) && exts.length) params.exts = exts.join(',');
+  if (Array.isArray(people) && people.length) params.people = people.join(',');
   return api.get('/files/date-index', { params }).then(res => res.data);
 };
 export const getFilesBatch = (ids = []) =>
@@ -87,4 +89,12 @@ export const createTag = ({ name, type }) => api.post('/tags', { name, type }).t
 export const getAssetTags = (hash) => api.get(`/tags/asset/${hash}`).then(res => res.data);
 export const addAssetTag = (hash, tagId) => api.post(`/tags/asset/${hash}`, { tagId }).then(res => res.data);
 export const removeAssetTag = (hash, tagId) => api.delete(`/tags/asset/${hash}/${tagId}`).then(res => res.data);
+
+// Faces
+export const getFaces = (hash) => api.get(`/faces/asset/${hash}`).then(res => res.data);
+export const getPeople = () => api.get(`/faces/people`).then(res => res.data);
+export const createPerson = (name) => api.post(`/faces/people`, { name }).then(res => res.data);
+export const updateFace = (id, { person_id }) => api.put(`/faces/${id}`, { person_id }).then(res => res.data);
+export const createPersonFromFace = (faceId, name) => api.post(`/faces/create-from-face`, { face_id: faceId, name }).then(res => res.data);
+export const scanFaces = () => api.post(`/faces/scan`).then(res => res.data);
 

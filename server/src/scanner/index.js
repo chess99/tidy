@@ -6,6 +6,7 @@ const { computeHash } = require('./hasher');
 const { extractMetadata } = require('./metadata');
 const { extractVideoMetadata } = require('./videoMetadata');
 const { generateThumbnail, getThumbnailPath, RAW_EXTS } = require('./thumbnail');
+const { processImageFaces, loadModels } = require('./face');
 const { normalizePathForDb } = require('../utils/normalizePath');
 const { getDB } = require('../db');
 const { MANAGED_ROOT, TRASH_DIR } = require('../config');
@@ -140,6 +141,51 @@ class Scanner {
     } finally {
       this.isScanning = false;
       console.log('Scan complete', this.stats);
+    }
+  }
+
+  async scanFaces() {
+    if (this.isScanning) throw new Error('Scan already in progress');
+    this.isScanning = true;
+    console.log('Starting face scan...');
+    
+    try {
+      await loadModels();
+      const db = getDB();
+      
+      // Find assets that haven't been scanned for faces
+      // We prioritize assets that are images.
+      const assets = db.prepare(`
+        SELECT a.hash, f.path 
+        FROM assets a
+        JOIN files f ON a.hash = f.hash
+        WHERE a.mime_type LIKE 'image/%' 
+          AND a.face_scanned_at IS NULL
+          AND a.status != 'trash'
+          AND a.status != 'ignored'
+        GROUP BY a.hash
+      `).all();
+
+      console.log(`Found ${assets.length} assets to scan for faces.`);
+      let scannedCount = 0;
+
+      for (const { hash, path: filePath } of assets) {
+        try {
+          if (await fs.pathExists(filePath)) {
+             await processImageFaces(filePath, hash);
+          }
+          db.prepare('UPDATE assets SET face_scanned_at = ? WHERE hash = ?').run(Date.now(), hash);
+          scannedCount++;
+          if (scannedCount % 10 === 0) console.log(`Scanned faces for ${scannedCount} assets...`);
+        } catch (e) {
+          console.error(`Face scan error for ${filePath}:`, e);
+        }
+      }
+    } catch (e) {
+      console.error('Face scan failed:', e);
+    } finally {
+      this.isScanning = false;
+      console.log('Face scan complete.');
     }
   }
 

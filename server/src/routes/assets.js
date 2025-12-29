@@ -227,5 +227,18 @@ router.get('/:hash/thumb', async (req, res) => {
   }
 });
 
+// Serve raw file (first available)
+router.get('/:hash/raw', async (req, res) => {
+  const { hash } = req.params;
+  const db = getDB();
+  const file = db.prepare('SELECT path FROM files WHERE hash = ? LIMIT 1').get(hash);
+  
+  if (file && await fs.pathExists(file.path)) {
+    res.sendFile(file.path);
+  } else {
+    res.status(404).send('Not found');
+  }
+});
+
 module.exports = router;
 

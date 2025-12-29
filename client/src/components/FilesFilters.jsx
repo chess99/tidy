@@ -1,5 +1,7 @@
 import { FilterX, Plus, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { getPeople } from '../api/client';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
@@ -25,6 +27,19 @@ export function FilesFilters({ value, onChange }) {
   const v = value || {};
   const [extInput, setExtInput] = useState('');
 
+  const peopleQuery = useQuery({
+    queryKey: ['people'],
+    queryFn: getPeople,
+    staleTime: 60000,
+  });
+  const people = peopleQuery.data || [];
+  // Ensure selectedPeopleIds is array of numbers
+  const selectedPeopleIds = useMemo(() => {
+    if (!v.people) return [];
+    const arr = Array.isArray(v.people) ? v.people : String(v.people).split(',');
+    return arr.map(Number).filter(n => Number.isFinite(n));
+  }, [v.people]);
+
   const rangeValue = useMemo(() => ({ from: v.from, to: v.to }), [v.from, v.to]);
   const selectedExts = Array.isArray(v.exts) ? v.exts : [];
   const selectedExtSet = new Set(selectedExts);
@@ -36,6 +51,7 @@ export function FilesFilters({ value, onChange }) {
     (v.to ? 1 : 0) +
     (selectedExts.length ? 1 : 0) +
     (v.pathContains ? 1 : 0) +
+    (selectedPeopleIds.length ? 1 : 0) +
     (v.hash ? 1 : 0);
 
   const toggleExt = (raw) => {
@@ -76,6 +92,7 @@ export function FilesFilters({ value, onChange }) {
                 from: undefined,
                 to: undefined,
                 exts: [],
+                people: undefined,
                 pathContains: '',
                 hash: '',
               })
@@ -188,6 +205,42 @@ export function FilesFilters({ value, onChange }) {
               全部文件
             </button>
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-muted-foreground">人物 ({selectedPeopleIds.length})</div>
+          {selectedPeopleIds.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {selectedPeopleIds.map((id) => {
+                const p = people.find((x) => x.id === id);
+                return (
+                  <Badge key={id} variant="secondary" className="gap-1">
+                    {p ? p.name : `ID:${id}`}
+                    <button
+                      type="button"
+                      className="ml-1 rounded hover:opacity-80"
+                      onClick={() => {
+                        const next = selectedPeopleIds.filter((pid) => pid !== id);
+                        onChange({ ...v, people: next.length ? next : undefined });
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                );
+              })}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 px-1 text-xs text-muted-foreground"
+                onClick={() => onChange({ ...v, people: undefined })}
+              >
+                清空
+              </Button>
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground italic">未选择（在详情面板添加）</div>
+          )}
         </div>
 
         <div className="space-y-2">

@@ -32,6 +32,7 @@ function migrateDB(dbConn) {
     { name: 'camera_make', type: 'TEXT' },
     { name: 'camera_model', type: 'TEXT' },
     { name: 'is_camera', type: 'INTEGER', defaultSql: '0' },
+    { name: 'face_scanned_at', type: 'INTEGER' },
   ]);
 
   ensureColumns(dbConn, 'files', [

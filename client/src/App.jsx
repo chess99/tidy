@@ -7,6 +7,7 @@ import { ScanStatusSidebar } from './components/ScanStatusSidebar';
 import { ConfigView } from './components/ConfigView';
 import { FilesFilters } from './components/FilesFilters';
 import { FilesGrid } from './components/FilesGrid';
+import { AssetFacesPanel } from './components/AssetFacesPanel';
 import { Button } from './components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
 
@@ -184,6 +185,15 @@ function Main() {
     }
   };
 
+  const handleFilterByPerson = (personId) => {
+    setActiveTab('files');
+    setFilesQuery((prev) => {
+      const current = prev.people ? (Array.isArray(prev.people) ? prev.people : String(prev.people).split(',').map(Number)) : [];
+      if (current.includes(personId)) return prev;
+      return { ...prev, people: [...current, personId] };
+    });
+  };
+
   const applyFilter = (patch) => {
     setActiveTab('files');
     setFilesQuery((prev) => ({ ...prev, ...patch }));
@@ -350,6 +360,15 @@ function Main() {
                       {selectedAsset.updated_at ? new Date(selectedAsset.updated_at).toLocaleString() : '—'}
                     </div>
                   </div>
+                </div>
+
+                <div className="rounded-lg border bg-white p-3">
+                  <AssetFacesPanel 
+                    hash={selectedAsset.hash} 
+                    assetUrl={apiUrl(`/assets/${selectedAsset.hash}/raw`)}
+                    originalSize={{ width: selectedAsset.metadata?.width, height: selectedAsset.metadata?.height }}
+                    onFilterByPerson={handleFilterByPerson}
+                  />
                 </div>
 
                 <div>

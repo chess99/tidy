@@ -146,6 +146,7 @@ router.get('/date-index', (req, res) => {
   const pathContains = req.query.pathContains != null ? String(req.query.pathContains) : null;
   const fromMs = req.query.from != null ? Number(req.query.from) : null;
   const toMs = req.query.to != null ? Number(req.query.to) : null;
+  const people = parseCsvParam(req.query.people).map(n => parseInt(n)).filter(n => Number.isFinite(n));
 
   if (granularity !== 'month' && granularity !== 'day') {
     return res.status(400).json({ error: 'Invalid granularity' });
@@ -202,6 +203,11 @@ router.get('/date-index', (req, res) => {
     whereParams.push(...params);
   }
 
+  for (const pid of people) {
+    where += ` AND f.hash IN (SELECT hash FROM faces WHERE person_id = ?)`;
+    whereParams.push(pid);
+  }
+
   const totalQuery = `
     SELECT COUNT(*) as count
     FROM files f
@@ -250,6 +256,7 @@ router.get('/', (req, res) => {
   const pathContains = req.query.pathContains != null ? String(req.query.pathContains) : null;
   const fromMs = req.query.from != null ? Number(req.query.from) : null;
   const toMs = req.query.to != null ? Number(req.query.to) : null;
+  const people = parseCsvParam(req.query.people).map(n => parseInt(n)).filter(n => Number.isFinite(n));
 
   let where = '';
   let whereParams = [];
@@ -322,6 +329,11 @@ router.get('/', (req, res) => {
     const { clause, params } = makeInClause(exts);
     where += ` AND LOWER(COALESCE(f.ext, '')) IN ${clause}`;
     whereParams.push(...params);
+  }
+
+  for (const pid of people) {
+    where += ` AND f.hash IN (SELECT hash FROM faces WHERE person_id = ?)`;
+    whereParams.push(pid);
   }
 
   // Optimize dup_count: if we are filtering by hasDup=1, we know dup_count > 1.

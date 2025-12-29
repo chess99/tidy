@@ -12,7 +12,8 @@ const dbSchema = `
     camera_model TEXT,
     is_camera INTEGER DEFAULT 0,
     updated_at INTEGER,
-    thumb_updated_at INTEGER
+    thumb_updated_at INTEGER,
+    face_scanned_at INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS files (
@@ -90,6 +91,26 @@ const dbSchema = `
     ts INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS people (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    avatar_face_id INTEGER,
+    created_at INTEGER,
+    updated_at INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS faces (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hash TEXT NOT NULL,
+    person_id INTEGER,
+    descriptor TEXT,
+    box TEXT,
+    score REAL,
+    created_at INTEGER,
+    FOREIGN KEY(hash) REFERENCES assets(hash) ON DELETE CASCADE,
+    FOREIGN KEY(person_id) REFERENCES people(id) ON DELETE SET NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_assets_taken_at ON assets(taken_at);
   CREATE INDEX IF NOT EXISTS idx_files_hash ON files(hash);
   CREATE INDEX IF NOT EXISTS idx_changes_ts ON changes(ts);
@@ -97,6 +118,8 @@ const dbSchema = `
   CREATE INDEX IF NOT EXISTS idx_file_ops_created_at ON file_ops(created_at);
   CREATE INDEX IF NOT EXISTS idx_tags_type ON tags(type);
   CREATE INDEX IF NOT EXISTS idx_asset_tags_tag ON asset_tags(tag_id);
+  CREATE INDEX IF NOT EXISTS idx_faces_hash ON faces(hash);
+  CREATE INDEX IF NOT EXISTS idx_faces_person_id ON faces(person_id);
 `;
 
 module.exports = dbSchema;
