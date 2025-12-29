@@ -40,6 +40,13 @@ function parseBool01(v) {
   return null;
 }
 
+function parseIntParam(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.trunc(n);
+}
+
 function pad2(n) {
   return String(n).padStart(2, '0');
 }
@@ -141,6 +148,9 @@ router.get('/date-index', (req, res) => {
   const granularity = String(req.query.granularity || 'month');
   const organized = parseBool01(req.query.organized);
   const hasDup = parseBool01(req.query.hasDup);
+  const hasPeople = parseBool01(req.query.hasPeople);
+  const personCountMin = parseIntParam(req.query.personCountMin);
+  const personCountMax = parseIntParam(req.query.personCountMax);
   const exts = parseExtsParam(req.query.exts);
   const hash = req.query.hash != null ? String(req.query.hash) : null;
   const pathContains = req.query.pathContains != null ? String(req.query.pathContains) : null;
@@ -203,6 +213,27 @@ router.get('/date-index', (req, res) => {
     whereParams.push(...params);
   }
 
+  // Face/people filters: requires faces table to be populated (run face scan once).
+  if (hasPeople === 1) {
+    where += ` AND f.hash IS NOT NULL AND EXISTS (SELECT 1 FROM faces ff WHERE ff.hash = f.hash)`;
+  }
+  if (Number.isFinite(personCountMin) && personCountMin > 0) {
+    where += ` AND f.hash IS NOT NULL AND f.hash IN (
+      SELECT hash FROM faces
+      GROUP BY hash
+      HAVING COUNT(DISTINCT COALESCE(person_id, id)) >= ?
+    )`;
+    whereParams.push(personCountMin);
+  }
+  if (Number.isFinite(personCountMax) && personCountMax > 0) {
+    where += ` AND f.hash IS NOT NULL AND f.hash IN (
+      SELECT hash FROM faces
+      GROUP BY hash
+      HAVING COUNT(DISTINCT COALESCE(person_id, id)) <= ?
+    )`;
+    whereParams.push(personCountMax);
+  }
+
   for (const pid of people) {
     where += ` AND f.hash IN (SELECT hash FROM faces WHERE person_id = ?)`;
     whereParams.push(pid);
@@ -251,6 +282,9 @@ router.get('/', (req, res) => {
   const filter = String(req.query.filter || 'all');
   const organized = parseBool01(req.query.organized);
   const hasDup = parseBool01(req.query.hasDup);
+  const hasPeople = parseBool01(req.query.hasPeople);
+  const personCountMin = parseIntParam(req.query.personCountMin);
+  const personCountMax = parseIntParam(req.query.personCountMax);
   const exts = parseExtsParam(req.query.exts);
   const hash = req.query.hash != null ? String(req.query.hash) : null;
   const pathContains = req.query.pathContains != null ? String(req.query.pathContains) : null;
@@ -329,6 +363,26 @@ router.get('/', (req, res) => {
     const { clause, params } = makeInClause(exts);
     where += ` AND LOWER(COALESCE(f.ext, '')) IN ${clause}`;
     whereParams.push(...params);
+  }
+
+  if (hasPeople === 1) {
+    where += ` AND f.hash IS NOT NULL AND EXISTS (SELECT 1 FROM faces ff WHERE ff.hash = f.hash)`;
+  }
+  if (Number.isFinite(personCountMin) && personCountMin > 0) {
+    where += ` AND f.hash IS NOT NULL AND f.hash IN (
+      SELECT hash FROM faces
+      GROUP BY hash
+      HAVING COUNT(DISTINCT COALESCE(person_id, id)) >= ?
+    )`;
+    whereParams.push(personCountMin);
+  }
+  if (Number.isFinite(personCountMax) && personCountMax > 0) {
+    where += ` AND f.hash IS NOT NULL AND f.hash IN (
+      SELECT hash FROM faces
+      GROUP BY hash
+      HAVING COUNT(DISTINCT COALESCE(person_id, id)) <= ?
+    )`;
+    whereParams.push(personCountMax);
   }
 
   for (const pid of people) {

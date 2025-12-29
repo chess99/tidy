@@ -29,23 +29,29 @@ export const getAssetsBatch = (hashes = []) =>
   api.get('/assets/batch', { params: { hashes: hashes.join(',') } }).then(res => res.data);
 
 export const getFiles = (page = 1, limit = 50, opts = {}) => {
-  const { filter = 'all', organized, from, to, hasDup, pathContains, hash, exts } = opts || {};
+  const { filter = 'all', organized, from, to, hasDup, pathContains, hash, exts, people, hasPeople, personCountMin, personCountMax } = opts || {};
   const params = { page, limit, filter };
   if (organized != null) params.organized = organized;
   if (hasDup) params.hasDup = hasDup;
+  if (hasPeople) params.hasPeople = 1;
+  if (Number.isFinite(personCountMin)) params.personCountMin = personCountMin;
+  if (Number.isFinite(personCountMax)) params.personCountMax = personCountMax;
   if (from != null) params.from = from;
   if (to != null) params.to = to;
   if (pathContains) params.pathContains = pathContains;
   if (hash) params.hash = hash;
   if (Array.isArray(exts) && exts.length) params.exts = exts.join(',');
-  if (Array.isArray(opts.people) && opts.people.length) params.people = opts.people.join(',');
+  if (Array.isArray(people) && people.length) params.people = people.join(',');
   return api.get('/files', { params }).then(res => res.data);
 };
 export const getFilesDateIndex = (filter = 'all', granularity = 'month', opts = {}) => {
-  const { organized, from, to, hasDup, pathContains, hash, exts, people } = opts || {};
+  const { organized, from, to, hasDup, pathContains, hash, exts, people, hasPeople, personCountMin, personCountMax } = opts || {};
   const params = { filter, granularity };
   if (organized != null) params.organized = organized;
   if (hasDup) params.hasDup = hasDup;
+  if (hasPeople) params.hasPeople = 1;
+  if (Number.isFinite(personCountMin)) params.personCountMin = personCountMin;
+  if (Number.isFinite(personCountMax)) params.personCountMax = personCountMax;
   if (from != null) params.from = from;
   if (to != null) params.to = to;
   if (pathContains) params.pathContains = pathContains;

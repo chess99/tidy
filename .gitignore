@@ -13,5 +13,8 @@ tidy.db
 tidy.db-shm
 tidy.db-wal
 
+# Face API models (generated / copied at install time)
+server/models/
+
 # Development PID file
 .dev-pids.json

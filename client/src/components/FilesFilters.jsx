@@ -47,6 +47,9 @@ export function FilesFilters({ value, onChange }) {
   const activeCount =
     (v.organized != null ? 1 : 0) +
     (v.hasDup ? 1 : 0) +
+    (v.hasPeople ? 1 : 0) +
+    (Number.isFinite(v.personCountMin) ? 1 : 0) +
+    (Number.isFinite(v.personCountMax) ? 1 : 0) +
     (v.from ? 1 : 0) +
     (v.to ? 1 : 0) +
     (selectedExts.length ? 1 : 0) +
@@ -89,6 +92,9 @@ export function FilesFilters({ value, onChange }) {
                 ...v,
                 organized: undefined,
                 hasDup: false,
+                hasPeople: false,
+                personCountMin: undefined,
+                personCountMax: undefined,
                 from: undefined,
                 to: undefined,
                 exts: [],
@@ -241,6 +247,55 @@ export function FilesFilters({ value, onChange }) {
           ) : (
             <div className="text-xs text-muted-foreground italic">未选择（在详情面板添加）</div>
           )}
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-muted-foreground">有人 / 人数</div>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={!!v.hasPeople}
+              onCheckedChange={(ck) => onChange({ ...v, hasPeople: !!ck })}
+            />
+            <span>仅有人脸（已识别/已聚类后）</span>
+          </label>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <div className="text-[11px] text-muted-foreground">人数 ≥</div>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                value={Number.isFinite(v.personCountMin) ? String(v.personCountMin) : ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (!raw) return onChange({ ...v, personCountMin: undefined });
+                  const n = Number(raw);
+                  onChange({ ...v, personCountMin: Number.isFinite(n) ? Math.max(1, Math.floor(n)) : undefined });
+                }}
+                placeholder="例如：1"
+              />
+            </div>
+            <div className="space-y-1">
+              <div className="text-[11px] text-muted-foreground">人数 ≤</div>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                value={Number.isFinite(v.personCountMax) ? String(v.personCountMax) : ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (!raw) return onChange({ ...v, personCountMax: undefined });
+                  const n = Number(raw);
+                  onChange({ ...v, personCountMax: Number.isFinite(n) ? Math.max(1, Math.floor(n)) : undefined });
+                }}
+                placeholder="例如：2"
+              />
+            </div>
+          </div>
+          <div className="text-[11px] text-muted-foreground leading-4">
+            提示：人数按同一张照片里的“不同 person”计数；用于筛“合照”（例如 ≥2）。
+          </div>
         </div>
 
         <div className="space-y-2">
