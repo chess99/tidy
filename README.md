@@ -38,7 +38,19 @@ A tool to scan, organize, and deduplicate photos using Content-Addressable Stora
    npm install
    ```
 
-2. **Start Server**
+2. **(Face Search) Install native TFJS + setup models**
+
+   Face detection uses `@tensorflow/tfjs-node` and requires model files under `server/models/`.
+   These model files are **NOT committed to git**.
+
+   ```bash
+   cd server
+   # If your network needs a proxy, use: HTTPS_PROXY=http://127.0.0.1:7897 npm i
+   npm install
+   npm run models:setup
+   ```
+
+3. **Start Server**
 
    ```bash
    cd server
@@ -46,7 +58,7 @@ A tool to scan, organize, and deduplicate photos using Content-Addressable Stora
    # Runs on http://localhost:3001
    ```
 
-3. **Start Client**
+4. **Start Client**
 
    ```bash
    cd client
@@ -54,7 +66,7 @@ A tool to scan, organize, and deduplicate photos using Content-Addressable Stora
    # Runs on http://localhost:5173
    ```
 
-4. **Usage**
+5. **Usage**
    - Open the web interface.
    - Go to **“配置&扫描”**:
      - Add an **absolute path** as a scan root and set it active.
