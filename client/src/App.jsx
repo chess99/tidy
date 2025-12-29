@@ -1,8 +1,9 @@
-import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle, FolderCheck, Loader2, RefreshCw, Trash2, X } from 'lucide-react';
+import { QueryClient, QueryClientProvider, useMutation, useQueryClient } from '@tanstack/react-query';
+import { RefreshCw, Trash2, X, FolderCheck } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { apiUrl, getAsset, getAssetsBatch, getFilesBatch, getScanStatus, scanPath, syncChanges, updateAssetStatus } from './api/client';
-import { AlbumsView } from './components/AlbumsView';
+import { apiUrl, getAsset, getAssetsBatch, getFilesBatch, scanPath, syncChanges, updateAssetStatus } from './api/client';
+import { MinimalScanStatus } from './components/MinimalScanStatus';
+import { ScanStatusSidebar } from './components/ScanStatusSidebar';
 import { ConfigView } from './components/ConfigView';
 import { FilesFilters } from './components/FilesFilters';
 import { FilesGrid } from './components/FilesGrid';
@@ -10,72 +11,6 @@ import { Button } from './components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
 
 const queryClient = new QueryClient();
-
-function ScanProgress() {
-  const { data } = useQuery({
-    queryKey: ['scanStatus'],
-    queryFn: getScanStatus,
-    refetchInterval: 1000, 
-  });
-
-  if (!data) return null;
-
-  if (data.isScanning) {
-    const walked = data.stats.walked || 0;
-    const scanned = data.stats.scanned || 0;
-    const pendingHash = Math.max(0, walked - scanned);
-    return (
-      <div className="bg-blue-50 px-4 py-2 text-sm flex gap-4 items-center border-b border-blue-100">
-        <Loader2 className="animate-spin text-blue-600" size={16} />
-        <span className="font-semibold text-blue-800">扫描中...</span>
-        {data.stats.total > 0 && (
-          <span className="text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full text-xs">
-             总数: {data.stats.total}
-          </span>
-        )}
-        <div className="flex gap-4 text-blue-600 text-xs">
-          <span>walked: {walked}</span>
-          <span className="text-indigo-700">已哈希: {scanned}</span>
-          <span className="text-indigo-500">待哈希: {pendingHash}</span>
-          <span className="text-green-600">新增内容: {data.stats.new}</span>
-          <span className="text-gray-500">未变化跳过: {data.stats.skipped}</span>
-          <span className="text-gray-500">非图片: {data.stats.ignored}</span>
-          {data.stats.errors > 0 ? <span className="text-red-600">错误: {data.stats.errors}</span> : null}
-        </div>
-      </div>
-    );
-  } else if (data.stats && data.stats.scanned > 0) {
-     const walked = data.stats.walked || 0;
-     const scanned = data.stats.scanned || 0;
-     const pendingHash = Math.max(0, walked - scanned);
-     return (
-      <div className="bg-green-50 px-4 py-2 text-sm flex gap-4 items-center border-b border-green-100 justify-between">
-        <div className="flex gap-4 items-center">
-          <CheckCircle className="text-green-600" size={16} />
-          <span className="font-semibold text-green-800">扫描完成</span>
-          <div className="flex gap-4 text-green-700 text-xs">
-             <span>总数: {data.stats.total}</span>
-             <span>walked: {walked}</span>
-             <span>已哈希: {scanned}</span>
-             <span>待哈希: {pendingHash}</span>
-             <span>新增内容: {data.stats.new}</span>
-             <span>未变化跳过: {data.stats.skipped}</span>
-             <span>非图片: {data.stats.ignored}</span>
-             {data.stats.errors > 0 ? <span className="text-red-700">错误: {data.stats.errors}</span> : null}
-          </div>
-          {data.stats.walked !== data.stats.total && (
-              <div className="flex items-center gap-1 text-orange-600 text-xs font-bold">
-                  <AlertTriangle size={12}/> 数量不一致
-              </div>
-          )}
-        </div>
-        <button onClick={() => window.location.reload()} className="text-green-600 hover:underline text-xs">关闭</button>
-      </div>
-    );
-  }
-
-  return null;
-}
 
 function Main() {
   const [selectedAsset, setSelectedAsset] = useState(null);
@@ -286,23 +221,31 @@ function Main() {
         </div>
       </header>
 
-      {activeTab === 'config' ? <ScanProgress /> : null}
+      {/* {activeTab === 'config' ? <ScanProgress /> : null} REMOVED */}
       
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Floating Minimal Status for non-config pages */}
+        {activeTab !== 'config' && <MinimalScanStatus />}
+
         {activeTab === 'files' ? (
           <FilesFilters value={filesQuery} onChange={setFilesQuery} />
         ) : null}
 
-        <div className="flex-1 relative">
+        <div className="flex-1 relative flex flex-col min-w-0">
           {activeTab === 'config' ? (
-            <ConfigView
-              onScan={() => scanMutation.mutate({})}
-              onAfterClear={() => {
-                qc.invalidateQueries({ queryKey: ['files'] });
-                qc.invalidateQueries({ queryKey: ['assets'] });
-                qc.invalidateQueries({ queryKey: ['albums'] });
-              }}
-            />
+            <div className="flex h-full">
+              <div className="flex-1 overflow-y-auto">
+                <ConfigView
+                  onScan={() => scanMutation.mutate({})}
+                  onAfterClear={() => {
+                    qc.invalidateQueries({ queryKey: ['files'] });
+                    qc.invalidateQueries({ queryKey: ['assets'] });
+                    qc.invalidateQueries({ queryKey: ['albums'] });
+                  }}
+                />
+              </div>
+              <ScanStatusSidebar className="w-80 border-l bg-gray-50" />
+            </div>
           ) : activeTab === 'files' ? (
             <FilesGrid onFileClick={handleFileClick} queryOpts={filesQuery} />
           ) : (
