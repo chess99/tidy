@@ -160,22 +160,23 @@ router.get('/date-index', (req, res) => {
   }
 
   const timeExpr = `COALESCE(a.taken_at, f.mtime_ms, f.discovered_at, f.scanned_at)`;
-  const organizedExistsExpr = `EXISTS (SELECT 1 FROM album_assets aa WHERE aa.hash = f.hash)`;
+  // const organizedExistsExpr = `EXISTS (SELECT 1 FROM album_assets aa WHERE aa.hash = f.hash)`;
   const dupCountExpr = `(SELECT COUNT(*) FROM files f2 WHERE f2.hash = f.hash)`;
+  const dupHashesQuery = `SELECT hash FROM files WHERE hash IS NOT NULL GROUP BY hash HAVING COUNT(*) > 1`;
+  const organizedHashesQuery = `SELECT hash FROM album_assets`;
 
   // Extend WHERE with additional filters (mirror /files list route)
   if (!where) where = 'WHERE 1=1';
   if (organized === 1) {
-    where += ` AND f.hash IS NOT NULL AND ${organizedExistsExpr}`;
+    where += ` AND f.hash IN (${organizedHashesQuery})`;
   } else if (organized === 0) {
-    where += ` AND (f.hash IS NULL OR NOT ${organizedExistsExpr})`;
+    where += ` AND (f.hash IS NULL OR f.hash NOT IN (${organizedHashesQuery}))`;
   }
 
   if (hasDup === 1) {
-    where += ` AND f.hash IS NOT NULL AND ${dupCountExpr} > 1`;
-  } else if (hasDup === 0) {
-    where += ` AND (f.hash IS NULL OR ${dupCountExpr} <= 1)`;
+    where += ` AND f.hash IN (${dupHashesQuery})`;
   }
+  // If hasDup === 0 (false), user wants "All", so we don't add any filter.
 
   if (Number.isFinite(fromMs)) {
     where += ` AND ${timeExpr} >= ?`;
@@ -259,22 +260,44 @@ router.get('/', (req, res) => {
   }
 
   const timeExpr = `COALESCE(a.taken_at, f.mtime_ms, f.discovered_at, f.scanned_at)`;
-  const organizedExistsExpr = `EXISTS (SELECT 1 FROM album_assets aa WHERE aa.hash = f.hash)`;
+  // const organizedExistsExpr = `EXISTS (SELECT 1 FROM album_assets aa WHERE aa.hash = f.hash)`;
   const dupCountExpr = `(SELECT COUNT(*) FROM files f2 WHERE f2.hash = f.hash)`;
+  const dupHashesQuery = `SELECT hash FROM files WHERE hash IS NOT NULL GROUP BY hash HAVING COUNT(*) > 1`;
+  const organizedHashesQuery = `SELECT hash FROM album_assets`;
 
   // Extend WHERE with additional filters.
   if (!where) where = 'WHERE 1=1';
 
   if (organized === 1) {
-    where += ` AND f.hash IS NOT NULL AND ${organizedExistsExpr}`;
+    where += ` AND f.hash IN (${organizedHashesQuery})`;
   } else if (organized === 0) {
-    where += ` AND (f.hash IS NULL OR NOT ${organizedExistsExpr})`;
+    where += ` AND (f.hash IS NULL OR f.hash NOT IN (${organizedHashesQuery}))`;
   }
 
   if (hasDup === 1) {
-    where += ` AND f.hash IS NOT NULL AND ${dupCountExpr} > 1`;
+    where += ` AND f.hash IN (${dupHashesQuery})`;
   } else if (hasDup === 0) {
-    where += ` AND (f.hash IS NULL OR ${dupCountExpr} <= 1)`;
+    // If hasDup is explicit false/0, we only show unique files (count <= 1).
+    // Note: The user mentioned "if not checked, show all".
+    // But typically checkbox "Only Duplicates" means: checked -> only dupes; unchecked -> all files.
+    // However, the frontend might be sending hasDup=false when unchecked.
+    // Let's verify what "false" means. If the UI treats it as "Show All", then we should NOT filter.
+    // But based on the code 'parseBool01', it seems to handle 1/0/null.
+    // If the user wants "unchecked = show all", they should probably not send hasDup=0, or we should treat 0 as no-op.
+    // WAITING FOR CONFIRMATION - but previous logic was: hasDup=0 => count <= 1.
+    // User said: "unchecked should show all, checked filters duplicates".
+    // So if hasDup is 0 (false), we should probably DO NOTHING (show all).
+    // BUT the previous code explicitly filtered for `dupCount <= 1`.
+    // Let's comment this out if hasDup is 0, or check if we need a specific 'unique' filter.
+    // For now, I will assume hasDup=0 means "Show Unique" and hasDup=null means "Show All".
+    // If the frontend sends hasDup=false when unchecked, we need to change this behavior.
+    
+    // User quote: "当时的设计应该是未勾选 '仅重复' 就展示所有, 勾选的话才筛选有重复项的."
+    // So: 
+    // - Checked (hasDup=true/1) -> Show only duplicates.
+    // - Unchecked (hasDup=false/0) -> Show ALL files (do not filter).
+    
+    // Therefore, we should REMOVE the filter for hasDup === 0.
   }
 
   if (Number.isFinite(fromMs)) {
@@ -301,6 +324,13 @@ router.get('/', (req, res) => {
     whereParams.push(...params);
   }
 
+  // Optimize dup_count: if we are filtering by hasDup=1, we know dup_count > 1.
+  // If we are showing all (hasDup=0 or null), we still need to calculate it.
+  // The original correlated subquery is slow: (SELECT COUNT(*) FROM files f2 WHERE f2.hash = f.hash)
+  // We can try to optimize it by pre-calculating or joining.
+  // But for now, let's keep it as is unless it's the bottleneck for the SELECT list.
+  // The bottleneck observed was likely the WHERE clause filtering or the ORDER BY on large result sets.
+
   const query = `
     SELECT
       f.*,
@@ -309,6 +339,12 @@ router.get('/', (req, res) => {
       a.mime_type AS asset_mime_type,
       a.updated_at AS asset_updated_at,
       a.thumb_updated_at AS asset_thumb_updated_at,
+      -- Use a faster scalar subquery or just the raw count if possible.
+      -- For display, we need the exact count.
+      -- Optimization: If we already filtered by hasDup=1, we know it's > 1, but we still need the number.
+      -- The correlated subquery is expensive. Let's try to join with a derived table of counts IF hasDup=1.
+      -- Actually, for 50 rows, the correlated subquery in SELECT list is fast (50 lookups).
+      -- The slowness comes from the WHERE clause or ORDER BY scanning many rows.
       CASE WHEN f.hash IS NULL THEN 0 ELSE ${dupCountExpr} END AS dup_count,
       (
         SELECT al.name

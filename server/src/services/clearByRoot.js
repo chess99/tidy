@@ -60,11 +60,20 @@ function clearByRoot(db, { root, dryRun }) {
   // Orphan hashes are computed AFTER deleting those files.
   let orphanHashesEstimate = [];
   if (hashes.length) {
-    const { clause, params: inParams } = makeInClause(hashes);
-    const rows = db
-      .prepare(`SELECT hash, COUNT(*) as c FROM files WHERE hash IN ${clause} GROUP BY hash`)
-      .all(...inParams);
-    const countByHash = new Map(rows.map((r) => [String(r.hash), Number(r.c) || 0]));
+    // Process hashes in chunks to avoid "too many SQL variables"
+    const hashChunks = chunk(hashes, 500);
+    const countByHash = new Map();
+    
+    for (const hs of hashChunks) {
+      const { clause, params: inParams } = makeInClause(hs);
+      const rows = db
+        .prepare(`SELECT hash, COUNT(*) as c FROM files WHERE hash IN ${clause} GROUP BY hash`)
+        .all(...inParams);
+      for (const r of rows) {
+        countByHash.set(String(r.hash), Number(r.c) || 0);
+      }
+    }
+
     const countInRoot = new Map();
     for (const f of files) {
       if (!f.hash) continue;

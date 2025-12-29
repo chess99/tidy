@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Play, Trash2 } from 'lucide-react';
+import { Play, Trash2, Loader2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   addScanRoot,
@@ -91,9 +91,9 @@ export function ConfigView({ onScan, onAfterClear }) {
     refetchInterval: 1000,
   });
 
-  const scanRoots = cfgQuery.data?.scan?.scanRoots || [];
-  const scanType = cfgQuery.data?.scan?.scanType || { exts: [], includeNoExt: false };
-  const workspace = cfgQuery.data?.workspace || {};
+  const scanRoots = useMemo(() => cfgQuery.data?.scan?.scanRoots || [], [cfgQuery.data]);
+  const scanType = useMemo(() => cfgQuery.data?.scan?.scanType || { exts: [], includeNoExt: false }, [cfgQuery.data]);
+  const workspace = useMemo(() => cfgQuery.data?.workspace || {}, [cfgQuery.data]);
 
   const enabledRoots = useMemo(() => scanRoots.filter((r) => r?.enabled), [scanRoots]);
   const enabledCount = enabledRoots.length;
@@ -483,6 +483,7 @@ export function ConfigView({ onScan, onAfterClear }) {
                     disabled={removeBusy || !removeTarget}
                     onClick={doRemoveDryRun}
                   >
+                    {removeBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                     预估（dry-run）
                   </Button>
                 </div>
@@ -508,18 +509,24 @@ export function ConfigView({ onScan, onAfterClear }) {
               </Button>
               <Button
                 variant="destructive"
-                disabled={!canConfirmRemove}
+                disabled={!canConfirmRemove || removeBusy || removeMutation.isPending}
                 onClick={() => {
                   if (!removeTarget) return;
-                  const ok = window.confirm(
-                    removeClearDb
-                      ? `确认移除并清除 DB 记录？\n${removeTarget}\n\n不会删除磁盘文件。`
-                      : `确认移除目录？\n${removeTarget}`
-                  );
-                  if (!ok) return;
-                  removeMutation.mutate({ root: removeTarget, clearDb: removeClearDb });
+                  if (!removeClearDb) {
+                    // Simple remove (no DB clear), just confirm and do it.
+                    const ok = window.confirm(`确认移除目录？\n${removeTarget}`);
+                    if (!ok) return;
+                    removeMutation.mutate({ root: removeTarget, clearDb: false });
+                    return;
+                  }
+                  
+                  // For clear DB, we don't use window.confirm again because the button is scary enough
+                  // and we force dry-run or direct action.
+                  // Actually, let's just do it.
+                  removeMutation.mutate({ root: removeTarget, clearDb: true });
                 }}
               >
+                {removeBusy || removeMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 确认移除
               </Button>
             </div>

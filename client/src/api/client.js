@@ -32,7 +32,7 @@ export const getFiles = (page = 1, limit = 50, opts = {}) => {
   const { filter = 'all', organized, from, to, hasDup, pathContains, hash, exts } = opts || {};
   const params = { page, limit, filter };
   if (organized != null) params.organized = organized;
-  if (hasDup != null) params.hasDup = hasDup;
+  if (hasDup) params.hasDup = hasDup;
   if (from != null) params.from = from;
   if (to != null) params.to = to;
   if (pathContains) params.pathContains = pathContains;
@@ -44,7 +44,7 @@ export const getFilesDateIndex = (filter = 'all', granularity = 'month', opts = 
   const { organized, from, to, hasDup, pathContains, hash, exts } = opts || {};
   const params = { filter, granularity };
   if (organized != null) params.organized = organized;
-  if (hasDup != null) params.hasDup = hasDup;
+  if (hasDup) params.hasDup = hasDup;
   if (from != null) params.from = from;
   if (to != null) params.to = to;
   if (pathContains) params.pathContains = pathContains;
