@@ -62,8 +62,13 @@ export const syncChanges = () => api.post('/sync').then(res => res.data);
 
 // Config / library maintenance
 export const getConfig = () => api.get('/config').then((res) => res.data);
-export const addScanRoot = ({ root, setActive = false }) => api.post('/config/scan-root', { root, setActive }).then((res) => res.data);
-export const setActiveScanRoot = ({ root }) => api.post('/config/active-scan-root', { root }).then((res) => res.data);
+export const addScanRoot = ({ root }) => api.post('/config/scan-root', { root }).then((res) => res.data);
+export const setScanRootEnabled = ({ root, enabled }) => api.patch('/config/scan-root', { root, enabled: !!enabled }).then((res) => res.data);
+export const removeScanRoot = ({ root, clearDb = false }) =>
+  api.delete('/config/scan-root', { data: { root, clearDb: !!clearDb } }).then((res) => res.data);
+export const setScanType = ({ exts = [], includeNoExt = false }) =>
+  api.put('/config/scan-type', { exts, includeNoExt: !!includeNoExt }).then((res) => res.data);
+
 export const clearLibraryByRoot = ({ root, dryRun = false }) => api.post('/library/clear', { root, dryRun }).then((res) => res.data);
 
 // Albums (folders)

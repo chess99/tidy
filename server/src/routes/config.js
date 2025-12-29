@@ -1,62 +1,95 @@
 const express = require('express');
 const { WORK_ROOT, MANAGED_ROOT, TRASH_DIR, DATA_DIR, DB_PATH, THUMB_DIR } = require('../config');
+const { getDB } = require('../db');
 const {
   loadConfig,
   addScanRoot,
-  setActiveScanRoot,
-  getEffectiveScanRoot,
-  validateScanRoot,
+  setScanRoots,
+  setScanRootEnabled,
+  removeScanRoot,
+  setScanType,
+  validateRootOrThrow,
 } = require('../configStore');
+
+// Reuse the existing clear-by-root logic directly (no legacy compat, but avoid duplicating SQL).
+const { clearByRoot } = require('../services/clearByRoot');
 
 const router = express.Router();
 
 router.get('/', async (req, res) => {
-  const cfg = await loadConfig();
-  const effectiveScanRoot = getEffectiveScanRoot(cfg);
-  const workspace = { WORK_ROOT, MANAGED_ROOT, TRASH_DIR, DATA_DIR, DB_PATH, THUMB_DIR };
-
-  // New shape (preferred by UI)
-  const scan = {
-    scanRoots: cfg.scanRoots,
-    activeScanRoot: cfg.activeScanRoot,
-    effectiveScanRoot,
-  };
-
-  // Backward-compatible fields kept for older UI code
-  res.json({
-    // preferred grouped structure
-    scan,
-    workspace,
-
-    // legacy flat fields (keep for compatibility)
-    scanRoots: cfg.scanRoots,
-    activeScanRoot: cfg.activeScanRoot,
-    effective: {
-      scanRoot: effectiveScanRoot,
-      ...workspace,
-    },
-  });
+  try {
+    const cfg = await loadConfig();
+    res.json({
+      scan: {
+        scanRoots: cfg.scanRoots,
+        scanType: cfg.scanType,
+      },
+      workspace: { WORK_ROOT, MANAGED_ROOT, TRASH_DIR, DATA_DIR, DB_PATH, THUMB_DIR },
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
 });
 
+// Add scan root (enabled=true)
 router.post('/scan-root', async (req, res) => {
-  const rootRaw = req.body?.root;
-  const setActive = !!req.body?.setActive;
   try {
-    // validate early for clearer error
-    validateScanRoot(rootRaw);
-    const cfg = await addScanRoot(rootRaw, { setActive });
-    res.json({ scanRoots: cfg.scanRoots, activeScanRoot: cfg.activeScanRoot });
+    const root = validateRootOrThrow(req.body?.root);
+    const cfg = await addScanRoot(root);
+    res.json({ scanRoots: cfg.scanRoots });
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
   }
 });
 
-router.post('/active-scan-root', async (req, res) => {
-  const rootRaw = req.body?.root;
+// Replace full scanRoots list
+router.post('/scan-roots', async (req, res) => {
   try {
-    validateScanRoot(rootRaw);
-    const cfg = await setActiveScanRoot(rootRaw);
-    res.json({ scanRoots: cfg.scanRoots, activeScanRoot: cfg.activeScanRoot });
+    const scanRoots = Array.isArray(req.body?.scanRoots) ? req.body.scanRoots : [];
+    const next = await setScanRoots(scanRoots);
+    res.json({ scanRoots: next.scanRoots });
+  } catch (e) {
+    res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
+  }
+});
+
+// Toggle enabled
+router.patch('/scan-root', async (req, res) => {
+  try {
+    const root = validateRootOrThrow(req.body?.root);
+    const enabled = !!req.body?.enabled;
+    const cfg = await setScanRootEnabled(root, enabled);
+    res.json({ scanRoots: cfg.scanRoots });
+  } catch (e) {
+    res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
+  }
+});
+
+// Remove scan root; optionally clear DB records for that directory.
+router.delete('/scan-root', async (req, res) => {
+  try {
+    const root = validateRootOrThrow(req.body?.root);
+    const clearDb = !!req.body?.clearDb;
+    let clearReport = null;
+
+    if (clearDb) {
+      const db = getDB();
+      clearReport = clearByRoot(db, { root, dryRun: false });
+    }
+
+    const cfg = await removeScanRoot(root);
+    res.json({ scanRoots: cfg.scanRoots, clearReport });
+  } catch (e) {
+    res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
+  }
+});
+
+// Update scan type (global)
+router.put('/scan-type', async (req, res) => {
+  try {
+    const scanType = req.body || {};
+    const cfg = await setScanType(scanType);
+    res.json({ scanType: cfg.scanType });
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
   }

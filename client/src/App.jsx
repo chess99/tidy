@@ -296,7 +296,7 @@ function Main() {
         <div className="flex-1 relative">
           {activeTab === 'config' ? (
             <ConfigView
-              onScan={(root) => scanMutation.mutate({ root })}
+              onScan={() => scanMutation.mutate({})}
               onAfterClear={() => {
                 qc.invalidateQueries({ queryKey: ['files'] });
                 qc.invalidateQueries({ queryKey: ['assets'] });

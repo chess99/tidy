@@ -9,6 +9,7 @@ const { generateThumbnail, getThumbnailPath, RAW_EXTS } = require('./thumbnail')
 const { normalizePathForDb } = require('../utils/normalizePath');
 const { getDB } = require('../db');
 const { MANAGED_ROOT, TRASH_DIR } = require('../config');
+const { loadConfig } = require('../configStore');
 
 const QUEUE_CONCURRENCY = 4;
 
@@ -16,7 +17,22 @@ class Scanner {
   constructor() {
     this.queue = fastq.promise(this.processFile.bind(this), QUEUE_CONCURRENCY);
     this.isScanning = false;
-    this.stats = { total: 0, walked: 0, scanned: 0, new: 0, updated: 0, skipped: 0, ignored: 0, errors: 0 };
+    this.stats = { total: 0, walked: 0, scanned: 0, new: 0, updated: 0, skipped: 0, ignored: 0, filtered: 0, errors: 0 };
+    this._scanExtSet = new Set();
+    this._scanIncludeNoExt = false;
+  }
+
+  _setScanType(scanType) {
+    const exts = Array.isArray(scanType?.exts) ? scanType.exts : [];
+    this._scanExtSet = new Set(exts.map((e) => String(e || '').trim().toLowerCase()).filter(Boolean));
+    this._scanIncludeNoExt = !!scanType?.includeNoExt;
+  }
+
+  _shouldIncludeFile(filePath) {
+    const ext = path.extname(filePath);
+    const norm = ext ? String(ext).toLowerCase().replace(/^\./, '') : '';
+    if (!norm) return !!this._scanIncludeNoExt;
+    return this._scanExtSet.has(norm);
   }
 
   _insertChange(entity, entityId, type) {
@@ -83,9 +99,20 @@ class Scanner {
   async scanDirectory(dirPath) {
     if (this.isScanning) throw new Error('Scan already in progress');
     this.isScanning = true;
-    this.stats = { total: 0, walked: 0, scanned: 0, new: 0, updated: 0, skipped: 0, ignored: 0, errors: 0 };
+    this.stats = { total: 0, walked: 0, scanned: 0, new: 0, updated: 0, skipped: 0, ignored: 0, filtered: 0, errors: 0 };
     
     console.log(`Starting scan of ${dirPath}`);
+
+    // Load scanType config once per scan root.
+    try {
+      const cfg = await loadConfig();
+      this._setScanType(cfg?.scanType);
+    } catch {
+      // If config is unavailable for some reason, default to “include all” by not filtering.
+      this._scanExtSet = new Set();
+      this._scanIncludeNoExt = true;
+    }
+
     try {
       // Ensure tool directories exist (best-effort).
       fs.ensureDirSync(MANAGED_ROOT);
@@ -129,6 +156,10 @@ class Scanner {
             if (this._isUnderManagedRoot(fullPath)) continue;
             await this.countFiles(fullPath);
           } else if (stat.isFile()) {
+            if (!this._shouldIncludeFile(fullPath)) {
+              this.stats.filtered++;
+              continue;
+            }
             this.stats.total++;
           }
         } catch (e) {
@@ -154,6 +185,10 @@ class Scanner {
               if (this._isUnderManagedRoot(fullPath)) continue;
               await this.walk(fullPath);
             } else if (stat.isFile()) {
+              if (!this._shouldIncludeFile(fullPath)) {
+                this.stats.filtered++;
+                continue;
+              }
               this.stats.walked++; // DEBUG: Count walked files
               const fileId = this._upsertFileDiscovered(fullPath, stat);
               this.queue.push({ fileId, filePath: fullPath, stat });
@@ -174,8 +209,8 @@ class Scanner {
     const db = getDB();
     
     const mimeType = mime.lookup(filePath) || null;
-    if (!mimeType || !mimeType.startsWith('image/')) {
-      // Keep this counter as “non-image encountered” for now (still processed for hash).
+    if (!mimeType || (!mimeType.startsWith('image/') && !mimeType.startsWith('video/'))) {
+      // Keep this counter as “non-media encountered” for now (still processed for hash).
       this.stats.ignored++;
     }
 

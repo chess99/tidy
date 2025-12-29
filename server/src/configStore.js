@@ -1,8 +1,30 @@
-const path = require('path');
 const fs = require('fs-extra');
+const path = require('path');
 const { DATA_DIR, WORK_ROOT, MANAGED_ROOT, TRASH_DIR } = require('./config');
 
+// Demo-stage “optimal design”: single schema, no legacy compatibility.
+// server/data/config.json:
+// {
+//   scanRoots: [{ root: string, enabled: boolean }],
+//   scanType: { exts: string[], includeNoExt: boolean }
+// }
+
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+
+// Defaults: scan WORK_ROOT, and include common image/video extensions.
+const DEFAULT_SCAN_ROOTS = [{ root: WORK_ROOT, enabled: true }];
+const DEFAULT_SCAN_EXTS = [
+  // images
+  'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'tif', 'tiff',
+  // raw-ish
+  'dng', 'cr2', 'cr3', 'nef', 'arw', 'raf', 'rw2', 'orf', 'sr2', 'pef',
+  // videos
+  'mp4', 'mov', 'm4v', 'avi', 'mkv', 'webm', '3gp',
+];
+const DEFAULT_CONFIG = {
+  scanRoots: DEFAULT_SCAN_ROOTS,
+  scanType: { exts: DEFAULT_SCAN_EXTS, includeNoExt: false },
+};
 
 function abs(p) {
   if (!p) return null;
@@ -35,7 +57,7 @@ function isUnder(parent, child) {
   }
 }
 
-function validateScanRoot(root) {
+function validateRootOrThrow(root) {
   const r = stripTrailingSep(abs(root));
   if (!r) {
     const e = new Error('root is required');
@@ -56,21 +78,46 @@ function validateScanRoot(root) {
   return r;
 }
 
-function normalizeRoots(list) {
+function normalizeExt(raw) {
+  if (!raw) return null;
+  let s = String(raw).trim().toLowerCase();
+  if (!s) return null;
+  if (s === '.') return null;
+  if (s.startsWith('.')) s = s.slice(1);
+  if (!s) return null;
+  // allow things like 3gp
+  if (!/^[a-z0-9]{1,12}$/.test(s)) return null;
+  return s;
+}
+
+function normalizeScanType(scanType) {
+  const extsRaw = Array.isArray(scanType?.exts) ? scanType.exts : [];
+  const includeNoExt = !!scanType?.includeNoExt;
+  const set = new Set();
+  for (const r of extsRaw) {
+    const e = normalizeExt(r);
+    if (e) set.add(e);
+  }
+  const exts = Array.from(set);
+  if (!exts.length && !includeNoExt) {
+    const e = new Error('scanType must include at least one ext or includeNoExt=true');
+    e.statusCode = 400;
+    throw e;
+  }
+  return { exts, includeNoExt };
+}
+
+function dedupeRoots(items) {
   const out = [];
   const seen = new Set();
-  for (const raw of Array.isArray(list) ? list : []) {
-    if (!raw) continue;
-    let r;
-    try {
-      r = validateScanRoot(raw);
-    } catch {
-      continue;
-    }
-    const key = process.platform === 'win32' ? r.toLowerCase() : r;
+  for (const it of Array.isArray(items) ? items : []) {
+    if (!it) continue;
+    const root = validateRootOrThrow(it.root);
+    const enabled = !!it.enabled;
+    const key = process.platform === 'win32' ? root.toLowerCase() : root;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push(r);
+    out.push({ root, enabled });
   }
   return out;
 }
@@ -79,76 +126,100 @@ async function loadConfig() {
   try {
     const exists = await fs.pathExists(CONFIG_FILE);
     if (!exists) {
-      return { scanRoots: [], activeScanRoot: null };
+      // initialize
+      await saveConfig(DEFAULT_CONFIG);
+      return { ...DEFAULT_CONFIG };
     }
     const raw = await fs.readFile(CONFIG_FILE, 'utf8');
     const json = JSON.parse(raw);
-    const scanRoots = normalizeRoots(json?.scanRoots);
-    let active = json?.activeScanRoot ? stripTrailingSep(abs(json.activeScanRoot)) : null;
-    if (active) {
-      // Ensure active is valid and present in the list.
-      try {
-        active = validateScanRoot(active);
-      } catch {
-        active = null;
-      }
-      const key = process.platform === 'win32' ? active.toLowerCase() : active;
-      const has = scanRoots.some((r) => (process.platform === 'win32' ? r.toLowerCase() : r) === key);
-      if (!has) active = null;
-    }
-    return { scanRoots, activeScanRoot: active };
+    // No legacy compat: validate strictly. If invalid, reset to defaults (demo-stage safety).
+    const scanRoots = dedupeRoots(json?.scanRoots);
+    const scanType = normalizeScanType(json?.scanType);
+    return { scanRoots, scanType };
   } catch {
-    return { scanRoots: [], activeScanRoot: null };
+    await saveConfig(DEFAULT_CONFIG);
+    return { ...DEFAULT_CONFIG };
   }
 }
 
-async function saveConfig(next) {
-  const scanRoots = normalizeRoots(next?.scanRoots);
-  let active = next?.activeScanRoot ? stripTrailingSep(abs(next.activeScanRoot)) : null;
-  if (active) {
-    active = validateScanRoot(active);
-    const key = process.platform === 'win32' ? active.toLowerCase() : active;
-    const has = scanRoots.some((r) => (process.platform === 'win32' ? r.toLowerCase() : r) === key);
-    if (!has) scanRoots.unshift(active);
-  }
-
+async function saveConfig(cfg) {
+  const scanRoots = dedupeRoots(cfg?.scanRoots);
+  const scanType = normalizeScanType(cfg?.scanType);
   await fs.ensureDir(path.dirname(CONFIG_FILE));
   const tmp = CONFIG_FILE + '.tmp';
-  await fs.writeFile(tmp, JSON.stringify({ scanRoots, activeScanRoot: active }, null, 2), 'utf8');
+  await fs.writeFile(tmp, JSON.stringify({ scanRoots, scanType }, null, 2), 'utf8');
   await fs.move(tmp, CONFIG_FILE, { overwrite: true });
-  return { scanRoots, activeScanRoot: active };
+  return { scanRoots, scanType };
 }
 
-async function addScanRoot(root, { setActive = false } = {}) {
-  const r = validateScanRoot(root);
+async function setScanRoots(scanRoots) {
   const cfg = await loadConfig();
-  const list = normalizeRoots([...(cfg.scanRoots || []), r]);
+  return await saveConfig({ ...cfg, scanRoots });
+}
+
+async function addScanRoot(root) {
+  const r = validateRootOrThrow(root);
+  const cfg = await loadConfig();
   const next = {
-    scanRoots: list,
-    activeScanRoot: setActive ? r : (cfg.activeScanRoot || null),
+    ...cfg,
+    scanRoots: dedupeRoots([...cfg.scanRoots, { root: r, enabled: true }]),
   };
   return await saveConfig(next);
 }
 
-async function setActiveScanRoot(root) {
-  const r = validateScanRoot(root);
+async function setScanRootEnabled(root, enabled) {
+  const r = validateRootOrThrow(root);
   const cfg = await loadConfig();
-  const list = normalizeRoots([...(cfg.scanRoots || []), r]);
-  return await saveConfig({ scanRoots: list, activeScanRoot: r });
+  const key = process.platform === 'win32' ? r.toLowerCase() : r;
+  const nextList = cfg.scanRoots.map((it) => {
+    const k = process.platform === 'win32' ? it.root.toLowerCase() : it.root;
+    if (k === key) return { ...it, enabled: !!enabled };
+    return it;
+  });
+  // If not found, treat as error.
+  const found = nextList.some((it) => (process.platform === 'win32' ? it.root.toLowerCase() : it.root) === key);
+  if (!found) {
+    const e = new Error('root not found');
+    e.statusCode = 404;
+    throw e;
+  }
+  return await saveConfig({ ...cfg, scanRoots: nextList });
 }
 
-function getEffectiveScanRoot(cfg) {
-  return cfg?.activeScanRoot || WORK_ROOT;
+async function removeScanRoot(root) {
+  const r = validateRootOrThrow(root);
+  const cfg = await loadConfig();
+  const key = process.platform === 'win32' ? r.toLowerCase() : r;
+  const nextList = cfg.scanRoots.filter((it) => {
+    const k = process.platform === 'win32' ? it.root.toLowerCase() : it.root;
+    return k !== key;
+  });
+  return await saveConfig({ ...cfg, scanRoots: nextList });
+}
+
+async function setScanType(scanType) {
+  const cfg = await loadConfig();
+  const st = normalizeScanType(scanType);
+  return await saveConfig({ ...cfg, scanType: st });
+}
+
+function getEnabledRoots(cfg) {
+  const list = Array.isArray(cfg?.scanRoots) ? cfg.scanRoots : [];
+  return list.filter((r) => r && r.enabled).map((r) => r.root);
 }
 
 module.exports = {
   CONFIG_FILE,
   loadConfig,
   saveConfig,
+  setScanRoots,
   addScanRoot,
-  setActiveScanRoot,
-  getEffectiveScanRoot,
-  validateScanRoot,
+  setScanRootEnabled,
+  removeScanRoot,
+  setScanType,
+  getEnabledRoots,
+  validateRootOrThrow,
+  normalizeExt,
 };
 
 
