@@ -12,17 +12,28 @@ const router = express.Router();
 
 router.get('/', async (req, res) => {
   const cfg = await loadConfig();
+  const effectiveScanRoot = getEffectiveScanRoot(cfg);
+  const workspace = { WORK_ROOT, MANAGED_ROOT, TRASH_DIR, DATA_DIR, DB_PATH, THUMB_DIR };
+
+  // New shape (preferred by UI)
+  const scan = {
+    scanRoots: cfg.scanRoots,
+    activeScanRoot: cfg.activeScanRoot,
+    effectiveScanRoot,
+  };
+
+  // Backward-compatible fields kept for older UI code
   res.json({
+    // preferred grouped structure
+    scan,
+    workspace,
+
+    // legacy flat fields (keep for compatibility)
     scanRoots: cfg.scanRoots,
     activeScanRoot: cfg.activeScanRoot,
     effective: {
-      scanRoot: getEffectiveScanRoot(cfg),
-      WORK_ROOT,
-      MANAGED_ROOT,
-      TRASH_DIR,
-      DATA_DIR,
-      DB_PATH,
-      THUMB_DIR,
+      scanRoot: effectiveScanRoot,
+      ...workspace,
     },
   });
 });
