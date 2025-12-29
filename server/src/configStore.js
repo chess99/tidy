@@ -21,6 +21,8 @@ const DEFAULT_SCAN_EXTS = [
   // videos
   'mp4', 'mov', 'm4v', 'avi', 'mkv', 'webm', '3gp',
 ];
+// ts, mts, m2ts are NOT included by default to avoid scanning codebases as videos.
+
 const DEFAULT_CONFIG = {
   scanRoots: DEFAULT_SCAN_ROOTS,
   scanType: { exts: DEFAULT_SCAN_EXTS, includeNoExt: false },

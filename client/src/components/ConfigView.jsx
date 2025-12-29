@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Play, Trash2, Loader2 } from 'lucide-react';
+import { Play, Trash2, Loader2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   addScanRoot,
@@ -42,6 +42,12 @@ const IMAGE_EXTS = [
   'dng', 'cr2', 'cr3', 'nef', 'arw', 'raf', 'rw2', 'orf', 'sr2', 'pef',
 ];
 const VIDEO_EXTS = ['mp4', 'mov', 'm4v', 'avi', 'mkv', 'webm', '3gp'];
+
+// .ts can be TypeScript or MPEG Transport Stream.
+// Since this is a media organizer, we default to treating it as "not media" to avoid scanning codebases.
+// Users can manually add 'ts' if they have video transport streams.
+const OTHER_MEDIA_EXTS = ['ts', 'mts', 'm2ts']; 
+
 const COMMON_EXTS = ['jpg', 'heic', 'png', 'webp', 'gif', 'mp4', 'mov', 'dng'];
 
 function uniq(arr) {
@@ -169,25 +175,25 @@ export function ConfigView({ onScan, onAfterClear }) {
     setExtInput('');
   };
 
-  const applyPreset = (which) => {
-    setTypeDirty(true);
-    if (which === 'image') {
-      setTypeExts(uniq(IMAGE_EXTS));
-      return;
-    }
-    if (which === 'video') {
-      setTypeExts(uniq(VIDEO_EXTS));
-      return;
-    }
-    if (which === 'media') {
-      setTypeExts(uniq([...IMAGE_EXTS, ...VIDEO_EXTS]));
-      return;
-    }
-    if (which === 'clear') {
-      setTypeExts([]);
-      return;
-    }
-  };
+  // const applyPreset = (which) => {
+  //   setTypeDirty(true);
+  //   if (which === 'image') {
+  //     setTypeExts(uniq(IMAGE_EXTS));
+  //     return;
+  //   }
+  //   if (which === 'video') {
+  //     setTypeExts(uniq(VIDEO_EXTS));
+  //     return;
+  //   }
+  //   if (which === 'media') {
+  //     setTypeExts(uniq([...IMAGE_EXTS, ...VIDEO_EXTS]));
+  //     return;
+  //   }
+  //   if (which === 'clear') {
+  //     setTypeExts([]);
+  //     return;
+  //   }
+  // };
 
   // ---- Remove dialog ----
   const [removeOpen, setRemoveOpen] = useState(false);
@@ -341,36 +347,21 @@ export function ConfigView({ onScan, onAfterClear }) {
             该设置会在扫描阶段生效：只有命中的文件才会写入 DB、生成缩略图。
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => applyPreset('image')}>
-              图片
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => applyPreset('video')}>
-              视频
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => applyPreset('media')}>
-              图片 + 视频
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => applyPreset('clear')}>
-              清空后缀
-            </Button>
-            <label className="ml-2 inline-flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={includeNoExt}
-                onCheckedChange={(ck) => {
+          <div className="mt-4 flex items-center justify-between gap-4">
+             <div className="text-sm font-semibold text-gray-800">图片格式</div>
+             <div className="flex gap-2">
+                <Button size="xs" variant="ghost" onClick={() => {
                   setTypeDirty(true);
-                  setIncludeNoExt(!!ck);
-                }}
-              />
-              <span>包含无后缀</span>
-            </label>
+                  setTypeExts(prev => uniq([...prev, ...IMAGE_EXTS]));
+                }}>全选</Button>
+                <Button size="xs" variant="ghost" onClick={() => {
+                   setTypeDirty(true);
+                   setTypeExts(prev => prev.filter(e => !IMAGE_EXTS.includes(e)));
+                }}>全不选</Button>
+             </div>
           </div>
-
-          <Separator className="my-4" />
-
-          <div className="text-sm font-semibold text-gray-800 mb-2">常见后缀</div>
-          <div className="flex flex-wrap gap-2">
-            {COMMON_EXTS.map((e) => {
+          <div className="mt-2 flex flex-wrap gap-2">
+            {IMAGE_EXTS.map((e) => {
               const on = typeExts.includes(e);
               return (
                 <Button
@@ -379,7 +370,7 @@ export function ConfigView({ onScan, onAfterClear }) {
                   variant={on ? 'secondary' : 'outline'}
                   size="sm"
                   onClick={() => toggleExt(e)}
-                  title={`切换 .${e}`}
+                  className={on ? "bg-blue-100 text-blue-900 border-blue-200 hover:bg-blue-200" : "text-gray-600"}
                 >
                   .{e}
                 </Button>
@@ -387,36 +378,108 @@ export function ConfigView({ onScan, onAfterClear }) {
             })}
           </div>
 
-          <div className="mt-3 text-sm font-semibold text-gray-800">自定义后缀</div>
-          <div className="mt-2 flex gap-2">
-            <Input
-              value={extInput}
-              onChange={(e) => setExtInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  addExtFromInput();
-                }
-              }}
-              placeholder="例如：raw / .raw / 3gp"
-            />
-            <Button type="button" variant="outline" disabled={!extInput.trim()} onClick={addExtFromInput}>
-              添加
-            </Button>
+          <div className="mt-4 flex items-center justify-between gap-4">
+             <div className="text-sm font-semibold text-gray-800">视频格式</div>
+             <div className="flex gap-2">
+                <Button size="xs" variant="ghost" onClick={() => {
+                  setTypeDirty(true);
+                  setTypeExts(prev => uniq([...prev, ...VIDEO_EXTS]));
+                }}>全选</Button>
+                 <Button size="xs" variant="ghost" onClick={() => {
+                   setTypeDirty(true);
+                   setTypeExts(prev => prev.filter(e => !VIDEO_EXTS.includes(e)));
+                }}>全不选</Button>
+             </div>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {VIDEO_EXTS.map((e) => {
+              const on = typeExts.includes(e);
+              return (
+                <Button
+                  key={e}
+                  type="button"
+                  variant={on ? 'secondary' : 'outline'}
+                  size="sm"
+                  onClick={() => toggleExt(e)}
+                  className={on ? "bg-blue-100 text-blue-900 border-blue-200 hover:bg-blue-200" : "text-gray-600"}
+                >
+                  .{e}
+                </Button>
+              );
+            })}
           </div>
 
-          <div className="mt-3 text-xs text-gray-600">
-            当前规则：{typeExts.length ? (
-              <span className="font-mono">{typeExts.map((e) => `.${e}`).join(' ')}</span>
-            ) : (
-              <span className="font-mono">（无后缀规则）</span>
-            )}
-            {includeNoExt ? <span className="ml-2 text-gray-500">+ 无后缀</span> : null}
+          <div className="mt-4 flex items-center gap-2">
+             <div className="text-sm font-semibold text-gray-800">其他/自定义</div>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2 items-center">
+            {OTHER_MEDIA_EXTS.map((e) => {
+               const on = typeExts.includes(e);
+               return (
+                <Button
+                  key={e}
+                  type="button"
+                  variant={on ? 'secondary' : 'outline'}
+                  size="sm"
+                  onClick={() => toggleExt(e)}
+                  className={on ? "bg-blue-100 text-blue-900 border-blue-200 hover:bg-blue-200" : "text-gray-600"}
+                >
+                  .{e}
+                </Button>
+               );
+            })}
+             <Separator orientation="vertical" className="h-6 mx-2" />
+             <div className="flex gap-2">
+                <Input
+                  className="w-32 h-8 text-sm"
+                  value={extInput}
+                  onChange={(e) => setExtInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addExtFromInput();
+                    }
+                  }}
+                  placeholder="手动添加..."
+                />
+                <Button type="button" variant="outline" size="sm" disabled={!extInput.trim()} onClick={addExtFromInput}>
+                  添加
+                </Button>
+             </div>
+          </div>
+          
+          <div className="mt-3 flex flex-wrap gap-2">
+             {typeExts.filter(e => !IMAGE_EXTS.includes(e) && !VIDEO_EXTS.includes(e) && !OTHER_MEDIA_EXTS.includes(e)).map(e => (
+                 <Button
+                  key={e}
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => toggleExt(e)}
+                  className="bg-gray-100 text-gray-700 hover:bg-gray-200 border-dashed border-gray-300 border"
+                  title="点击移除"
+                >
+                  .{e} <X className="ml-1 h-3 w-3 opacity-50" />
+                </Button>
+             ))}
+          </div>
+          
+          <div className="mt-4">
+            <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+              <Checkbox
+                checked={includeNoExt}
+                onCheckedChange={(ck) => {
+                  setTypeDirty(true);
+                  setIncludeNoExt(!!ck);
+                }}
+              />
+              <span>包含无后缀文件</span>
+            </label>
           </div>
 
           <div className="mt-4 flex items-center justify-between">
             <div className="text-xs text-gray-500">
-              {!canSaveType ? '至少选择一个后缀或勾选“包含无后缀”才能保存。' : (typeDirty ? '有未保存的修改' : '与后端配置一致')}
+              {!canSaveType ? '至少选择一个后缀或勾选“包含无后缀”才能保存。' : (typeDirty ? '有未保存的修改' : '已保存')}
             </div>
             <Button
               disabled={!typeDirty || !canSaveType || saveTypeMutation.isPending}
@@ -427,7 +490,7 @@ export function ConfigView({ onScan, onAfterClear }) {
             </Button>
           </div>
         </div>
-
+        
         {/* Workspace readonly */}
         <div className="bg-white border rounded-xl p-5 shadow-sm">
           <div className="text-lg font-semibold text-gray-900">工具工作区（只读）</div>
