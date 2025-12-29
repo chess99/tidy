@@ -34,6 +34,7 @@ const organizeRoutes = require('./src/routes/organize');
 const tagRoutes = require('./src/routes/tags');
 const configRoutes = require('./src/routes/config');
 const libraryRoutes = require('./src/routes/library');
+const faceRoutes = require('./src/routes/faces');
 
 app.use('/api/scan', scanRoutes);
 app.use('/api/config', configRoutes);
@@ -45,6 +46,7 @@ app.use('/api/changes', changeRoutes);
 app.use('/api/albums', albumRoutes);
 app.use('/api/organize', organizeRoutes);
 app.use('/api/tags', tagRoutes);
+app.use('/api/faces', faceRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

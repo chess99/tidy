@@ -7,6 +7,7 @@ import {
   getConfig,
   getScanStatus,
   removeScanRoot,
+  scanFaces,
   setScanRootEnabled,
   setScanType,
 } from '../api/client';
@@ -95,6 +96,18 @@ export function ConfigView({ onScan, onAfterClear }) {
     queryKey: ['scanStatus'],
     queryFn: getScanStatus,
     refetchInterval: 1000,
+  });
+
+  const scanFacesMutation = useMutation({
+    mutationFn: scanFaces,
+    onSuccess: () => {
+      // There is no progress API yet; face scan runs in server background.
+      // Tell user how to observe results.
+      alert('已开始后台补扫人脸：请稍等片刻，然后打开任意图片详情查看 PEOPLE 区域。');
+    },
+    onError: (e) => {
+      alert(`启动人脸补扫失败：${String(e?.message || e)}`);
+    },
   });
 
   const scanRoots = useMemo(() => cfgQuery.data?.scan?.scanRoots || [], [cfgQuery.data]);
@@ -256,6 +269,17 @@ export function ConfigView({ onScan, onAfterClear }) {
               >
                 <Play className="h-4 w-4" />
                 一键扫描（{enabledCount}）
+              </Button>
+
+              <Button
+                variant="outline"
+                size="lg"
+                disabled={scanStatus.data?.isScanning || scanFacesMutation.isPending}
+                onClick={() => scanFacesMutation.mutate()}
+                title="对历史库进行一次人脸补扫入库（只扫图片，已扫过的会跳过）"
+              >
+                {scanFacesMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                人脸补扫（入库）
               </Button>
               <div className="text-[11px] text-gray-500 leading-4 text-right max-w-[260px]">
                 配置完目录与类型后点这里即可开始扫描

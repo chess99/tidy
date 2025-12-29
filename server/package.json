@@ -6,7 +6,11 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "test": "echo \"No automated test suite. Try: npm run test:rawthumbs\"",
-    "test:rawthumbs": "node scripts/test-raw-thumbs.js"
+    "test:rawthumbs": "node scripts/test-raw-thumbs.js",
+    "faces:clear": "node scripts/clear-faces.js",
+    "faces:scan": "node scripts/scan-faces.js",
+    "faces:scan:all": "node scripts/scan-faces.js --all",
+    "faces:one": "node scripts/scan-one-face.js"
   },
   "keywords": [],
   "author": "",
@@ -14,6 +18,7 @@
   "description": "",
   "dependencies": {
     "@tensorflow/tfjs": "^4.22.0",
+    "@tensorflow/tfjs-node": "^4.22.0",
     "@vladmandic/face-api": "^1.7.15",
     "better-sqlite3": "^12.5.0",
     "canvas": "^3.2.0",
