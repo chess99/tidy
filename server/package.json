@@ -11,7 +11,9 @@
     "faces:clear": "node scripts/clear-faces.js",
     "faces:scan": "node scripts/scan-faces.js",
     "faces:scan:all": "node scripts/scan-faces.js --all",
-    "faces:one": "node scripts/scan-one-face.js"
+    "faces:one": "node scripts/scan-one-face.js",
+    "faces:recluster": "node scripts/recluster-people.js",
+    "faces:calibrate": "node scripts/cluster-calibrate.js"
   },
   "keywords": [],
   "author": "",

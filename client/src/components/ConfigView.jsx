@@ -8,6 +8,8 @@ import {
   getScanStatus,
   rebuildThumbs,
   removeScanRoot,
+  reclusterFaces,
+  resetFaceScanMarker,
   scanFaces,
   setScanRootEnabled,
   setScanType,
@@ -109,6 +111,31 @@ export function ConfigView({ onScan, onAfterClear }) {
     onError: (e) => {
       alert(`启动人脸补扫失败：${String(e?.message || e)}`);
     },
+  });
+
+  const resetFaceMarkerMutation = useMutation({
+    mutationFn: ({ clearFaces, clearPeople }) => resetFaceScanMarker({ clearFaces, clearPeople }),
+    onSuccess: (r) => {
+      alert(`已重置人脸扫描标记。\nassetsReset=${r.assetsReset}\nclearFaces=${r.clearFaces}\nclearPeople=${r.clearPeople}`);
+    },
+    onError: (e) => alert(`重置失败：${String(e?.message || e)}`),
+  });
+
+  const reclusterMutation = useMutation({
+    mutationFn: ({ eps, minSamples }) => reclusterFaces({ eps, minSamples }),
+    onSuccess: (r) => {
+      alert(
+        `重聚类完成：\n` +
+          `people=${r?.result?.people}\n` +
+          `clusters=${r?.result?.clusters}\n` +
+          `noise=${r?.result?.noise}\n` +
+          `faces=${r?.result?.faces}\n` +
+          `eps=${r?.result?.eps}`
+      );
+      qc.invalidateQueries({ queryKey: ['people'] });
+      qc.invalidateQueries({ queryKey: ['faces'] });
+    },
+    onError: (e) => alert(`重聚类失败：${String(e?.message || e)}`),
   });
 
   const rebuildThumbsMutation = useMutation({
@@ -292,6 +319,42 @@ export function ConfigView({ onScan, onAfterClear }) {
               >
                 {scanFacesMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 人脸补扫（入库）
+              </Button>
+
+              <Button
+                variant="outline"
+                size="lg"
+                disabled={scanStatus.data?.isScanning || resetFaceMarkerMutation.isPending}
+                onClick={() => {
+                  const ok = window.confirm('将重置全库的人脸扫描标记，使图片可以重新参与人脸补扫。\\n是否继续？');
+                  if (!ok) return;
+                  const clearFaces = window.confirm('是否清空 faces 表？（会清掉所有人脸框/特征）');
+                  const clearPeople = clearFaces ? window.confirm('是否同时清空 people 表？') : false;
+                  resetFaceMarkerMutation.mutate({ clearFaces, clearPeople });
+                }}
+                title="重置 face_scanned_at（可选清空 faces/people），用于重新扫描/重新聚类"
+              >
+                {resetFaceMarkerMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                重置人脸标记
+              </Button>
+
+              <Button
+                variant="outline"
+                size="lg"
+                disabled={scanStatus.data?.isScanning || reclusterMutation.isPending}
+                onClick={() => {
+                  const epsRaw = window.prompt('输入 DBSCAN eps（cosine distance），建议 0.02~0.06：', '0.04');
+                  if (epsRaw == null) return;
+                  const minSamplesRaw = window.prompt('minSamples（建议 2）：', '2');
+                  if (minSamplesRaw == null) return;
+                  const eps = Number(epsRaw);
+                  const minSamples = Number(minSamplesRaw);
+                  reclusterMutation.mutate({ eps, minSamples });
+                }}
+                title="按现有 faces.descriptor 进行重聚类生成 people，并写回 faces.person_id"
+              >
+                {reclusterMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                重聚类（生成人物）
               </Button>
 
               <Button

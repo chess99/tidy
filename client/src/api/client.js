@@ -104,4 +104,12 @@ export const createPerson = (name) => api.post(`/faces/people`, { name }).then(r
 export const updateFace = (id, { person_id }) => api.put(`/faces/${id}`, { person_id }).then(res => res.data);
 export const createPersonFromFace = (faceId, name) => api.post(`/faces/create-from-face`, { face_id: faceId, name }).then(res => res.data);
 export const scanFaces = () => api.post(`/faces/scan`).then(res => res.data);
+export const resetFaceScanMarker = ({ clearFaces = false, clearPeople = false } = {}) =>
+  api.post(`/faces/reset-scan-marker`, { clearFaces: !!clearFaces, clearPeople: !!clearPeople }).then(res => res.data);
+export const reclusterFaces = ({ eps, minSamples } = {}) =>
+  api.post(`/faces/recluster`, { eps, minSamples }).then(res => res.data);
+export const mergePerson = (fromPersonId, intoPersonId) =>
+  api.post(`/faces/people/${fromPersonId}/merge`, { intoPersonId }).then((res) => res.data);
+export const splitPerson = (fromPersonId, faceIds = []) =>
+  api.post(`/faces/people/${fromPersonId}/split`, { faceIds }).then((res) => res.data);
 

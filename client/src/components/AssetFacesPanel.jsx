@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronsUpDown, Plus, Search, User } from 'lucide-react';
+import { Check, ChevronsUpDown, GitMerge, Plus, Scissors, Search, User } from 'lucide-react';
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { apiUrl, createPersonFromFace, getFaces, getPeople, updateFace } from '../api/client';
+import { apiUrl, createPersonFromFace, getFaces, getPeople, mergePerson, splitPerson, updateFace } from '../api/client';
 import { Button } from './ui/button';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
@@ -56,6 +56,7 @@ function FaceThumbnail({ assetUrl, box, originalSize, className }) {
 export function AssetFacesPanel({ hash, assetUrl, originalSize, onFilterByPerson }) {
   const qc = useQueryClient();
   const [popoverOpenId, setPopoverOpenId] = useState(null);
+  const [mergeOpenPersonId, setMergeOpenPersonId] = useState(null);
   const [newPersonName, setNewPersonName] = useState('');
 
   const facesQuery = useQuery({
@@ -87,6 +88,23 @@ export function AssetFacesPanel({ hash, assetUrl, originalSize, onFilterByPerson
     },
   });
 
+  const mergeMutation = useMutation({
+    mutationFn: ({ fromId, intoId }) => mergePerson(fromId, intoId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['faces', hash] });
+      qc.invalidateQueries({ queryKey: ['people'] });
+      setMergeOpenPersonId(null);
+    },
+  });
+
+  const splitMutation = useMutation({
+    mutationFn: ({ fromId, faceId }) => splitPerson(fromId, [faceId]),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['faces', hash] });
+      qc.invalidateQueries({ queryKey: ['people'] });
+    },
+  });
+
   const faces = facesQuery.data || [];
   const people = peopleQuery.data || [];
 
@@ -100,6 +118,7 @@ export function AssetFacesPanel({ hash, assetUrl, originalSize, onFilterByPerson
         {faces.map((face) => {
           const assignedPerson = people.find(p => p.id === face.person_id);
           const isOpen = popoverOpenId === face.id;
+          const mergeOpen = mergeOpenPersonId === face.person_id;
 
           return (
             <div key={face.id} className="flex items-center gap-3">
@@ -119,7 +138,7 @@ export function AssetFacesPanel({ hash, assetUrl, originalSize, onFilterByPerson
                         className="h-6 px-2 -ml-2 text-sm font-medium hover:bg-gray-100 justify-start"
                       >
                         {assignedPerson ? (
-                          <span className="text-blue-700">{assignedPerson.name}</span>
+                          <span className="text-blue-700">{assignedPerson.name || `ID:${assignedPerson.id}`}</span>
                         ) : (
                           <span className="text-gray-400 italic">Unknown</span>
                         )}
@@ -174,14 +193,14 @@ export function AssetFacesPanel({ hash, assetUrl, originalSize, onFilterByPerson
                             {people.map((p) => (
                               <CommandItem
                                 key={p.id}
-                                value={p.name}
+                                value={String(p.name || `ID:${p.id}`)}
                                 onSelect={() => {
                                   updateFaceMutation.mutate({ faceId: face.id, personId: p.id });
                                   setPopoverOpenId(null);
                                 }}
                               >
                                 <User className="mr-2 h-4 w-4 opacity-50" />
-                                {p.name}
+                                {p.name || `ID:${p.id}`}
                                 {face.person_id === p.id && <Check className="ml-auto h-4 w-4" />}
                               </CommandItem>
                             ))}
@@ -192,15 +211,70 @@ export function AssetFacesPanel({ hash, assetUrl, originalSize, onFilterByPerson
                   </Popover>
                   
                   {assignedPerson ? (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 ml-auto text-gray-400 hover:text-blue-600"
-                      title={`筛选 ${assignedPerson.name}`}
-                      onClick={() => onFilterByPerson?.(assignedPerson.id)}
-                    >
-                      <Search className="h-3 w-3" />
-                    </Button>
+                    <div className="ml-auto flex items-center gap-1">
+                      <Popover open={mergeOpen} onOpenChange={(v) => setMergeOpenPersonId(v ? assignedPerson.id : null)}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-gray-400 hover:text-gray-900"
+                            title="合并到…"
+                          >
+                            <GitMerge className="h-3 w-3" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[220px] p-0" align="end">
+                          <Command>
+                            <CommandInput placeholder="选择合并目标…" />
+                            <CommandList>
+                              <CommandEmpty>无可合并目标</CommandEmpty>
+                              <CommandGroup>
+                                {people
+                                  .filter((p) => p.id !== assignedPerson.id)
+                                  .map((p) => (
+                                    <CommandItem
+                                      key={p.id}
+                                      value={String(p.name || `ID:${p.id}`)}
+                                      onSelect={() => {
+                                        const ok = window.confirm(`确认合并？\\n${assignedPerson.name || `ID:${assignedPerson.id}`} -> ${p.name || `ID:${p.id}`}`);
+                                        if (!ok) return;
+                                        mergeMutation.mutate({ fromId: assignedPerson.id, intoId: p.id });
+                                      }}
+                                    >
+                                      <User className="mr-2 h-4 w-4 opacity-50" />
+                                      {p.name || `ID:${p.id}`}
+                                    </CommandItem>
+                                  ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-gray-400 hover:text-gray-900"
+                        title="将该人脸拆分为新人物"
+                        onClick={() => {
+                          const ok = window.confirm('将该人脸拆分为一个新人物？');
+                          if (!ok) return;
+                          splitMutation.mutate({ fromId: assignedPerson.id, faceId: face.id });
+                        }}
+                      >
+                        <Scissors className="h-3 w-3" />
+                      </Button>
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-gray-400 hover:text-blue-600"
+                        title={`筛选 ${assignedPerson.name || `ID:${assignedPerson.id}`}`}
+                        onClick={() => onFilterByPerson?.(assignedPerson.id)}
+                      >
+                        <Search className="h-3 w-3" />
+                      </Button>
+                    </div>
                   ) : null}
                 </div>
               </div>

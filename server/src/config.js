@@ -37,6 +37,17 @@ const PREVIEW_DIR = abs(process.env.PREVIEW_DIR) || path.join(DATA_DIR, 'preview
 // Video poster frames directory. Default: `server/data/posters/`
 const POSTER_DIR = abs(process.env.POSTER_DIR) || path.join(DATA_DIR, 'posters');
 
+// Face detection tunables (server-side)
+function numEnv(key, fallback) {
+  const raw = process.env[key];
+  if (raw == null || raw === '') return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+const FACE_MIN_CONFIDENCE = numEnv('FACE_MIN_CONFIDENCE', 0.7);
+const FACE_MIN_PX = numEnv('FACE_MIN_PX', 40);
+
 module.exports = {
   WORK_ROOT,
   MANAGED_ROOT,
@@ -46,6 +57,8 @@ module.exports = {
   THUMB_DIR,
   PREVIEW_DIR,
   POSTER_DIR,
+  FACE_MIN_CONFIDENCE,
+  FACE_MIN_PX,
 };
 
 

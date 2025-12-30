@@ -20,6 +20,7 @@ const { Canvas, Image, ImageData, createCanvas, loadImage } = require('canvas');
 const path = require('path');
 const fs = require('fs-extra');
 const { getDB } = require('../db');
+const { FACE_MIN_CONFIDENCE, FACE_MIN_PX } = require('../config');
 
 // Monkey patch for Node.js environment
 faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
@@ -59,7 +60,10 @@ async function detectFaces(imagePath) {
       return reshaped;
     });
 
-    const options = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.2, maxResults: 20 });
+    const options = new faceapi.SsdMobilenetv1Options({
+      minConfidence: FACE_MIN_CONFIDENCE,
+      maxResults: 20,
+    });
     const detections = await faceapi
       .detectAllFaces(tensor, options)
       .withFaceLandmarks()
@@ -68,44 +72,24 @@ async function detectFaces(imagePath) {
     // Dispose tensor to free memory
     tensor.dispose();
 
-    return detections;
+    // Filter obvious false positives by size/aspect
+    const filtered = [];
+    for (const det of detections || []) {
+      const b = det?.detection?.box;
+      const w = Number(b?.width ?? b?._width);
+      const h = Number(b?.height ?? b?._height);
+      if (!Number.isFinite(w) || !Number.isFinite(h)) continue;
+      if (Math.min(w, h) < FACE_MIN_PX) continue;
+      const ar = w / h;
+      if (ar < 0.3 || ar > 3.3) continue;
+      filtered.push(det);
+    }
+
+    return filtered;
   } catch (err) {
     console.error(`Error detecting faces in ${imagePath}:`, err.message);
     return [];
   }
-}
-
-// Get all people with their reference descriptor (from avatar face)
-function getKnownPeople() {
-  const db = getDB();
-  // We need the descriptor of the avatar face.
-  // Join people with faces on avatar_face_id
-  const rows = db.prepare(`
-    SELECT p.id, p.name, f.descriptor
-    FROM people p
-    JOIN faces f ON p.avatar_face_id = f.id
-    WHERE f.descriptor IS NOT NULL
-  `).all();
-
-  return rows.map(r => ({
-    id: r.id,
-    name: r.name,
-    descriptor: new Float32Array(JSON.parse(r.descriptor))
-  }));
-}
-
-function findMatch(descriptor, knownPeople) {
-  let bestMatch = null;
-  let minDist = 0.6; // Threshold
-
-  for (const person of knownPeople) {
-    const dist = faceapi.euclideanDistance(descriptor, person.descriptor);
-    if (dist < minDist) {
-      minDist = dist;
-      bestMatch = person;
-    }
-  }
-  return bestMatch;
 }
 
 async function processImageFaces(imagePath, hash) {
@@ -113,57 +97,33 @@ async function processImageFaces(imagePath, hash) {
   if (!detections.length) return 0;
 
   const db = getDB();
-  // We treat existing people (with avatar descriptor) as cluster centers.
-  // New faces that don't match any known center will create a new person automatically.
-  const knownPeople = getKnownPeople(); // [{ id, descriptor }]
   let addedCount = 0;
-  let createdPeople = 0;
 
   const now = Date.now();
 
   const insertFaceStmt = db.prepare(`
-      INSERT INTO faces (hash, person_id, descriptor, box, score, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-  const createPersonStmt = db.prepare(`
-      INSERT INTO people (name, avatar_face_id, created_at, updated_at)
-      VALUES (NULL, NULL, ?, ?)
-    `);
-  const setAvatarStmt = db.prepare(`
-      UPDATE people
-      SET avatar_face_id = ?, updated_at = ?
-      WHERE id = ? AND avatar_face_id IS NULL
-    `);
+    INSERT INTO faces (hash, person_id, descriptor, box, score, created_at)
+    VALUES (?, NULL, ?, ?, ?, ?)
+  `);
 
   for (const det of detections) {
     const descriptor = det.descriptor;
-    const box = det.detection.box; // { x, y, width, height }
-    
-    let match = findMatch(descriptor, knownPeople);
-    let personId = match ? match.id : null;
+    const b = det?.detection?.box;
+    const box = {
+      x: Number(b?.x ?? b?._x ?? 0),
+      y: Number(b?.y ?? b?._y ?? 0),
+      width: Number(b?.width ?? b?._width ?? 0),
+      height: Number(b?.height ?? b?._height ?? 0),
+    };
 
     try {
-      // If no match, create a new person cluster for this face.
-      if (!personId) {
-        const info = createPersonStmt.run(now, now);
-        personId = info.lastInsertRowid;
-        createdPeople++;
-        // Immediately register this new person as a known center using this descriptor.
-        knownPeople.push({ id: personId, name: null, descriptor });
-      }
-
-      const faceInfo = insertFaceStmt.run(
-          hash,
-          personId,
-          JSON.stringify(Array.from(descriptor)),
-          JSON.stringify(box),
-          det.detection.score,
-          now
-        );
-      const faceId = faceInfo.lastInsertRowid;
-
-      // Set avatar_face_id if empty (for both new people and old people without avatar).
-      setAvatarStmt.run(faceId, now, personId);
+      insertFaceStmt.run(
+        hash,
+        JSON.stringify(Array.from(descriptor)),
+        JSON.stringify(box),
+        det.detection.score,
+        now
+      );
 
       addedCount++;
     } catch (e) {
@@ -171,9 +131,6 @@ async function processImageFaces(imagePath, hash) {
     }
   }
 
-  if (createdPeople) {
-    console.log(`[faces] hash=${hash} new_people=${createdPeople} faces=${addedCount}`);
-  }
   return addedCount;
 }
 
