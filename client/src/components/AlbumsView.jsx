@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { getAlbums } from '../api/client';
 import { AlbumAssetsGrid } from './AlbumAssetsGrid';
 import { AssetThumbCard } from './AssetThumbCard';
 
-export function AlbumsView({ onAssetClick }) {
+export function AlbumsView({ onAssetClick, viewerOpen, onViewerNavChange }) {
   const [activeAlbum, setActiveAlbum] = useState(null); // {id,name,...} | null
 
   const albumsQuery = useQuery({
@@ -14,6 +14,12 @@ export function AlbumsView({ onAssetClick }) {
   });
 
   const albums = useMemo(() => albumsQuery.data?.data || [], [albumsQuery.data]);
+
+  // If user is not inside an album, clear viewer navigation hooks for albums tab.
+  useEffect(() => {
+    if (activeAlbum) return;
+    onViewerNavChange?.({ onPrev: undefined, onNext: undefined });
+  }, [activeAlbum, onViewerNavChange]);
 
   if (activeAlbum) {
     return (
@@ -29,7 +35,12 @@ export function AlbumsView({ onAssetClick }) {
           <div className="font-semibold text-gray-900 truncate">{activeAlbum.name}</div>
           <div className="text-xs text-gray-500 tabular-nums">{activeAlbum.count || 0}</div>
         </div>
-        <AlbumAssetsGrid albumId={activeAlbum.id} onAssetClick={onAssetClick} />
+        <AlbumAssetsGrid
+          albumId={activeAlbum.id}
+          onAssetClick={onAssetClick}
+          viewerOpen={viewerOpen}
+          onViewerNavChange={onViewerNavChange}
+        />
       </div>
     );
   }

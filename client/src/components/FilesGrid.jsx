@@ -583,6 +583,9 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
                       isPlaceholder
                         ? undefined
                         : () => {
+                            // If user is interacting with this card, also move cursor focus here
+                            // (so keyboard navigation continues from the last-touched item).
+                            onFileClick?.(file, globalIndex);
                             setSelectedIds((prev) => {
                               const next = new Set(prev);
                               if (next.has(file.id)) next.delete(file.id);

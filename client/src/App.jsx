@@ -21,6 +21,7 @@ function Main() {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('config'); // config | files | albums
+  const [albumsViewerNav, setAlbumsViewerNav] = useState(() => ({ onPrev: undefined, onNext: undefined }));
   const [filesQuery, setFilesQuery] = useState(() => ({
     filter: localStorage.getItem('filesFilter') || 'all',
     exts: [],
@@ -58,6 +59,9 @@ function Main() {
     setActiveTab(nextTab);
     if (nextTab !== 'files') {
       filesCtrl.reset();
+    }
+    if (nextTab !== 'albums') {
+      setAlbumsViewerNav({ onPrev: undefined, onNext: undefined });
     }
   };
 
@@ -304,6 +308,8 @@ function Main() {
             />
           ) : (
             <AlbumsView
+              viewerOpen={viewerOpen}
+              onViewerNavChange={setAlbumsViewerNav}
               onAssetClick={(asset) => {
                 setSelectedAsset(asset);
                 filesCtrl.reset();
@@ -560,8 +566,8 @@ function Main() {
         open={viewerOpen && !!selectedAsset}
         onOpenChange={setViewerOpen}
         asset={selectedAsset}
-        onPrev={filesCtrl.viewerPrev}
-        onNext={filesCtrl.viewerNext}
+        onPrev={activeTab === 'files' ? filesCtrl.viewerPrev : (activeTab === 'albums' ? albumsViewerNav.onPrev : undefined)}
+        onNext={activeTab === 'files' ? filesCtrl.viewerNext : (activeTab === 'albums' ? albumsViewerNav.onNext : undefined)}
       />
     </div>
   );

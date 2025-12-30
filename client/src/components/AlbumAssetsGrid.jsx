@@ -3,15 +3,25 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getAlbumAssets } from '../api/client';
 import { GRID_COLUMNS, ROW_HEIGHT_PX } from '../utils/gridLayout';
 import { fileNameFromPath, preferredTopLabel } from '../utils/mediaLabel';
 import { AssetThumbCard } from './AssetThumbCard';
 
-export function AlbumAssetsGrid({ albumId, onAssetClick }) {
+function isEditableTarget(el) {
+  if (!el) return false;
+  const tag = String(el.tagName || '').toUpperCase();
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  return !!el.isContentEditable;
+}
+
+export function AlbumAssetsGrid({ albumId, onAssetClick, viewerOpen, onViewerNavChange }) {
   "use no memo";
   const parentRef = useRef(null);
+  const pendingIndexRef = useRef(null);
+  const [cursorIndex, setCursorIndex] = useState(null);
+  const [cursorHash, setCursorHash] = useState(null);
 
   const {
     data,
@@ -50,6 +60,119 @@ export function AlbumAssetsGrid({ albumId, onAssetClick }) {
     }
   }, [hasNextPage, fetchNextPage, allRows.length, isFetchingNextPage, count, rowVirtualizer, virtualItems]);
 
+  const selectIndex = (nextIndex, { scroll = true } = {}) => {
+    const idx = Number(nextIndex);
+    if (!Number.isFinite(idx)) return;
+    if (idx < 0) return;
+    if (idx >= allRows.length) return;
+    const asset = allRows[idx];
+    if (!asset?.hash) return;
+
+    setCursorIndex(idx);
+    setCursorHash(asset.hash);
+    onAssetClick?.(asset);
+
+    if (scroll) {
+      try {
+        rowVirtualizer.scrollToIndex(Math.floor(idx / COLUMNS), { align: 'center' });
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  // Expose viewer prev/next navigation to parent (so AssetViewer can navigate in albums tab).
+  useEffect(() => {
+    if (typeof onViewerNavChange !== 'function') return;
+    if (!albumId) return;
+    if (!Number.isFinite(cursorIndex)) {
+      onViewerNavChange({ onPrev: undefined, onNext: undefined });
+      return;
+    }
+
+    const canPrev = cursorIndex > 0;
+    const canNext = cursorIndex + 1 < allRows.length || hasNextPage;
+
+    onViewerNavChange({
+      onPrev: canPrev ? () => selectIndex(cursorIndex - 1) : undefined,
+      onNext: canNext
+        ? () => {
+            const next = cursorIndex + 1;
+            if (next < allRows.length) {
+              selectIndex(next);
+              return;
+            }
+            if (hasNextPage && !isFetchingNextPage) {
+              pendingIndexRef.current = next;
+              fetchNextPage();
+            }
+          }
+        : undefined,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [albumId, cursorIndex, allRows.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // Establish an initial cursor target when opening an album grid (so keyboard feels consistent).
+  useEffect(() => {
+    if (!albumId) return;
+    if (viewerOpen) return;
+    if (!allRows.length) return;
+    if (cursorIndex != null) return;
+    selectIndex(0, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [albumId, allRows.length, viewerOpen]);
+
+  // If keyboard asks to move beyond loaded range, load more and apply when available.
+  useEffect(() => {
+    const pending = pendingIndexRef.current;
+    if (!Number.isFinite(pending)) return;
+    if (pending < allRows.length) {
+      pendingIndexRef.current = null;
+      selectIndex(pending);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allRows.length]);
+
+  useEffect(() => {
+    if (!albumId) return;
+    if (viewerOpen) return;
+    if (!Number.isFinite(cursorIndex)) return;
+
+    const onKeyDown = (e) => {
+      if (e.defaultPrevented) return;
+      if (viewerOpen) return;
+      if (isEditableTarget(document.activeElement)) return;
+
+      const key = e.key;
+      if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'ArrowUp' && key !== 'ArrowDown') return;
+      e.preventDefault();
+
+      let delta = 0;
+      if (key === 'ArrowLeft') delta = -1;
+      if (key === 'ArrowRight') delta = 1;
+      if (key === 'ArrowUp') delta = -COLUMNS;
+      if (key === 'ArrowDown') delta = COLUMNS;
+
+      const cur = cursorIndex;
+      let next = cur + delta;
+      if (next < 0) next = 0;
+
+      // If we have more pages, allow navigation into the future by triggering fetch.
+      if (next >= allRows.length) {
+        if (hasNextPage && !isFetchingNextPage) {
+          pendingIndexRef.current = next;
+          fetchNextPage();
+        }
+        return;
+      }
+      if (next === cur) return;
+      selectIndex(next);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [albumId, viewerOpen, cursorIndex, allRows.length, hasNextPage, isFetchingNextPage, fetchNextPage]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div ref={parentRef} className="h-full w-full overflow-auto bg-gray-100 p-4">
       <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
@@ -70,7 +193,10 @@ export function AlbumAssetsGrid({ albumId, onAssetClick }) {
               }}
               className="flex gap-4 items-start"
             >
-              {items.map((asset) => (
+              {items.map((asset, idx) => {
+                const globalIndex = startIndex + idx;
+                const cursorFocused = !!cursorHash && asset?.hash === cursorHash;
+                return (
                 <div
                   key={asset.hash}
                   className={clsx('flex-1')}
@@ -82,7 +208,12 @@ export function AlbumAssetsGrid({ albumId, onAssetClick }) {
                     placeholderBottomText={asset.sample_path || asset.hash}
                     dateText={asset.taken_at ? new Date(asset.taken_at).toLocaleDateString() : null}
                     dimmed={asset.status === 'trash'}
-                    onClick={() => onAssetClick?.(asset)}
+                    cursorFocused={cursorFocused}
+                    onClick={() => {
+                      setCursorIndex(globalIndex);
+                      setCursorHash(asset.hash);
+                      onAssetClick?.(asset);
+                    }}
                     bottomPrimary={fileNameFromPath(asset.sample_path) || asset.hash}
                     bottomSecondary={asset.sample_path || null}
                     bottomSecondaryTitle={asset.sample_path || ''}
@@ -100,7 +231,8 @@ export function AlbumAssetsGrid({ albumId, onAssetClick }) {
                     ]}
                   />
                 </div>
-              ))}
+              );
+              })}
               {Array.from({ length: COLUMNS - items.length }).map((_, i) => (
                 <div key={`empty-${i}`} className="flex-1" />
               ))}
