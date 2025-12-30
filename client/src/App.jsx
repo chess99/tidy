@@ -7,6 +7,7 @@ import { ScanStatusSidebar } from './components/ScanStatusSidebar';
 import { ConfigView } from './components/ConfigView';
 import { FilesFilters } from './components/FilesFilters';
 import { FilesGrid } from './components/FilesGrid';
+import { AlbumsView } from './components/AlbumsView';
 import { AssetFacesPanel } from './components/AssetFacesPanel';
 import { AssetViewer } from './components/AssetViewer';
 import { Button } from './components/ui/button';
@@ -212,6 +213,22 @@ function Main() {
     return s.slice(0, idx + 1);
   };
 
+  const detailTypeLabel = (() => {
+    try {
+      const files = selectedAsset?.files;
+      const first = Array.isArray(files) && files.length ? files[0] : null;
+      const extRaw = first?.ext || (first?.path ? first.path.split('.').pop() : null);
+      const ext = extRaw ? String(extRaw).trim().toLowerCase().replace(/^\./, '') : '';
+      if (ext) return ext.toUpperCase();
+      const mt = String(selectedAsset?.mime_type || '').toLowerCase();
+      if (mt.startsWith('video/')) return 'VIDEO';
+      if (mt.startsWith('image/')) return 'IMAGE';
+      return null;
+    } catch {
+      return null;
+    }
+  })();
+
   return (
     <div className="flex h-screen flex-col">
       <header className="bg-white border-b p-4 flex items-center justify-between shadow-sm z-10">
@@ -345,6 +362,16 @@ function Main() {
                     全屏
                   </button>
                 </div>
+
+                {/* Type/ext badge */}
+                {detailTypeLabel ? (
+                  <div
+                    className="absolute top-3 left-3 z-30 px-2 py-1 rounded-md text-[11px] font-semibold tracking-wide bg-white/90 text-gray-800 border border-gray-200 shadow-sm pointer-events-none"
+                    title="文件类型"
+                  >
+                    {detailTypeLabel}
+                  </div>
+                ) : null}
               </div>
               
               <div className="space-y-4 text-sm text-gray-600">

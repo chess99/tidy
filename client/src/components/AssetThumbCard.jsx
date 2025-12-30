@@ -60,6 +60,19 @@ export function AssetThumbCard({
           />
         ) : null}
 
+        {/* Always-visible type/ext badge (so cards remain distinguishable even with thumbs). */}
+        {!isPlaceholder && topLabel ? (
+          <div
+            className={clsx(
+              'absolute bottom-2 left-2 z-20 px-2 py-0.5 rounded-md text-[10px] font-semibold tracking-wide shadow-sm',
+              'bg-white/90 text-gray-800 border border-gray-200'
+            )}
+            title={topLabel}
+          >
+            {topLabel}
+          </div>
+        ) : null}
+
         {!isPlaceholder && typeof onToggleSelected === 'function' ? (
           <button
             type="button"

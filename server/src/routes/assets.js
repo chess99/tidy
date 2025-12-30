@@ -487,7 +487,11 @@ router.get('/:hash/poster', async (req, res) => {
   if (!file?.path) return res.status(404).send('Not found');
   if (!(await fs.pathExists(file.path))) return res.status(404).send('Not found');
 
-  const tmpPath = `${cachePath}.tmp_${process.pid}_${Date.now()}`;
+  // Keep a .jpg extension so ffmpeg can infer muxer from output filename.
+  const tmpPath = path.join(
+    POSTER_DIR,
+    `${hash}_${maxW}_q${quality}.tmp_${process.pid}_${Date.now()}.jpg`
+  );
   try {
     // -ss before -i is faster for many formats.
     await execFileAsync(ffmpegPath, [
@@ -496,7 +500,9 @@ router.get('/:hash/poster', async (req, res) => {
       '-ss', '1',
       '-i', file.path,
       '-frames:v', '1',
-      '-vf', `scale='min(${maxW},iw)':-2`,
+      // Note: do NOT include shell quotes in execFile args.
+      // Escape comma in expressions (ffmpeg uses comma as filter separator).
+      '-vf', `scale=min(${maxW}\\,iw):-2`,
       '-q:v', String(quality),
       '-y',
       tmpPath,
