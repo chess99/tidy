@@ -140,7 +140,18 @@ router.get('/:hash', (req, res) => {
   const asset = db.prepare('SELECT * FROM assets WHERE hash = ?').get(hash);
   if (!asset) return res.status(404).json({ error: 'Asset not found' });
 
-  const files = db.prepare('SELECT * FROM files WHERE hash = ?').all(hash);
+  // Return files in a stable "best representative first" order, so the UI can reliably
+  // infer ext/path from files[0] when needed.
+  const files = db
+    .prepare(
+      `
+      SELECT *
+      FROM files
+      WHERE hash = ?
+      ORDER BY COALESCE(mtime_ms, updated_at, discovered_at, scanned_at, 0) DESC, id DESC
+      `
+    )
+    .all(hash);
 
   res.json({
     ...asset,

@@ -234,10 +234,40 @@ function Main() {
 
   const detailTypeLabel = (() => {
     try {
-      const files = selectedAsset?.files;
-      const first = Array.isArray(files) && files.length ? files[0] : null;
-      const extRaw = first?.ext || (first?.path ? first.path.split('.').pop() : null);
-      const ext = extRaw ? String(extRaw).trim().toLowerCase().replace(/^\./, '') : '';
+      const extFrom = (raw) => {
+        if (!raw) return '';
+        const s = String(raw).trim().toLowerCase().replace(/^\./, '');
+        return s;
+      };
+
+      // Prefer album asset list fields (so Albums tab is consistent without extra API calls).
+      const sampleExt = extFrom(selectedAsset?.sample_ext);
+      if (sampleExt) return sampleExt.toUpperCase();
+      const samplePath = selectedAsset?.sample_path;
+      const sampleFromPath = samplePath ? extFrom(String(samplePath).split('.').pop()) : '';
+      if (sampleFromPath) return sampleFromPath.toUpperCase();
+
+      // Otherwise, pick a representative file from asset.files (best-effort).
+      const files = Array.isArray(selectedAsset?.files) ? selectedAsset.files : [];
+      let best = null;
+      let bestScore = -Infinity;
+      for (const f of files) {
+        const t = Number(
+          f?.mtime_ms ??
+          f?.updated_at ??
+          f?.discovered_at ??
+          f?.scanned_at ??
+          0
+        );
+        const score = (Number.isFinite(t) ? t : 0) * 10 + (Number.isFinite(Number(f?.id)) ? Number(f.id) : 0);
+        if (!best || score > bestScore) {
+          best = f;
+          bestScore = score;
+        }
+      }
+
+      const extRaw = best?.ext || (best?.path ? String(best.path).split('.').pop() : null);
+      const ext = extFrom(extRaw);
       if (ext) return ext.toUpperCase();
       const mt = String(selectedAsset?.mime_type || '').toLowerCase();
       if (mt.startsWith('video/')) return 'VIDEO';
