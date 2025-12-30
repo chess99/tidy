@@ -11,7 +11,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 
-export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts, cursorHash, onMetaChange }, ref) {
+export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts, cursorFileId, onMetaChange, brushHint }, ref) {
   "use no memo";
   const parentRef = useRef(null);
   const overlayRef = useRef(null);
@@ -21,6 +21,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
   const SELECT_ALL_LIMIT = 500;
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const selectedIdsRef = useRef(selectedIds);
   const [showSelected, setShowSelected] = useState(false);
   const [showSelectAllTooLarge, setShowSelectAllTooLarge] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -56,6 +57,10 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
     overscan: 5,
   });
 
+  useEffect(() => {
+    selectedIdsRef.current = selectedIds;
+  }, [selectedIds]);
+
   useImperativeHandle(
     ref,
     () => ({
@@ -63,6 +68,31 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
         if (!Number.isFinite(globalIndex)) return;
         const rowIndex = Math.floor(globalIndex / COLUMNS);
         rowVirtualizer.scrollToIndex(rowIndex, { align: 'center' });
+      },
+      getIsSelected: (fileId) => {
+        const id = Number(fileId);
+        if (!Number.isFinite(id)) return false;
+        return !!selectedIdsRef.current?.has?.(id);
+      },
+      setSelected: (fileId, nextBool) => {
+        const id = Number(fileId);
+        if (!Number.isFinite(id)) return;
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (nextBool) next.add(id);
+          else next.delete(id);
+          return next;
+        });
+      },
+      toggleSelected: (fileId) => {
+        const id = Number(fileId);
+        if (!Number.isFinite(id)) return;
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+        });
       },
     }),
     [rowVirtualizer, COLUMNS]
@@ -450,6 +480,20 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
             />
           </button>
 
+          {brushHint ? (
+            <div
+              className={clsx(
+                'absolute left-0 top-full mt-2 px-3 py-2 rounded-lg border shadow-sm backdrop-blur pointer-events-none',
+                'text-xs font-semibold',
+                brushHint.targetSelected
+                  ? 'bg-emerald-50/90 text-emerald-700 border-emerald-200'
+                  : 'bg-orange-50/90 text-orange-700 border-orange-200'
+              )}
+            >
+              刷子模式：{brushHint.targetSelected ? '批量选中' : '批量取消'}（按住 B + 方向键）
+            </div>
+          ) : null}
+
           {showJump ? (
             <div
               className="absolute left-0 mt-2 w-56 max-h-80 overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg"
@@ -519,7 +563,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
                 const dupCount = !isPlaceholder ? (Number(file.dup_count) || 0) : 0;
                 const isVideo = !isPlaceholder && String(file.asset_mime_type || file.mime_guess || '').toLowerCase().startsWith('video/');
                 const overrideImageUrl = isVideo && file?.hash ? apiUrl(`/assets/${file.hash}/poster?w=640&q=4`) : null;
-                const cursorFocused = !isPlaceholder && !!cursorHash && file?.hash === cursorHash;
+                const cursorFocused = !isPlaceholder && Number.isFinite(cursorFileId) && Number(file?.id) === Number(cursorFileId);
 
                 return (
                   <AssetThumbCard

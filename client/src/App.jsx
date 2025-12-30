@@ -21,7 +21,7 @@ function Main() {
   const [viewerOpen, setViewerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('config'); // config | files | albums
   const [filesCursorIndex, setFilesCursorIndex] = useState(null); // 0-based global index in current filtered list
-  const [filesCursorHash, setFilesCursorHash] = useState(null); // hash for highlight
+  const [filesCursorFileId, setFilesCursorFileId] = useState(null); // file.id for cursor highlight (hash is not unique)
   const [filesCursorTotal, setFilesCursorTotal] = useState(null); // total items of current filter (best-effort)
   const [filesQuery, setFilesQuery] = useState(() => ({
     filter: localStorage.getItem('filesFilter') || 'all',
@@ -42,6 +42,12 @@ function Main() {
   const filesGridRef = useRef(null);
   const navRequestIdRef = useRef(0);
   const resyncRequestIdRef = useRef(0);
+  const lastKnownCursorIndexRef = useRef(null);
+  const brushActiveRef = useRef(false);
+  const brushTargetSelectedRef = useRef(false);
+  const brushAppliedIdsRef = useRef(new Set());
+  const [brushHint, setBrushHint] = useState(null); // { targetSelected: boolean } | null
+  const brushHintTimerRef = useRef(null);
 
   const LIMIT = 50;
   const COLUMNS = GRID_COLUMNS;
@@ -50,8 +56,16 @@ function Main() {
     setActiveTab(nextTab);
     if (nextTab !== 'files') {
       setFilesCursorIndex(null);
-      setFilesCursorHash(null);
+      setFilesCursorFileId(null);
       setFilesCursorTotal(null);
+      lastKnownCursorIndexRef.current = null;
+      brushActiveRef.current = false;
+      brushAppliedIdsRef.current = new Set();
+      setBrushHint(null);
+      if (brushHintTimerRef.current) {
+        clearTimeout(brushHintTimerRef.current);
+        brushHintTimerRef.current = null;
+      }
     }
   };
 
@@ -217,7 +231,58 @@ function Main() {
     return !!el.isContentEditable;
   };
 
-  const navigateToIndex = async (nextIndex, { scroll = true } = {}) => {
+  const applyBrushToFileId = (fileId) => {
+    if (!brushActiveRef.current) return;
+    const id = Number(fileId);
+    if (!Number.isFinite(id)) return;
+    if (brushAppliedIdsRef.current.has(id)) return;
+    try {
+      filesGridRef.current?.setSelected?.(id, !!brushTargetSelectedRef.current);
+    } catch {
+      // ignore
+    }
+    brushAppliedIdsRef.current.add(id);
+  };
+
+  const applyBrushToIndexPath = async (fromIndex, toIndex, requestId, pageCache) => {
+    if (!brushActiveRef.current) return;
+    if (!Number.isFinite(fromIndex) || !Number.isFinite(toIndex)) return;
+    if (navRequestIdRef.current !== requestId) return;
+    if (fromIndex === toIndex) return;
+
+    // Brush all indices crossed by the move, excluding start, including end.
+    const lo = Math.min(fromIndex, toIndex) + 1;
+    const hi = Math.max(fromIndex, toIndex);
+    if (hi < lo) return;
+
+    const indices = [];
+    for (let gi = lo; gi <= hi; gi++) {
+      if (gi < 0) continue;
+      if (Number.isFinite(filesCursorTotal) && filesCursorTotal != null && gi >= filesCursorTotal) continue;
+      indices.push(gi);
+    }
+    if (!indices.length) return;
+
+    const pagesNeeded = Array.from(new Set(indices.map((gi) => Math.floor(gi / LIMIT) + 1)));
+    for (const p of pagesNeeded) {
+      if (navRequestIdRef.current !== requestId) return;
+      if (!pageCache.has(p)) {
+        const res = await getFiles(p, LIMIT, filesQuery);
+        pageCache.set(p, res);
+      }
+    }
+
+    for (const gi of indices) {
+      if (navRequestIdRef.current !== requestId) return;
+      const p = Math.floor(gi / LIMIT) + 1;
+      const idx = gi % LIMIT;
+      const res = pageCache.get(p);
+      const file = res?.data?.[idx];
+      if (file?.id != null) applyBrushToFileId(file.id);
+    }
+  };
+
+  const navigateToIndex = async (nextIndex, { scroll = true, brushFromIndex = null } = {}) => {
     if (!Number.isFinite(nextIndex)) return;
     if (nextIndex < 0) return;
     if (Number.isFinite(filesCursorTotal) && filesCursorTotal != null && nextIndex >= filesCursorTotal) return;
@@ -231,12 +296,20 @@ function Main() {
       const file = res?.data?.[idx];
       if (!file?.hash) return;
 
+      const pageCache = new Map([[page, res]]);
+
       const asset = await getAsset(file.hash);
       if (navRequestIdRef.current !== requestId) return;
 
       setFilesCursorIndex(nextIndex);
-      setFilesCursorHash(file.hash);
+      setFilesCursorFileId(file.id);
       setSelectedAsset(asset);
+      lastKnownCursorIndexRef.current = nextIndex;
+      if (Number.isFinite(brushFromIndex)) {
+        await applyBrushToIndexPath(brushFromIndex, nextIndex, requestId, pageCache);
+      } else {
+        applyBrushToFileId(file.id);
+      }
 
       if (scroll) {
         try {
@@ -267,18 +340,19 @@ function Main() {
   // Best-effort: when filters change, try to keep cursor index in sync by re-checking the original page.
   useEffect(() => {
     if (activeTab !== 'files') return;
-    if (!filesCursorHash) return;
-    if (!Number.isFinite(filesCursorIndex)) return;
+    if (!Number.isFinite(filesCursorFileId)) return;
+    const baseIndex = Number.isFinite(filesCursorIndex) ? filesCursorIndex : lastKnownCursorIndexRef.current;
+    if (!Number.isFinite(baseIndex)) return;
 
     const requestId = ++resyncRequestIdRef.current;
-    const page = Math.floor(filesCursorIndex / LIMIT) + 1;
+    const page = Math.floor(baseIndex / LIMIT) + 1;
 
     (async () => {
       try {
         const res = await getFiles(page, LIMIT, filesQuery);
         if (resyncRequestIdRef.current !== requestId) return;
         const arr = res?.data || [];
-        const found = arr.findIndex((f) => f?.hash === filesCursorHash);
+        const found = arr.findIndex((f) => Number(f?.id) === Number(filesCursorFileId));
         if (found >= 0) {
           setFilesCursorIndex((page - 1) * LIMIT + found);
         } else {
@@ -289,7 +363,67 @@ function Main() {
         // ignore
       }
     })();
-  }, [activeTab, filesQuery, filesCursorHash, filesCursorIndex]);
+  }, [activeTab, filesQuery, filesCursorFileId, filesCursorIndex]);
+
+  // Brush mode: hold B. On keydown(B), toggle current selection once and lock a target state; then navigation brushes that state.
+  useEffect(() => {
+    if (activeTab !== 'files') return;
+    if (viewerOpen) return;
+
+    const onKeyDown = (e) => {
+      if (e.defaultPrevented) return;
+      if (viewerOpen) return;
+      if (activeTab !== 'files') return;
+      if (isEditableTarget(document.activeElement)) return;
+      if (e.key !== 'b' && e.key !== 'B') return;
+
+      e.preventDefault();
+      if (e.repeat) return;
+
+      const fileId = Number(filesCursorFileId);
+      if (!Number.isFinite(fileId)) return;
+
+      const api = filesGridRef.current;
+      if (!api?.getIsSelected || !api?.setSelected) return;
+
+      const cur = !!api.getIsSelected(fileId);
+      const next = !cur;
+      api.setSelected(fileId, next);
+
+      brushActiveRef.current = true;
+      brushTargetSelectedRef.current = next;
+      brushAppliedIdsRef.current = new Set([fileId]);
+      if (brushHintTimerRef.current) {
+        clearTimeout(brushHintTimerRef.current);
+        brushHintTimerRef.current = null;
+      }
+      // Delay hint to avoid flicker when user taps B quickly.
+      brushHintTimerRef.current = setTimeout(() => {
+        brushHintTimerRef.current = null;
+        if (!brushActiveRef.current) return;
+        setBrushHint({ targetSelected: !!brushTargetSelectedRef.current });
+      }, 140);
+    };
+
+    const onKeyUp = (e) => {
+      if (e.key !== 'b' && e.key !== 'B') return;
+      if (!brushActiveRef.current) return;
+      brushActiveRef.current = false;
+      brushAppliedIdsRef.current = new Set();
+      setBrushHint(null);
+      if (brushHintTimerRef.current) {
+        clearTimeout(brushHintTimerRef.current);
+        brushHintTimerRef.current = null;
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [activeTab, viewerOpen, filesCursorFileId]);
 
   // Arrow key navigation on the files grid.
   useEffect(() => {
@@ -321,7 +455,8 @@ function Main() {
         next = Math.min(next, Math.max(0, filesCursorTotal - 1));
       }
       if (next === cur) return;
-      navigateToIndex(next);
+      const brushFromIndex = brushActiveRef.current ? cur : null;
+      navigateToIndex(next, { brushFromIndex });
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -405,13 +540,15 @@ function Main() {
             <FilesGrid
               ref={filesGridRef}
               queryOpts={filesQuery}
-              cursorHash={filesCursorHash}
+              cursorFileId={filesCursorFileId}
+              brushHint={brushHint}
               onMetaChange={({ total }) => setFilesCursorTotal(total)}
               onFileClick={async (file, globalIndex) => {
                 if (!file?.hash) return;
                 if (Number.isFinite(globalIndex)) setFilesCursorIndex(globalIndex);
-                setFilesCursorHash(file.hash);
+                setFilesCursorFileId(file.id);
                 await handleFileClick(file);
+                if (Number.isFinite(globalIndex)) lastKnownCursorIndexRef.current = globalIndex;
               }}
             />
           ) : (
@@ -419,8 +556,9 @@ function Main() {
               onAssetClick={(asset) => {
                 setSelectedAsset(asset);
                 setFilesCursorIndex(null);
-                setFilesCursorHash(null);
+                setFilesCursorFileId(null);
                 setFilesCursorTotal(null);
+                lastKnownCursorIndexRef.current = null;
               }}
             />
           )}
