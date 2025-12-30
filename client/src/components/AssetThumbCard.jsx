@@ -11,6 +11,7 @@ import { ThumbPlaceholder } from './ThumbPlaceholder';
 export function AssetThumbCard({
   hash,
   thumbVersion = 0,
+  imageUrl,
   topLabel = 'FILE',
   placeholderBottomText,
   dateText,
@@ -48,7 +49,7 @@ export function AssetThumbCard({
 
         {hasHash ? (
           <img
-            src={apiUrl(`/assets/${hash}/thumb?v=${thumbVersion || 0}`)}
+            src={imageUrl || apiUrl(`/assets/${hash}/thumb?v=${thumbVersion || 0}`)}
             alt={hash}
             className="relative z-10 w-full h-40 object-cover"
             loading="lazy"

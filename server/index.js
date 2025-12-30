@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const { initDB } = require('./src/db');
 const path = require('path');
-const { WORK_ROOT, MANAGED_ROOT, TRASH_DIR, DATA_DIR, DB_PATH, THUMB_DIR } = require('./src/config');
+const { WORK_ROOT, MANAGED_ROOT, TRASH_DIR, DATA_DIR, DB_PATH, THUMB_DIR, PREVIEW_DIR, POSTER_DIR } = require('./src/config');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -22,6 +22,8 @@ console.log('[config] TRASH_DIR  =', TRASH_DIR);
 console.log('[config] DATA_DIR   =', DATA_DIR);
 console.log('[config] DB_PATH    =', DB_PATH);
 console.log('[config] THUMB_DIR  =', THUMB_DIR);
+console.log('[config] PREVIEW_DIR=', PREVIEW_DIR);
+console.log('[config] POSTER_DIR =', POSTER_DIR);
 
 // Routes
 const scanRoutes = require('./src/routes/scan');

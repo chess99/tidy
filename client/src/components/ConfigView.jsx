@@ -6,6 +6,7 @@ import {
   clearLibraryByRoot,
   getConfig,
   getScanStatus,
+  rebuildThumbs,
   removeScanRoot,
   scanFaces,
   setScanRootEnabled,
@@ -107,6 +108,17 @@ export function ConfigView({ onScan, onAfterClear }) {
     },
     onError: (e) => {
       alert(`启动人脸补扫失败：${String(e?.message || e)}`);
+    },
+  });
+
+  const rebuildThumbsMutation = useMutation({
+    mutationFn: ({ mode }) => rebuildThumbs({ mode }),
+    onSuccess: (r) => {
+      const total = r?.total ?? '—';
+      alert(`已开始后台重建缩略图（共 ${total} 项）。\n期间可继续使用，网格会陆续刷新。`);
+    },
+    onError: (e) => {
+      alert(`启动缩略图重建失败：${String(e?.message || e)}`);
     },
   });
 
@@ -281,6 +293,23 @@ export function ConfigView({ onScan, onAfterClear }) {
                 {scanFacesMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 人脸补扫（入库）
               </Button>
+
+              <Button
+                variant="outline"
+                size="lg"
+                disabled={scanStatus.data?.isScanning || scanStatus.data?.thumbRebuild?.isRunning || rebuildThumbsMutation.isPending}
+                onClick={() => {
+                  const ok = window.confirm('将重建全库缩略图（会占用一段时间，按 hash 逐个生成）。\n确认开始？');
+                  if (!ok) return;
+                  rebuildThumbsMutation.mutate({ mode: 'all' });
+                }}
+                title="删除并重新生成缩略图（用于缩略图策略变更、RAW 预览增强后全库刷新）"
+              >
+                {rebuildThumbsMutation.isPending || scanStatus.data?.thumbRebuild?.isRunning ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                重建缩略图（全库）
+              </Button>
               <div className="text-[11px] text-gray-500 leading-4 text-right max-w-[260px]">
                 配置完目录与类型后点这里即可开始扫描
               </div>
@@ -313,7 +342,14 @@ export function ConfigView({ onScan, onAfterClear }) {
                   ) : null}
                 </>
               ) : (
-                <>未在扫描</>
+                <>
+                  未在扫描
+                  {scanStatus.data?.thumbRebuild?.isRunning ? (
+                    <span className="ml-3 text-gray-500 tabular-nums">
+                      缩略图重建中 ({scanStatus.data.thumbRebuild.done}/{scanStatus.data.thumbRebuild.total})
+                    </span>
+                  ) : null}
+                </>
               )}
             </div>
             <div className="text-[11px] text-gray-500">

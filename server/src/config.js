@@ -31,6 +31,12 @@ const DB_PATH = abs(process.env.DB_PATH) || path.join(DATA_DIR, 'tidy.db');
 // Default thumbnail directory: `server/data/thumbnails/`
 const THUMB_DIR = abs(process.env.THUMB_DIR) || path.join(DATA_DIR, 'thumbnails');
 
+// Derived previews directory (larger than thumbs). Default: `server/data/previews/`
+const PREVIEW_DIR = abs(process.env.PREVIEW_DIR) || path.join(DATA_DIR, 'previews');
+
+// Video poster frames directory. Default: `server/data/posters/`
+const POSTER_DIR = abs(process.env.POSTER_DIR) || path.join(DATA_DIR, 'posters');
+
 module.exports = {
   WORK_ROOT,
   MANAGED_ROOT,
@@ -38,6 +44,8 @@ module.exports = {
   DATA_DIR,
   DB_PATH,
   THUMB_DIR,
+  PREVIEW_DIR,
+  POSTER_DIR,
 };
 
 

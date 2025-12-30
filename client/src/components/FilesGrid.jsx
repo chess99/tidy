@@ -3,7 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createAlbum, getAlbums, getFiles, getFilesBatch, getFilesDateIndex, organizeAssets, updateAssetsStatusBatch } from '../api/client';
+import { apiUrl, createAlbum, getAlbums, getFiles, getFilesBatch, getFilesDateIndex, organizeAssets, updateAssetsStatusBatch } from '../api/client';
 import { GRID_COLUMNS, ROW_HEIGHT_PX } from '../utils/gridLayout';
 import { AssetThumbCard } from './AssetThumbCard';
 import { SelectedDrawer } from './SelectedDrawer';
@@ -501,6 +501,8 @@ export function FilesGrid({ onFileClick, queryOpts }) {
                 const isSelected = !isPlaceholder && selectedIds.has(file.id);
                 const organizedTo = !isPlaceholder ? (file.organized_to || null) : null;
                 const dupCount = !isPlaceholder ? (Number(file.dup_count) || 0) : 0;
+                const isVideo = !isPlaceholder && String(file.asset_mime_type || file.mime_guess || '').toLowerCase().startsWith('video/');
+                const overrideImageUrl = isVideo && file?.hash ? apiUrl(`/assets/${file.hash}/poster?w=640&q=4`) : null;
 
                 return (
                   <AssetThumbCard
@@ -508,6 +510,7 @@ export function FilesGrid({ onFileClick, queryOpts }) {
                     isPlaceholder={isPlaceholder}
                     hash={file?.hash}
                     thumbVersion={thumbV}
+                    imageUrl={overrideImageUrl}
                     topLabel={isPlaceholder ? 'FILE' : ((file.ext || '').replace('.', '').toUpperCase() || 'FILE')}
                     placeholderBottomText={name}
                     dateText={dateText}

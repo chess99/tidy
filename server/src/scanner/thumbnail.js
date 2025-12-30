@@ -50,7 +50,7 @@ function isJpeg(buf) {
   return buf[0] === 0xff && buf[1] === 0xd8;
 }
 
-async function extractEmbeddedPreviewJpeg(filePath) {
+async function extractEmbeddedPreview(filePath) {
   // Try common RAW embedded preview tags in priority order.
   const tags = ['PreviewImage', 'JpgFromRaw', 'OtherImage', 'ThumbnailImage', 'PreviewTIFF', 'PreviewPNG'];
   const exiftoolCmd = await getExiftoolCmd();
@@ -92,7 +92,8 @@ async function generateThumbnail(filePath, hash, opts = {}) {
 
   const thumbPath = path.join(baseDir, `${hash}.jpg`);
 
-  if (await fs.pathExists(thumbPath)) {
+  const force = !!opts.force;
+  if (!force && await fs.pathExists(thumbPath)) {
     return thumbPath;
   }
 
@@ -106,7 +107,7 @@ async function generateThumbnail(filePath, hash, opts = {}) {
     // Fallback: for RAW/DNG etc, extract embedded preview JPEG via exiftool.
     if (isRaw) {
       try {
-        const preview = await extractEmbeddedPreviewJpeg(filePath);
+        const preview = await extractEmbeddedPreview(filePath);
         if (preview) {
           await trySharpToThumb({ input: preview, thumbPath });
           return thumbPath;
@@ -125,5 +126,5 @@ function getThumbnailPath(hash) {
   return path.join(THUMB_DIR, `${hash}.jpg`);
 }
 
-module.exports = { generateThumbnail, getThumbnailPath, RAW_EXTS };
+module.exports = { generateThumbnail, getThumbnailPath, RAW_EXTS, extractEmbeddedPreview };
 

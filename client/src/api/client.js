@@ -23,6 +23,7 @@ const api = axios.create({
 // Scan: optionally pass a root (absolute path) to scan.
 export const scanPath = ({ root } = {}) => api.post('/scan', root ? { root } : {});
 export const getScanStatus = () => api.get('/scan/status').then(res => res.data);
+export const rebuildThumbs = ({ mode = 'all' } = {}) => api.post('/scan/thumbs/rebuild', { mode }).then((res) => res.data);
 export const getAssets = (page = 1, limit = 50) => api.get('/assets', { params: { page, limit } }).then(res => res.data);
 export const getAsset = (hash) => api.get(`/assets/${hash}`).then(res => res.data);
 export const getAssetsBatch = (hashes = []) =>

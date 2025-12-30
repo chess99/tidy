@@ -8,6 +8,7 @@ import { ConfigView } from './components/ConfigView';
 import { FilesFilters } from './components/FilesFilters';
 import { FilesGrid } from './components/FilesGrid';
 import { AssetFacesPanel } from './components/AssetFacesPanel';
+import { AssetViewer } from './components/AssetViewer';
 import { Button } from './components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
 
@@ -15,6 +16,7 @@ const queryClient = new QueryClient();
 
 function Main() {
   const [selectedAsset, setSelectedAsset] = useState(null);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('config'); // config | files | albums
   const [filesQuery, setFilesQuery] = useState(() => ({
     filter: localStorage.getItem('filesFilter') || 'all',
@@ -276,20 +278,73 @@ function Main() {
             </div>
             
             <div className="p-4 flex-1 overflow-y-auto">
-              <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden mb-4 border">
+              <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden mb-3 border relative">
+                {/* Click-to-open viewer */}
+                <button
+                  type="button"
+                  className="absolute inset-0 z-20 cursor-pointer"
+                  onClick={() => setViewerOpen(true)}
+                  title="查看原图/播放视频"
+                />
+
+                {/* Background: cover + blur */}
+                <img
+                  src={apiUrl(`/assets/${selectedAsset.hash}/preview?max=2048&q=80`)}
+                  className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-70"
+                  alt=""
+                  aria-hidden="true"
+                  onError={() => setDetailThumbErrorHash(selectedAsset.hash)}
+                />
+                <div className="absolute inset-0 bg-black/10" aria-hidden="true" />
+
+                {/* Foreground: contain to show full image */}
                 {detailThumbErrorHash !== selectedAsset.hash ? (
                   <img
                     key={`${selectedAsset.hash}:${selectedAsset.thumb_updated_at || selectedAsset.updated_at || 0}`}
-                    src={apiUrl(`/assets/${selectedAsset.hash}/thumb?v=${selectedAsset.thumb_updated_at || selectedAsset.updated_at || 0}`)}
-                    className="w-full h-full object-contain"
+                    src={apiUrl(`/assets/${selectedAsset.hash}/preview?max=4096&q=85`)}
+                    className="absolute inset-0 w-full h-full object-contain z-10"
                     alt="preview"
                     onError={() => setDetailThumbErrorHash(selectedAsset.hash)}
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-sm text-gray-500">
-                    无缩略图（可能是视频或暂不支持）
-                  </div>
+                  String(selectedAsset.mime_type || '').toLowerCase().startsWith('video/') ? (
+                    <img
+                      src={apiUrl(`/assets/${selectedAsset.hash}/poster?w=1280&q=4`)}
+                      className="absolute inset-0 w-full h-full object-contain z-10"
+                      alt="poster"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 w-full h-full flex items-center justify-center text-sm text-gray-700 z-10">
+                      无预览（点此全屏查看 / 打开原文件）
+                    </div>
+                  )
                 )}
+
+                {/* Action pills */}
+                <div className="absolute top-3 right-3 z-30 flex items-center gap-2 pointer-events-none">
+                  <a
+                    className="pointer-events-auto inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-white/90 border text-xs shadow-sm hover:bg-white cursor-pointer"
+                    href={apiUrl(`/assets/${selectedAsset.hash}/raw`)}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="打开/下载原文件"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    原文件
+                  </a>
+                  <button
+                    type="button"
+                    className="pointer-events-auto inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-black/70 text-white text-xs shadow-sm hover:bg-black/80 cursor-pointer"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setViewerOpen(true);
+                    }}
+                    title="全屏查看"
+                  >
+                    全屏
+                  </button>
+                </div>
               </div>
               
               <div className="space-y-4 text-sm text-gray-600">
@@ -368,7 +423,7 @@ function Main() {
                 <div className="rounded-lg border bg-white p-3">
                   <AssetFacesPanel 
                     hash={selectedAsset.hash} 
-                    assetUrl={apiUrl(`/assets/${selectedAsset.hash}/raw`)}
+                    assetUrl={apiUrl(`/assets/${selectedAsset.hash}/preview?max=4096&q=85`)}
                     originalSize={{ width: selectedAsset.metadata?.width, height: selectedAsset.metadata?.height }}
                     onFilterByPerson={handleFilterByPerson}
                   />
@@ -446,6 +501,12 @@ function Main() {
           </aside>
         )}
       </div>
+
+      <AssetViewer
+        open={viewerOpen && !!selectedAsset}
+        onOpenChange={setViewerOpen}
+        asset={selectedAsset}
+      />
     </div>
   );
 }
