@@ -173,6 +173,23 @@ router.post('/people', (req, res) => {
   }
 });
 
+// Rename a person (preserves person_id across faces)
+router.patch('/people/:id', (req, res) => {
+  try {
+    const db = getDB();
+    const id = Number(req.params.id);
+    const name = String(req.body?.name ?? '').trim();
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
+    if (!name) return res.status(400).json({ error: 'Name required' });
+
+    const r = db.prepare('UPDATE people SET name = ?, updated_at = ? WHERE id = ?').run(name, Date.now(), id);
+    if (!r.changes) return res.status(404).json({ error: 'Person not found' });
+    res.json({ success: true, id, name });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Update a face (assign person)
 router.put('/:id', (req, res) => {
   try {

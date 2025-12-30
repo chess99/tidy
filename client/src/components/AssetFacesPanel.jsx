@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronsUpDown, GitMerge, Plus, Scissors, Search, User } from 'lucide-react';
-import { useEffect, useRef, useState, useMemo } from 'react';
-import { apiUrl, createPersonFromFace, getFaces, getPeople, mergePerson, splitPerson, updateFace } from '../api/client';
+import { useEffect, useRef, useState } from 'react';
+import { createPersonFromFace, getFaces, getPeople, mergePerson, renamePerson, splitPerson, updateFace } from '../api/client';
 import { Button } from './ui/button';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
@@ -59,6 +59,9 @@ export function AssetFacesPanel({ hash, assetUrl, originalSize, onFilterByPerson
   const [mergeOpenPersonId, setMergeOpenPersonId] = useState(null);
   const [newPersonName, setNewPersonName] = useState('');
 
+  // originalSize is used by FaceThumbnail for scaling; keep prop for compatibility.
+  void originalSize;
+
   const facesQuery = useQuery({
     queryKey: ['faces', hash],
     queryFn: () => getFaces(hash),
@@ -81,6 +84,15 @@ export function AssetFacesPanel({ hash, assetUrl, originalSize, onFilterByPerson
 
   const createPersonMutation = useMutation({
     mutationFn: ({ faceId, name }) => createPersonFromFace(faceId, name),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['faces', hash] });
+      qc.invalidateQueries({ queryKey: ['people'] });
+      setNewPersonName('');
+    },
+  });
+
+  const renamePersonMutation = useMutation({
+    mutationFn: ({ personId, name }) => renamePerson(personId, name),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['faces', hash] });
       qc.invalidateQueries({ queryKey: ['people'] });
@@ -154,13 +166,17 @@ export function AssetFacesPanel({ hash, assetUrl, originalSize, onFilterByPerson
                              <div className="flex gap-2">
                                <input 
                                  className="flex-1 border rounded px-2 py-1 text-xs"
-                                 placeholder="输入新名字"
+                                 placeholder={assignedPerson ? '重命名当前人物…' : '创建新人物…'}
                                  value={newPersonName}
                                  onChange={e => setNewPersonName(e.target.value)}
                                  onKeyDown={e => {
                                    if (e.key === 'Enter' && newPersonName.trim()) {
                                      e.stopPropagation();
-                                     createPersonMutation.mutate({ faceId: face.id, name: newPersonName.trim() });
+                                     if (assignedPerson?.id) {
+                                       renamePersonMutation.mutate({ personId: assignedPerson.id, name: newPersonName.trim() });
+                                     } else {
+                                       createPersonMutation.mutate({ faceId: face.id, name: newPersonName.trim() });
+                                     }
                                      setPopoverOpenId(null);
                                    }
                                  }}
@@ -170,7 +186,11 @@ export function AssetFacesPanel({ hash, assetUrl, originalSize, onFilterByPerson
                                  className="h-7"
                                  disabled={!newPersonName.trim()}
                                  onClick={() => {
-                                    createPersonMutation.mutate({ faceId: face.id, name: newPersonName.trim() });
+                                    if (assignedPerson?.id) {
+                                      renamePersonMutation.mutate({ personId: assignedPerson.id, name: newPersonName.trim() });
+                                    } else {
+                                      createPersonMutation.mutate({ faceId: face.id, name: newPersonName.trim() });
+                                    }
                                     setPopoverOpenId(null);
                                  }}
                                >
