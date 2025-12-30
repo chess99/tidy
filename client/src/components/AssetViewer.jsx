@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, ZoomIn, ZoomOut, RotateCcw, ExternalLink } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, RotateCcw, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiUrl } from '../api/client';
 import clsx from 'clsx';
 
@@ -11,6 +11,8 @@ export function AssetViewer({ open, onOpenChange, asset, defaultMax = 4096, defa
   const hash = asset?.hash || null;
   const mime = asset?.mime_type || null;
   const isVideo = isVideoMime(mime);
+  const canPrev = typeof onPrev === 'function';
+  const canNext = typeof onNext === 'function';
 
   const [scale, setScale] = useState(1);
   const [tx, setTx] = useState(0);
@@ -168,6 +170,48 @@ export function AssetViewer({ open, onOpenChange, asset, defaultMax = 4096, defa
               setScale((s) => Math.max(0.2, Math.min(8, s * factor)));
             }}
           >
+            {/* Prev / Next controls */}
+            <div className="absolute inset-y-0 left-0 flex items-center pointer-events-none">
+              {canPrev ? (
+                <button
+                  type="button"
+                  className={clsx(
+                    'pointer-events-auto ml-3 inline-flex items-center justify-center w-11 h-11 rounded-full',
+                    'bg-white/10 hover:bg-white/20 backdrop-blur border border-white/10 shadow-lg',
+                    'text-white focus:outline-none focus:ring-2 focus:ring-white/40'
+                  )}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onPrev?.();
+                  }}
+                  title="上一张 (←)"
+                >
+                  <ChevronLeft className="h-6 w-6" />
+                </button>
+              ) : null}
+            </div>
+            <div className="absolute inset-y-0 right-0 flex items-center justify-end pointer-events-none">
+              {canNext ? (
+                <button
+                  type="button"
+                  className={clsx(
+                    'pointer-events-auto mr-3 inline-flex items-center justify-center w-11 h-11 rounded-full',
+                    'bg-white/10 hover:bg-white/20 backdrop-blur border border-white/10 shadow-lg',
+                    'text-white focus:outline-none focus:ring-2 focus:ring-white/40'
+                  )}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onNext?.();
+                  }}
+                  title="下一张 (→)"
+                >
+                  <ChevronRight className="h-6 w-6" />
+                </button>
+              ) : null}
+            </div>
+
             {isVideo ? (
               videoUrl ? (
                 <video

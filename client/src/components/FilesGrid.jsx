@@ -2,7 +2,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
 import { Check, ChevronsUpDown } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { apiUrl, createAlbum, getAlbums, getFiles, getFilesBatch, getFilesDateIndex, organizeAssets, updateAssetsStatusBatch } from '../api/client';
 import { GRID_COLUMNS, ROW_HEIGHT_PX } from '../utils/gridLayout';
 import { AssetThumbCard } from './AssetThumbCard';
@@ -11,7 +11,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 
-export function FilesGrid({ onFileClick, queryOpts }) {
+export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts, cursorHash, onMetaChange }, ref) {
   "use no memo";
   const parentRef = useRef(null);
   const overlayRef = useRef(null);
@@ -55,6 +55,22 @@ export function FilesGrid({ onFileClick, queryOpts }) {
     estimateSize: () => ROW_HEIGHT_PX,
     overscan: 5,
   });
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      scrollToIndex: (globalIndex) => {
+        if (!Number.isFinite(globalIndex)) return;
+        const rowIndex = Math.floor(globalIndex / COLUMNS);
+        rowVirtualizer.scrollToIndex(rowIndex, { align: 'center' });
+      },
+    }),
+    [rowVirtualizer, COLUMNS]
+  );
+
+  useEffect(() => {
+    onMetaChange?.({ total, columns: COLUMNS, limit: LIMIT });
+  }, [onMetaChange, total, COLUMNS, LIMIT]);
 
   const virtualRows = rowVirtualizer.getVirtualItems();
   const rangeNow = useMemo(() => {
@@ -503,6 +519,7 @@ export function FilesGrid({ onFileClick, queryOpts }) {
                 const dupCount = !isPlaceholder ? (Number(file.dup_count) || 0) : 0;
                 const isVideo = !isPlaceholder && String(file.asset_mime_type || file.mime_guess || '').toLowerCase().startsWith('video/');
                 const overrideImageUrl = isVideo && file?.hash ? apiUrl(`/assets/${file.hash}/poster?w=640&q=4`) : null;
+                const cursorFocused = !isPlaceholder && !!cursorHash && file?.hash === cursorHash;
 
                 return (
                   <AssetThumbCard
@@ -516,7 +533,8 @@ export function FilesGrid({ onFileClick, queryOpts }) {
                     dateText={dateText}
                     dimmed={!!file?.missing}
                     selected={isSelected}
-                    onClick={() => onFileClick?.(file)}
+                    cursorFocused={cursorFocused}
+                    onClick={() => onFileClick?.(file, globalIndex)}
                     onToggleSelected={
                       isPlaceholder
                         ? undefined
@@ -822,6 +840,6 @@ export function FilesGrid({ onFileClick, queryOpts }) {
       ) : null}
     </div>
   );
-}
+});
 
 

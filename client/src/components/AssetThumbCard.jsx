@@ -17,6 +17,7 @@ export function AssetThumbCard({
   dateText,
   dimmed = false,
   selected = false,
+  cursorFocused = false,
   onToggleSelected,
   badges = [],
   bottomPrimary,
@@ -32,13 +33,18 @@ export function AssetThumbCard({
   const safeBottomSecondary = bottomSecondary != null ? bottomSecondary : (isPlaceholder ? null : placeholderBottomText);
   const placeholderName = placeholderBottomText || safeBottomPrimary || '—';
 
+  const showCursorRing = !!cursorFocused && !isPlaceholder;
+  const showSelectedRing = !!selected && !isPlaceholder;
+
   return (
     <div
       className={clsx(
-        'flex-1 relative bg-white shadow rounded overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-500',
-        isPlaceholder ? 'cursor-default hover:ring-0 opacity-80' : null,
+        'flex-1 relative bg-white shadow-sm rounded overflow-hidden cursor-pointer transition-shadow',
+        isPlaceholder ? 'cursor-default opacity-80' : 'hover:shadow-md',
         dimmed ? 'opacity-50 grayscale' : null,
-        selected ? 'ring-2 ring-blue-600' : null
+        showCursorRing ? 'ring-2 ring-blue-600' : null,
+        !showCursorRing && showSelectedRing ? 'ring-2 ring-emerald-500' : null,
+        showCursorRing && showSelectedRing ? 'outline outline-2 outline-emerald-400 outline-offset-[-2px]' : null
       )}
       onClick={() => (isPlaceholder ? null : onClick?.())}
     >
@@ -78,7 +84,7 @@ export function AssetThumbCard({
             type="button"
             className={clsx(
               'absolute top-2 left-2 z-20 w-6 h-6 rounded-full border flex items-center justify-center text-xs font-bold shadow-sm',
-              selected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/90 text-gray-700 border-gray-200'
+              selected ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white/90 text-gray-700 border-gray-200'
             )}
             title={selected ? '取消选择' : '选择'}
             onClick={(e) => {

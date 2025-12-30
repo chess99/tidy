@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider, useMutation, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, Trash2, X, FolderCheck } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { apiUrl, getAsset, getAssetsBatch, getFilesBatch, scanPath, syncChanges, updateAssetStatus } from './api/client';
+import { apiUrl, getAsset, getAssetsBatch, getFiles, getFilesBatch, scanPath, syncChanges, updateAssetStatus } from './api/client';
 import { MinimalScanStatus } from './components/MinimalScanStatus';
 import { ScanStatusSidebar } from './components/ScanStatusSidebar';
 import { ConfigView } from './components/ConfigView';
@@ -12,6 +12,7 @@ import { AssetFacesPanel } from './components/AssetFacesPanel';
 import { AssetViewer } from './components/AssetViewer';
 import { Button } from './components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
+import { GRID_COLUMNS } from './utils/gridLayout';
 
 const queryClient = new QueryClient();
 
@@ -19,6 +20,9 @@ function Main() {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('config'); // config | files | albums
+  const [filesCursorIndex, setFilesCursorIndex] = useState(null); // 0-based global index in current filtered list
+  const [filesCursorHash, setFilesCursorHash] = useState(null); // hash for highlight
+  const [filesCursorTotal, setFilesCursorTotal] = useState(null); // total items of current filter (best-effort)
   const [filesQuery, setFilesQuery] = useState(() => ({
     filter: localStorage.getItem('filesFilter') || 'all',
     exts: [],
@@ -35,6 +39,21 @@ function Main() {
   const qc = useQueryClient();
   const selectedAssetRef = useRef(null);
   const [detailThumbErrorHash, setDetailThumbErrorHash] = useState(null);
+  const filesGridRef = useRef(null);
+  const navRequestIdRef = useRef(0);
+  const resyncRequestIdRef = useRef(0);
+
+  const LIMIT = 50;
+  const COLUMNS = GRID_COLUMNS;
+
+  const setActiveTabSafe = (nextTab) => {
+    setActiveTab(nextTab);
+    if (nextTab !== 'files') {
+      setFilesCursorIndex(null);
+      setFilesCursorHash(null);
+      setFilesCursorTotal(null);
+    }
+  };
 
   const scanMutation = useMutation({
     mutationFn: scanPath,
@@ -191,8 +210,48 @@ function Main() {
     }
   };
 
+  const isEditableTarget = (el) => {
+    if (!el) return false;
+    const tag = String(el.tagName || '').toUpperCase();
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    return !!el.isContentEditable;
+  };
+
+  const navigateToIndex = async (nextIndex, { scroll = true } = {}) => {
+    if (!Number.isFinite(nextIndex)) return;
+    if (nextIndex < 0) return;
+    if (Number.isFinite(filesCursorTotal) && filesCursorTotal != null && nextIndex >= filesCursorTotal) return;
+
+    const requestId = ++navRequestIdRef.current;
+    const page = Math.floor(nextIndex / LIMIT) + 1;
+    const idx = nextIndex % LIMIT;
+
+    try {
+      const res = await getFiles(page, LIMIT, filesQuery);
+      const file = res?.data?.[idx];
+      if (!file?.hash) return;
+
+      const asset = await getAsset(file.hash);
+      if (navRequestIdRef.current !== requestId) return;
+
+      setFilesCursorIndex(nextIndex);
+      setFilesCursorHash(file.hash);
+      setSelectedAsset(asset);
+
+      if (scroll) {
+        try {
+          filesGridRef.current?.scrollToIndex?.(nextIndex);
+        } catch {
+          // ignore
+        }
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   const handleFilterByPerson = (personId) => {
-    setActiveTab('files');
+    setActiveTabSafe('files');
     setFilesQuery((prev) => {
       const current = prev.people ? (Array.isArray(prev.people) ? prev.people : String(prev.people).split(',').map(Number)) : [];
       if (current.includes(personId)) return prev;
@@ -201,9 +260,73 @@ function Main() {
   };
 
   const applyFilter = (patch) => {
-    setActiveTab('files');
+    setActiveTabSafe('files');
     setFilesQuery((prev) => ({ ...prev, ...patch }));
   };
+
+  // Best-effort: when filters change, try to keep cursor index in sync by re-checking the original page.
+  useEffect(() => {
+    if (activeTab !== 'files') return;
+    if (!filesCursorHash) return;
+    if (!Number.isFinite(filesCursorIndex)) return;
+
+    const requestId = ++resyncRequestIdRef.current;
+    const page = Math.floor(filesCursorIndex / LIMIT) + 1;
+
+    (async () => {
+      try {
+        const res = await getFiles(page, LIMIT, filesQuery);
+        if (resyncRequestIdRef.current !== requestId) return;
+        const arr = res?.data || [];
+        const found = arr.findIndex((f) => f?.hash === filesCursorHash);
+        if (found >= 0) {
+          setFilesCursorIndex((page - 1) * LIMIT + found);
+        } else {
+          // Keep detail panel, but disable prev/next by clearing index.
+          setFilesCursorIndex(null);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, [activeTab, filesQuery, filesCursorHash, filesCursorIndex]);
+
+  // Arrow key navigation on the files grid.
+  useEffect(() => {
+    if (activeTab !== 'files') return;
+    if (viewerOpen) return;
+    if (!Number.isFinite(filesCursorIndex)) return;
+
+    const onKeyDown = (e) => {
+      if (e.defaultPrevented) return;
+      if (viewerOpen) return;
+      if (activeTab !== 'files') return;
+      if (isEditableTarget(document.activeElement)) return;
+
+      const key = e.key;
+      if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'ArrowUp' && key !== 'ArrowDown') return;
+
+      e.preventDefault();
+
+      let delta = 0;
+      if (key === 'ArrowLeft') delta = -1;
+      if (key === 'ArrowRight') delta = 1;
+      if (key === 'ArrowUp') delta = -COLUMNS;
+      if (key === 'ArrowDown') delta = COLUMNS;
+
+      const cur = filesCursorIndex;
+      let next = cur + delta;
+      if (next < 0) next = 0;
+      if (Number.isFinite(filesCursorTotal) && filesCursorTotal != null) {
+        next = Math.min(next, Math.max(0, filesCursorTotal - 1));
+      }
+      if (next === cur) return;
+      navigateToIndex(next);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activeTab, viewerOpen, filesCursorIndex, filesCursorTotal, COLUMNS, filesQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirPrefixOf = (p) => {
     if (!p) return '';
@@ -236,7 +359,7 @@ function Main() {
           📸 Tidy <span className="text-xs font-normal text-gray-500">v0.1</span>
         </h1>
         <div className="flex gap-2">
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <Tabs value={activeTab} onValueChange={setActiveTabSafe}>
             <TabsList>
               <TabsTrigger value="config">配置&扫描</TabsTrigger>
               <TabsTrigger value="files">全部文件</TabsTrigger>
@@ -279,9 +402,27 @@ function Main() {
               <ScanStatusSidebar className="w-80 border-l bg-gray-50" />
             </div>
           ) : activeTab === 'files' ? (
-            <FilesGrid onFileClick={handleFileClick} queryOpts={filesQuery} />
+            <FilesGrid
+              ref={filesGridRef}
+              queryOpts={filesQuery}
+              cursorHash={filesCursorHash}
+              onMetaChange={({ total }) => setFilesCursorTotal(total)}
+              onFileClick={async (file, globalIndex) => {
+                if (!file?.hash) return;
+                if (Number.isFinite(globalIndex)) setFilesCursorIndex(globalIndex);
+                setFilesCursorHash(file.hash);
+                await handleFileClick(file);
+              }}
+            />
           ) : (
-            <AlbumsView onAssetClick={setSelectedAsset} />
+            <AlbumsView
+              onAssetClick={(asset) => {
+                setSelectedAsset(asset);
+                setFilesCursorIndex(null);
+                setFilesCursorHash(null);
+                setFilesCursorTotal(null);
+              }}
+            />
           )}
         </div>
 
@@ -533,6 +674,16 @@ function Main() {
         open={viewerOpen && !!selectedAsset}
         onOpenChange={setViewerOpen}
         asset={selectedAsset}
+        onPrev={
+          activeTab === 'files' && Number.isFinite(filesCursorIndex)
+            ? () => navigateToIndex(filesCursorIndex - 1)
+            : undefined
+        }
+        onNext={
+          activeTab === 'files' && Number.isFinite(filesCursorIndex)
+            ? () => navigateToIndex(filesCursorIndex + 1)
+            : undefined
+        }
       />
     </div>
   );
