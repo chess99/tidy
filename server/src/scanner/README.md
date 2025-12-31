@@ -8,6 +8,6 @@
 - `metadata.js`：图片/视频基础元信息抽取。
 - `videoMetadata.js`：视频专用元信息抽取（时长/尺寸/编码等）。
 - `thumbnail.js`：缩略图/预览生成。
+- `phash.js`：图片感知哈希（pHash，用于“相似重复”检测）。
 - `face.js`：人脸扫描相关（检测、embedding、落库编排）。
-
 

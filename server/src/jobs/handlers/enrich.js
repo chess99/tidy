@@ -14,6 +14,7 @@ const { computeHash } = require('../../scanner/hasher');
 const { extractMetadata } = require('../../scanner/metadata');
 const { extractVideoMetadata } = require('../../scanner/videoMetadata');
 const { generateThumbnail, getThumbnailPath, RAW_EXTS } = require('../../scanner/thumbnail');
+const { computePHash } = require('../../scanner/phash');
 const { insertChange, now } = require('./_util');
 
 function safeJsonStringify(v) {
@@ -202,11 +203,12 @@ async function handleEnrich(ctx) {
       OR hash IS NULL
       OR COALESCE(hash_status, 'pending') != 'done'
       OR COALESCE(thumb_status, 'pending') != 'ready'
+      OR COALESCE(phash_status, 'pending') NOT IN ('done', 'unsupported')
     )
   `;
 
   const rows = db.prepare(`
-    SELECT id, path, hash, scanned_at, mtime_ms, ext, mime_guess, hash_status, thumb_status
+    SELECT id, path, hash, scanned_at, mtime_ms, ext, mime_guess, hash_status, thumb_status, phash, phash_status
     FROM files
     WHERE ${where}
     ORDER BY id ASC
@@ -239,6 +241,7 @@ async function handleEnrich(ctx) {
 
     const unchanged = row.scanned_at && Number(stat.mtimeMs) <= Number(row.scanned_at || 0);
     const mimeType = mime.lookup(filePath) || row.mime_guess || null;
+    const phashNeeded = !row.phash || String(row.phash_status || '') !== 'done';
 
     // For missing-mode, if unchanged and already hashed, only backfill thumb if needed.
     if (mode === 'missing' && unchanged && row.hash && String(row.hash_status) === 'done') {
@@ -278,6 +281,29 @@ async function handleEnrich(ctx) {
           reconciledHashes.add(hash);
         } catch {
           // ignore reconcile errors (keep enrich robust)
+        }
+      }
+
+      // pHash backfill for unchanged files
+      if (phashNeeded) {
+        try {
+          const extLower = path.extname(filePath).toLowerCase();
+          const mt = String(mimeType || '').toLowerCase();
+          const isImage = mt.startsWith('image/');
+          const isRaw = RAW_EXTS.has(extLower);
+          if (isImage || isRaw) {
+            const phash = await computePHash(filePath);
+            db.prepare('UPDATE files SET phash = ?, phash_status = ?, updated_at = ? WHERE id = ?').run(phash, 'done', now(), fileId);
+            insertChange('file', fileId, 'phash_done');
+          } else {
+            db.prepare('UPDATE files SET phash_status = ? WHERE id = ?').run('unsupported', fileId);
+          }
+        } catch {
+          try {
+            db.prepare('UPDATE files SET phash_status = ? WHERE id = ?').run('error', fileId);
+          } catch {
+            // ignore
+          }
         }
       }
 
@@ -416,6 +442,29 @@ async function handleEnrich(ctx) {
           db.prepare('UPDATE files SET thumb_status = ? WHERE id = ?').run('unsupported', fileId);
         } catch {
           // ignore
+        }
+      }
+
+      // Best-effort pHash (for duplicate tool). Images and RAW previews only.
+      // This is stored on the FILE instance to support "similar but not identical" detection.
+      if (phashNeeded) {
+        try {
+          const mt = String(mimeType || '').toLowerCase();
+          const isImage = mt.startsWith('image/');
+          const isRaw = RAW_EXTS.has(extLower);
+          if (isImage || isRaw) {
+            const phash = await computePHash(filePath);
+            db.prepare('UPDATE files SET phash = ?, phash_status = ?, updated_at = ? WHERE id = ?').run(phash, 'done', now(), fileId);
+            insertChange('file', fileId, 'phash_done');
+          } else {
+            db.prepare('UPDATE files SET phash_status = ? WHERE id = ?').run('unsupported', fileId);
+          }
+        } catch {
+          try {
+            db.prepare('UPDATE files SET phash_status = ? WHERE id = ?').run('error', fileId);
+          } catch {
+            // ignore
+          }
         }
       }
     } catch (e) {

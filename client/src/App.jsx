@@ -5,7 +5,7 @@
  */
 
 import { QueryClient, QueryClientProvider, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Trash2, X, FolderCheck } from 'lucide-react';
+import { Trash2, X, FolderCheck, Wrench } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { apiUrl, getAsset, getAssetsBatch, getFiles, getFilesBatch, updateAssetStatus } from './api/client';
 import { MinimalScanStatus } from './components/MinimalScanStatus';
@@ -13,9 +13,11 @@ import { FilesFilters } from './components/FilesFilters';
 import { FilesGrid } from './components/FilesGrid';
 import { AlbumsView } from './components/AlbumsView';
 import { TrashView } from './components/TrashView';
+import { DuplicatesToolView } from './components/DuplicatesToolView';
 import { AssetFacesPanel } from './components/AssetFacesPanel';
 import { AssetViewer } from './components/AssetViewer';
 import { Button } from './components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from './components/ui/popover';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
 import { GRID_COLUMNS } from './utils/gridLayout';
 import { useFilesGridController } from './hooks/useFilesGridController';
@@ -26,7 +28,8 @@ const queryClient = new QueryClient();
 function Main() {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [viewerOpen, setViewerOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('files'); // files | albums | trash | admin
+  const [activeTab, setActiveTab] = useState('files'); // files | albums | trash | admin | duplicates
+  const [lastMainTab, setLastMainTab] = useState('files');
   const [albumsViewerNav, setAlbumsViewerNav] = useState(() => ({ onPrev: undefined, onNext: undefined }));
   const [filesQuery, setFilesQuery] = useState(() => ({
     filter: localStorage.getItem('filesFilter') || 'all',
@@ -63,6 +66,9 @@ function Main() {
 
   const setActiveTabSafe = (nextTab) => {
     setActiveTab(nextTab);
+    if (['files', 'albums', 'trash'].includes(nextTab)) {
+      setLastMainTab(nextTab);
+    }
     if (nextTab !== 'files') {
       filesCtrl.reset();
     }
@@ -275,7 +281,7 @@ function Main() {
           📸 Tidy <span className="text-xs font-normal text-gray-500">v0.1</span>
         </h1>
         <div className="flex items-center gap-2">
-          {activeTab !== 'admin' ? (
+          {activeTab !== 'admin' && activeTab !== 'duplicates' ? (
             <>
               <Tabs value={activeTab} onValueChange={setActiveTabSafe}>
                 <TabsList>
@@ -284,12 +290,44 @@ function Main() {
                   <TabsTrigger value="trash">回收站</TabsTrigger>
                 </TabsList>
               </Tabs>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="icon" title="实用工具">
+                    <Wrench className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-80 p-3">
+                  <div className="text-sm font-semibold text-gray-900">实用工具</div>
+                  <div className="mt-2 grid grid-cols-1 gap-2">
+                    <button
+                      type="button"
+                      className="w-full text-left rounded-lg border bg-white hover:bg-gray-50 p-3 transition"
+                      onClick={() => {
+                        setActiveTabSafe('duplicates');
+                      }}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 text-gray-800">
+                          <Wrench className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-gray-900">检查重复项</div>
+                          <div className="text-xs text-gray-600 mt-1 leading-5">
+                            按 hash + 图片相似度分组，逐组保留/删除副本（全选同 hash 可升级为删除 asset）。
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
               <Button variant="outline" onClick={() => setActiveTabSafe('admin')}>
                 系统管理
               </Button>
             </>
           ) : (
-            <Button variant="outline" onClick={() => setActiveTabSafe('files')}>
+            <Button variant="outline" onClick={() => setActiveTabSafe(lastMainTab || 'files')}>
               返回
             </Button>
           )}
@@ -309,6 +347,13 @@ function Main() {
         <div className="flex-1 relative flex flex-col min-w-0">
           {activeTab === 'admin' ? (
             <SystemAdminView />
+          ) : activeTab === 'duplicates' ? (
+            <DuplicatesToolView
+              onAssetClick={(asset) => {
+                setSelectedAsset(asset);
+                filesCtrl.reset();
+              }}
+            />
           ) : activeTab === 'trash' ? (
             <TrashView
               onAssetClick={(asset) => {

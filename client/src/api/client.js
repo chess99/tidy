@@ -128,3 +128,13 @@ export const mergePerson = (fromPersonId, intoPersonId) =>
 export const splitPerson = (fromPersonId, faceIds = []) =>
   api.post(`/faces/people/${fromPersonId}/split`, { faceIds }).then((res) => res.data);
 
+// Duplicates tool
+export const getDuplicateGroups = ({ kind = 'phash', threshold = 10, limit = 20, cursor } = {}) => {
+  const params = { kind, threshold, limit };
+  if (cursor != null) params.cursor = cursor;
+  return api.get('/duplicates/groups', { params }).then((res) => res.data);
+};
+
+export const applyDuplicateActions = ({ keepFileIds = [], deleteFileIds = [] } = {}) =>
+  api.post('/duplicates/apply', { keepFileIds, deleteFileIds }).then((res) => res.data);
+

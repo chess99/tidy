@@ -5,5 +5,6 @@
 ### 文件
 
 - `client.js`：HTTP 客户端封装（baseURL、headers、错误处理等）。
+  - 含：`duplicates` 工具接口封装（groups/apply）。
 
 

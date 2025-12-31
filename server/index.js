@@ -40,6 +40,7 @@ const tagRoutes = require('./src/routes/tags');
 const configRoutes = require('./src/routes/config');
 const libraryRoutes = require('./src/routes/library');
 const faceRoutes = require('./src/routes/faces');
+const duplicatesRoutes = require('./src/routes/duplicates');
 
 app.use('/api/jobs', jobsRoutes);
 app.use('/api/config', configRoutes);
@@ -51,6 +52,7 @@ app.use('/api/albums', albumRoutes);
 app.use('/api/organize', organizeRoutes);
 app.use('/api/tags', tagRoutes);
 app.use('/api/faces', faceRoutes);
+app.use('/api/duplicates', duplicatesRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

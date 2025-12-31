@@ -51,6 +51,8 @@ function migrateDB(dbConn) {
     { name: 'hash_status', type: 'TEXT' },
     { name: 'thumb_status', type: 'TEXT' },
     { name: 'thumb_updated_at', type: 'INTEGER' },
+    { name: 'phash', type: 'TEXT' },
+    { name: 'phash_status', type: 'TEXT' },
   ]);
 
   // Basic backfill for timestamps (best-effort, safe if columns already populated).
@@ -100,6 +102,7 @@ function migrateDB(dbConn) {
       CREATE INDEX IF NOT EXISTS idx_assets_is_camera ON assets(is_camera);
       CREATE INDEX IF NOT EXISTS idx_files_discovered_at ON files(discovered_at);
       CREATE INDEX IF NOT EXISTS idx_files_updated_at ON files(updated_at);
+      CREATE INDEX IF NOT EXISTS idx_files_phash ON files(phash);
     `);
   } catch {
     // ignore

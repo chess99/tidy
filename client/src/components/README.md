@@ -13,6 +13,7 @@
 - `FilesGrid.jsx`：文件/资产浏览网格（虚拟化 + 选择）。
 - `FilesFilters.jsx`：文件筛选条件与过滤 UI。
 - `TrashView.jsx`：回收站视图（`assets.status='trash'` 列表 + 点击查看）。
+- `DuplicatesToolView.jsx`：实用工具：检查重复项（hash/pHash 分组 + 逐组保留/删除副本）。
 - `AssetViewer.jsx`：单资产查看（图片/视频）与操作入口。
 - `AssetThumbCard.jsx`：网格缩略卡片（预览、选择态、标记等）。
 - `ThumbPlaceholder.jsx`：缩略图占位与加载态表现。
@@ -23,5 +24,4 @@
 - `MinimalScanStatus.jsx`：扫描状态的轻量提示组件。
 - `AssetFacesPanel.jsx`：资产的人脸识别/聚类面板（人物、分组、操作）。
 - `VirtualGrid.jsx`：通用虚拟网格基础实现（高性能大列表渲染）。
-
 

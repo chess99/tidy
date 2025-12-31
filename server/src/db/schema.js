@@ -37,6 +37,8 @@ const dbSchema = `
     hash_status TEXT,
     thumb_status TEXT,
     thumb_updated_at INTEGER,
+    phash TEXT,
+    phash_status TEXT,
     FOREIGN KEY(hash) REFERENCES assets(hash)
   );
 

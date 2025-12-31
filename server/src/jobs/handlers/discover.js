@@ -66,9 +66,30 @@ function upsertFileDiscovered(db, filePath, stat) {
           thumb_status = CASE
             WHEN ? = 1 THEN 'pending'
             ELSE COALESCE(thumb_status, 'pending')
+          END,
+          phash = CASE
+            WHEN ? = 1 THEN NULL
+            ELSE phash
+          END,
+          phash_status = CASE
+            WHEN ? = 1 THEN 'pending'
+            ELSE COALESCE(phash_status, 'pending')
           END
       WHERE id = ?
-    `).run(stat.size, stat.mtimeMs, ext, mimeGuess, ts, ts, hashMaybe, changed ? 1 : 0, changed ? 1 : 0, existing.id);
+    `).run(
+      stat.size,
+      stat.mtimeMs,
+      ext,
+      mimeGuess,
+      ts,
+      ts,
+      hashMaybe,
+      changed ? 1 : 0,
+      changed ? 1 : 0,
+      changed ? 1 : 0,
+      changed ? 1 : 0,
+      existing.id
+    );
 
     insertChange('file', existing.id, 'upsert');
     return { id: existing.id, changed };
@@ -76,8 +97,8 @@ function upsertFileDiscovered(db, filePath, stat) {
 
   const info = db.prepare(`
     INSERT INTO files (
-      path, missing, size, mtime_ms, ext, mime_guess, discovered_at, updated_at, hash, hash_status, thumb_status
-    ) VALUES (?, 0, ?, ?, ?, ?, ?, ?, NULL, 'pending', 'pending')
+      path, missing, size, mtime_ms, ext, mime_guess, discovered_at, updated_at, hash, hash_status, thumb_status, phash, phash_status
+    ) VALUES (?, 0, ?, ?, ?, ?, ?, ?, NULL, 'pending', 'pending', NULL, 'pending')
   `).run(normPath, stat.size, stat.mtimeMs, ext, mimeGuess, ts, ts);
 
   const id = info.lastInsertRowid;
