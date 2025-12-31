@@ -9,7 +9,6 @@ import { Trash2, X, FolderCheck } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { apiUrl, getAsset, getAssetsBatch, getFiles, getFilesBatch, updateAssetStatus } from './api/client';
 import { MinimalScanStatus } from './components/MinimalScanStatus';
-import { JobsStatusSidebar } from './components/JobsStatusSidebar';
 import { FilesFilters } from './components/FilesFilters';
 import { FilesGrid } from './components/FilesGrid';
 import { AlbumsView } from './components/AlbumsView';
@@ -19,16 +18,14 @@ import { Button } from './components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
 import { GRID_COLUMNS } from './utils/gridLayout';
 import { useFilesGridController } from './hooks/useFilesGridController';
-import { TasksView } from './components/TasksView';
-import { SettingsView } from './components/SettingsView';
+import { SystemAdminView } from './components/SystemAdminView';
 
 const queryClient = new QueryClient();
 
 function Main() {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [viewerOpen, setViewerOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('tasks'); // tasks | settings | files | albums
-  const [settingsAnchor, setSettingsAnchor] = useState(null);
+  const [activeTab, setActiveTab] = useState('files'); // files | albums | admin
   const [albumsViewerNav, setAlbumsViewerNav] = useState(() => ({ onPrev: undefined, onNext: undefined }));
   const [filesQuery, setFilesQuery] = useState(() => ({
     filter: localStorage.getItem('filesFilter') || 'all',
@@ -65,7 +62,6 @@ function Main() {
 
   const setActiveTabSafe = (nextTab) => {
     setActiveTab(nextTab);
-    if (nextTab !== 'settings') setSettingsAnchor(null);
     if (nextTab !== 'files') {
       filesCtrl.reset();
     }
@@ -277,15 +273,24 @@ function Main() {
         <h1 className="text-xl font-bold flex items-center gap-2">
           📸 Tidy <span className="text-xs font-normal text-gray-500">v0.1</span>
         </h1>
-        <div className="flex gap-2">
-          <Tabs value={activeTab} onValueChange={setActiveTabSafe}>
-            <TabsList>
-              <TabsTrigger value="tasks">任务队列</TabsTrigger>
-              <TabsTrigger value="settings">设置</TabsTrigger>
-              <TabsTrigger value="files">全部文件</TabsTrigger>
-              <TabsTrigger value="albums">文件夹/归档</TabsTrigger>
-            </TabsList>
-          </Tabs>
+        <div className="flex items-center gap-2">
+          {activeTab !== 'admin' ? (
+            <>
+              <Tabs value={activeTab} onValueChange={setActiveTabSafe}>
+                <TabsList>
+                  <TabsTrigger value="files">全部文件</TabsTrigger>
+                  <TabsTrigger value="albums">文件夹/归档</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <Button variant="outline" onClick={() => setActiveTabSafe('admin')}>
+                系统管理
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" onClick={() => setActiveTabSafe('files')}>
+              返回
+            </Button>
+          )}
         </div>
       </header>
 
@@ -293,32 +298,15 @@ function Main() {
       
       <div className="flex-1 flex overflow-hidden relative">
         {/* Floating Minimal Status for non-task pages */}
-        {activeTab !== 'tasks' && <MinimalScanStatus />}
+        {activeTab !== 'admin' && <MinimalScanStatus />}
 
         {activeTab === 'files' ? (
           <FilesFilters value={filesQuery} onChange={setFilesQuery} />
         ) : null}
 
         <div className="flex-1 relative flex flex-col min-w-0">
-          {activeTab === 'tasks' ? (
-            <div className="flex h-full">
-              <div className="flex-1 overflow-y-auto">
-                <TasksView
-                  onJumpSettings={(anchor) => {
-                    setSettingsAnchor(anchor || null);
-                    setActiveTabSafe('settings');
-                  }}
-                />
-              </div>
-              <JobsStatusSidebar className="w-80 border-l bg-gray-50" />
-            </div>
-          ) : activeTab === 'settings' ? (
-            <div className="flex h-full">
-              <div className="flex-1 overflow-y-auto">
-                <SettingsView anchor={settingsAnchor} />
-              </div>
-              <JobsStatusSidebar className="w-80 border-l bg-gray-50" />
-            </div>
+          {activeTab === 'admin' ? (
+            <SystemAdminView />
           ) : activeTab === 'files' ? (
             <FilesGrid
               ref={filesGridRef}
@@ -340,7 +328,7 @@ function Main() {
           )}
         </div>
 
-        {selectedAsset && activeTab !== 'tasks' && activeTab !== 'settings' && (
+        {selectedAsset && activeTab !== 'admin' && (
           <aside className="w-96 bg-white border-l shadow-xl z-20 flex flex-col h-full">
             <div className="p-4 border-b flex justify-between items-center bg-gray-50">
               <h2 className="font-bold text-gray-700">详情</h2>

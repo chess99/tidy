@@ -359,7 +359,7 @@ function TaskSettingsSection({ tasks, onSave }) {
   );
 }
 
-export function SettingsView({ anchor }) {
+export function SettingsView({ anchor, embedded = false }) {
   const qc = useQueryClient();
   const win = isWindowsLike();
   const scanPlaceholder = win ? '例如：D:\\Photos 或 \\\\NAS\\share\\Photos' : '例如：/Users/yourname/Pictures/Import';
@@ -417,11 +417,13 @@ export function SettingsView({ anchor }) {
   const tasksKey = `tasks:${JSON.stringify(tasks || {})}`;
 
   return (
-    <div className="h-full w-full overflow-auto bg-gray-50 p-6">
-      <div className="max-w-4xl space-y-6">
+    <div className={embedded ? 'min-h-full p-6' : 'h-full w-full overflow-auto bg-gray-50 p-6'}>
+      <div className={embedded ? 'space-y-6' : 'max-w-4xl space-y-6'}>
         <div>
-          <div className="text-2xl font-bold text-gray-900">设置</div>
-          <div className="text-sm text-gray-600 mt-1">集中管理扫描与任务并发配置（任务页可一键跳转到这里）。</div>
+          <div className="text-2xl font-bold text-gray-900">{embedded ? '配置' : '设置'}</div>
+          <div className="text-sm text-gray-600 mt-1">
+            {embedded ? '先确定要扫哪些目录、怎么扫，再触发任务执行。' : '集中管理扫描与任务并发配置（任务页可一键跳转到这里）。'}
+          </div>
         </div>
 
         <Card

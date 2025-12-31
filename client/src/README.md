@@ -5,7 +5,7 @@
 ### 文件与子目录
 
 - `main.jsx`：Vite 入口；挂载 React 应用与全局 Provider。
-- `App.jsx`：应用根组件；页面布局与路由/视图编排。
+- `App.jsx`：应用根组件；页面布局与视图编排（主界面 Files/Albums + 系统管理入口）。
 - `api/`：后端 API 调用封装（见 `api/README.md`）。
 - `components/`：页面/功能组件与 UI 组件集合（见 `components/README.md`）。
 - `hooks/`：可复用 hooks（见 `hooks/README.md`）。
