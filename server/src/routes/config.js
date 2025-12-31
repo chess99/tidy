@@ -1,3 +1,9 @@
+/**
+ * input: Express req/res + DB + 服务层
+ * output: Express Router（HTTP API）
+ * pos: 服务端路由层：把请求映射为领域动作（变更需同步更新本头注释与所属目录 README）
+ */
+
 const express = require('express');
 const { WORK_ROOT, MANAGED_ROOT, TRASH_DIR, DATA_DIR, DB_PATH, THUMB_DIR } = require('../config');
 const { getDB } = require('../db');

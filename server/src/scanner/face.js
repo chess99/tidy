@@ -1,3 +1,9 @@
+/**
+ * input: 文件路径/媒体字节 + 配置
+ * output: hash/元信息/缩略图/人脸等派生产物
+ * pos: 服务端扫描管线：从文件系统提取结构化信息（变更需同步更新本头注释与所属目录 README）
+ */
+
 // We require tfjs-node explicitly because we rely on TensorFlow in Node.
 // If this fails to install, face detection cannot run.
 let tf;

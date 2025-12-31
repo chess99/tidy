@@ -1,3 +1,9 @@
+/**
+ * input: 基础值/路径字符串
+ * output: 通用工具函数
+ * pos: 服务端工具层：无业务语义的复用工具（变更需同步更新本头注释与所属目录 README）
+ */
+
 const path = require('path');
 
 /**

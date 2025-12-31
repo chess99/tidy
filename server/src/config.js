@@ -1,3 +1,9 @@
+/**
+ * input: 环境变量/配置 + DB
+ * output: 服务端模块导出
+ * pos: 服务端核心模块：被 server 入口与路由/任务依赖（变更需同步更新本头注释与所属目录 README）
+ */
+
 const path = require('path');
 const os = require('os');
 

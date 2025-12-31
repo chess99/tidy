@@ -1,3 +1,9 @@
+/**
+ * input: 后端 HTTP API（baseURL/网络）
+ * output: API 请求函数（统一参数/错误语义）
+ * pos: 客户端-服务端边界：API 调用封装（变更需同步更新本头注释与所属目录 README）
+ */
+
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';

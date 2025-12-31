@@ -1,3 +1,9 @@
+/**
+ * input: DB + 文件系统 + 配置
+ * output: 领域服务函数（可复用业务动作）
+ * pos: 服务端服务层：跨路由/任务复用的领域能力（变更需同步更新本头注释与所属目录 README）
+ */
+
 function parseDescriptor(json) {
   if (!json) return null;
   try {

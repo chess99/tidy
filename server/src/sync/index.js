@@ -1,3 +1,9 @@
+/**
+ * input: DB 变更记录/文件系统状态
+ * output: 增量变更/同步结果
+ * pos: 服务端同步层：对账与增量更新（变更需同步更新本头注释与所属目录 README）
+ */
+
 const fs = require('fs-extra');
 const path = require('path');
 const { getDB } = require('../db');

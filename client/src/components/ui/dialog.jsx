@@ -1,3 +1,9 @@
+/**
+ * input: 组件 props + 样式类名
+ * output: 基础 UI 原语组件
+ * pos: 客户端 UI 原语层：被功能组件组合使用（变更需同步更新本头注释与所属目录 README）
+ */
+
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"

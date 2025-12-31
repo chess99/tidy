@@ -1,3 +1,8 @@
+"""input: base64 图片 + InsightFace/OpenCV
+output: 人脸检测框/关键点/embedding 向量
+pos: Python 人脸服务入口：供主服务调用（变更需同步更新本头注释与所属目录 README）
+"""
+
 import base64
 from typing import Any, Dict, List, Optional
 

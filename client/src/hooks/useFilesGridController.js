@@ -1,3 +1,9 @@
+/**
+ * input: 组件参数 + 事件流 + Query/状态
+ * output: 可复用 hook（state + handlers）
+ * pos: 客户端交互状态层：供组件复用（变更需同步更新本头注释与所属目录 README）
+ */
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 function isEditableTarget(el) {

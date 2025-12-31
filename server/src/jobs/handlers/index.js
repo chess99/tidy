@@ -1,3 +1,9 @@
+/**
+ * input: job payload + DB/文件系统/服务层
+ * output: 任务执行副作用 + 进度/结果写回
+ * pos: 服务端任务处理器：实现具体 job 类型（变更需同步更新本头注释与所属目录 README）
+ */
+
 const { handleDiscover } = require('./discover');
 const { handleEnrich } = require('./enrich');
 const { handleThumbsRebuild } = require('./thumbsRebuild');

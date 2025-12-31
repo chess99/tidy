@@ -1,3 +1,9 @@
+/**
+ * input: React + Query + API client
+ * output: 应用根组件（视图编排与全局交互）
+ * pos: 客户端根节点：承载主要视图与操作入口（变更需同步更新本头注释与所属目录 README）
+ */
+
 import { QueryClient, QueryClientProvider, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2, X, FolderCheck } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';

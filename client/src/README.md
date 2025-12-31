@@ -1,0 +1,18 @@
+本目录是前端应用源码（React/Vite），负责 UI 交互与状态编排。
+输入：浏览器环境 + `server` 提供的 HTTP API；输出：可操作的界面与用户动作。
+更新规则：本目录结构/文件/职责变化时，更新本 README + `docs/README.md`。
+
+### 文件与子目录
+
+- `main.jsx`：Vite 入口；挂载 React 应用与全局 Provider。
+- `App.jsx`：应用根组件；页面布局与路由/视图编排。
+- `api/`：后端 API 调用封装（见 `api/README.md`）。
+- `components/`：页面/功能组件与 UI 组件集合（见 `components/README.md`）。
+- `hooks/`：可复用 hooks（见 `hooks/README.md`）。
+- `utils/`：纯函数工具与显示/布局辅助（见 `utils/README.md`）。
+- `lib/`：第三方风格的通用工具封装（见 `lib/README.md`）。
+- `index.css`：全局样式入口（通常包含 Tailwind 基础层）。
+- `App.css`：App 层级样式（仅用于 App 级别的少量补充）。
+- `assets/`：前端静态资源（示例/图标等）。
+
+

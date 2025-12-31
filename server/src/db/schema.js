@@ -1,3 +1,9 @@
+/**
+ * input: SQLite 文件/连接参数
+ * output: DB 访问入口与 schema
+ * pos: 服务端数据层：统一 DB 初始化与访问（变更需同步更新本头注释与所属目录 README）
+ */
+
 const dbSchema = `
   CREATE TABLE IF NOT EXISTS assets (
     hash TEXT PRIMARY KEY,
