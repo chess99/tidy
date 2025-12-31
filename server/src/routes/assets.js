@@ -23,6 +23,27 @@ const { TRASH_DIR, PREVIEW_DIR, POSTER_DIR } = require('../config');
 
 const router = express.Router();
 
+function stripTrailingSep(p) {
+  if (!p) return p;
+  let s = String(p);
+  while (s.length > 1 && (s.endsWith(path.sep) || s.endsWith('/') || s.endsWith('\\'))) {
+    s = s.slice(0, -1);
+  }
+  return s;
+}
+
+function isUnder(parent, child) {
+  try {
+    const p = stripTrailingSep(path.resolve(String(parent)));
+    const c = stripTrailingSep(path.resolve(String(child)));
+    const pNorm = process.platform === 'win32' ? p.toLowerCase() : p;
+    const cNorm = process.platform === 'win32' ? c.toLowerCase() : c;
+    return cNorm === pNorm || cNorm.startsWith(pNorm + path.sep);
+  } catch {
+    return false;
+  }
+}
+
 // Ensure preview dir exists
 try {
   fs.ensureDirSync(PREVIEW_DIR);
@@ -108,7 +129,9 @@ router.get('/', (req, res) => {
   params.push(limit, offset);
 
   const assets = db.prepare(query).all(...params);
-  const total = db.prepare('SELECT COUNT(*) as count FROM assets').get().count;
+  const total = statusFilter
+    ? db.prepare('SELECT COUNT(*) as count FROM assets WHERE status = ?').get(statusFilter).count
+    : db.prepare('SELECT COUNT(*) as count FROM assets').get().count;
 
   // Parse metadata
   const results = assets.map(a => ({
@@ -206,30 +229,92 @@ router.post('/batch-status', async (req, res) => {
 
       if (status !== 'trash') continue;
 
-      const files = db.prepare('SELECT id, path FROM files WHERE hash = ?').all(hash);
-      for (const f of files) {
-        if (!f.path) continue;
-        if (!(await fs.pathExists(f.path))) {
-          report.messages.push(`File missing: ${f.path}`);
-          continue;
-        }
+      // New semantics:
+      // - Keep exactly ONE physical copy for the asset under TRASH_DIR (last-copy keep).
+      // - All other physical copies are deleted (do not go into TRASH_DIR).
+      // - Keep the corresponding files row (now pointing to TRASH_DIR) so UI can render trash items.
+      const rows = db
+        .prepare(
+          `
+          SELECT id, path, mtime_ms, updated_at, discovered_at, scanned_at
+          FROM files
+          WHERE hash = ?
+          ORDER BY COALESCE(mtime_ms, updated_at, discovered_at, scanned_at, 0) DESC, id DESC
+          `
+        )
+        .all(hash);
 
-        const fileName = path.basename(f.path);
+      const existing = [];
+      for (const f of rows) {
+        if (!f?.path) continue;
+        // eslint-disable-next-line no-await-in-loop
+        if (await fs.pathExists(f.path)) existing.push({ ...f, path: String(f.path) });
+        else {
+          // Cleanup DB rows for missing paths to keep DB consistent.
+          try {
+            db.prepare('DELETE FROM files WHERE id = ?').run(f.id);
+            insertChange(db, 'file', f.id, 'deleted');
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      const alreadyInTrash = existing.find((f) => isUnder(TRASH_DIR, f.path)) || null;
+      const keep = alreadyInTrash || existing[0] || null;
+
+      let keepPath = keep?.path || null;
+
+      if (keep && keepPath && !isUnder(TRASH_DIR, keepPath)) {
+        // Move the kept copy into TRASH_DIR.
+        const fileName = path.basename(keepPath);
         const trashRaw = path.join(TRASH_DIR, `${hash}_${fileName}`);
         // eslint-disable-next-line no-await-in-loop
         const trashPath = await uniquePath(trashRaw);
         // eslint-disable-next-line no-await-in-loop
         await fs.ensureDir(path.dirname(trashPath));
 
-        const now = Date.now();
+        const tnow = Date.now();
         const info = db.prepare(`
           INSERT INTO file_ops (op, hash, file_id, from_path, to_path, status, created_at, updated_at)
           VALUES ('trash', ?, ?, ?, ?, 'pending', ?, ?)
-        `).run(hash, f.id, f.path, trashPath, now, now);
+        `).run(hash, keep.id, keepPath, trashPath, tnow, tnow);
 
         try {
           // eslint-disable-next-line no-await-in-loop
-          await fs.move(f.path, trashPath, { overwrite: false });
+          await fs.move(keepPath, trashPath, { overwrite: false });
+          db.prepare('UPDATE files SET path = ?, missing = 0, updated_at = ? WHERE id = ?').run(trashPath, Date.now(), keep.id);
+          db.prepare('UPDATE file_ops SET status = ?, updated_at = ?, error = NULL WHERE id = ?').run('done', Date.now(), info.lastInsertRowid);
+          insertChange(db, 'file', keep.id, 'trashed');
+          keepPath = trashPath;
+        } catch (e) {
+          report.errors++;
+          const msg = String(e.message || e);
+          report.messages.push(`Failed to keep trash copy ${keepPath}: ${msg}`);
+          try {
+            db.prepare('UPDATE file_ops SET status = ?, updated_at = ?, error = ? WHERE id = ?').run('error', Date.now(), msg, info.lastInsertRowid);
+          } catch {
+            // ignore
+          }
+          // If we couldn't keep a copy, we still proceed to mark asset as trash (but target may be null).
+          keepPath = null;
+        }
+      }
+
+      // Delete all other existing copies.
+      for (const f of existing) {
+        if (!keep || f.id === keep.id) continue;
+        if (!f.path) continue;
+
+        const dnow = Date.now();
+        const info = db.prepare(`
+          INSERT INTO file_ops (op, hash, file_id, from_path, to_path, status, created_at, updated_at)
+          VALUES ('delete', ?, ?, ?, NULL, 'pending', ?, ?)
+        `).run(hash, f.id, f.path, dnow, dnow);
+
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await fs.remove(f.path);
           db.prepare('DELETE FROM files WHERE id = ?').run(f.id);
           db.prepare('UPDATE file_ops SET status = ?, updated_at = ?, error = NULL WHERE id = ?').run('done', Date.now(), info.lastInsertRowid);
           insertChange(db, 'file', f.id, 'deleted');
@@ -237,13 +322,25 @@ router.post('/batch-status', async (req, res) => {
         } catch (e) {
           report.errors++;
           const msg = String(e.message || e);
-          report.messages.push(`Failed to trash ${f.path}: ${msg}`);
+          report.messages.push(`Failed to delete ${f.path}: ${msg}`);
           try {
             db.prepare('UPDATE file_ops SET status = ?, updated_at = ?, error = ? WHERE id = ?').run('error', Date.now(), msg, info.lastInsertRowid);
           } catch {
             // ignore
           }
         }
+      }
+
+      // Asset-level cleanup for trash.
+      try {
+        db.prepare(`DELETE FROM album_assets WHERE hash = ?`).run(hash);
+      } catch {
+        // ignore
+      }
+      try {
+        db.prepare(`UPDATE assets SET target_path = ?, updated_at = ? WHERE hash = ?`).run(keepPath, Date.now(), hash);
+      } catch {
+        // ignore
       }
     } catch (e) {
       report.errors++;

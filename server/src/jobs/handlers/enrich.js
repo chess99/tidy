@@ -9,6 +9,7 @@ const path = require('path');
 const fastq = require('fastq');
 const mime = require('mime-types');
 const { getDB } = require('../../db');
+const { MANAGED_ROOT, TRASH_DIR } = require('../../config');
 const { computeHash } = require('../../scanner/hasher');
 const { extractMetadata } = require('../../scanner/metadata');
 const { extractVideoMetadata } = require('../../scanner/videoMetadata');
@@ -28,11 +29,149 @@ function shouldTryThumb({ mimeType, filePath }) {
   return (mimeType && String(mimeType).startsWith('image/')) || RAW_EXTS.has(extLower);
 }
 
+function stripTrailingSep(p) {
+  if (!p) return p;
+  let s = String(p);
+  while (s.length > 1 && (s.endsWith(path.sep) || s.endsWith('/') || s.endsWith('\\'))) {
+    s = s.slice(0, -1);
+  }
+  return s;
+}
+
+function isUnder(parent, child) {
+  try {
+    const p = stripTrailingSep(path.resolve(String(parent)));
+    const c = stripTrailingSep(path.resolve(String(child)));
+    const pNorm = process.platform === 'win32' ? p.toLowerCase() : p;
+    const cNorm = process.platform === 'win32' ? c.toLowerCase() : c;
+    return cNorm === pNorm || cNorm.startsWith(pNorm + path.sep);
+  } catch {
+    return false;
+  }
+}
+
+function shouldReconcileForPath(filePath) {
+  return isUnder(TRASH_DIR, filePath) || isUnder(MANAGED_ROOT, filePath);
+}
+
+function scoreFileRow(r) {
+  const t =
+    (Number.isFinite(Number(r?.mtime_ms)) ? Number(r.mtime_ms) : null) ??
+    (Number.isFinite(Number(r?.updated_at)) ? Number(r.updated_at) : null) ??
+    (Number.isFinite(Number(r?.discovered_at)) ? Number(r.discovered_at) : null) ??
+    (Number.isFinite(Number(r?.scanned_at)) ? Number(r.scanned_at) : null) ??
+    0;
+  const id = Number.isFinite(Number(r?.id)) ? Number(r.id) : 0;
+  return (t * 10) + id;
+}
+
+function pickBestRow(rows) {
+  let best = null;
+  let bestScore = -Infinity;
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const sc = scoreFileRow(r);
+    if (!best || sc > bestScore) {
+      best = r;
+      bestScore = sc;
+    }
+  }
+  return best;
+}
+
+async function listExistingFileRowsByHash(db, hash) {
+  const rows = db
+    .prepare(
+      `
+      SELECT id, path, missing, mtime_ms, updated_at, discovered_at, scanned_at
+      FROM files
+      WHERE hash = ?
+      ORDER BY id ASC
+      `
+    )
+    .all(hash);
+
+  const candidates = rows.filter((r) => r?.path && Number(r?.missing || 0) === 0);
+  if (!candidates.length) return [];
+
+  const existsFlags = await Promise.all(candidates.map((r) => fs.pathExists(String(r.path))));
+  return candidates.filter((_, idx) => existsFlags[idx]);
+}
+
+function parseAlbumNameFromManagedPath(filePath) {
+  try {
+    const rel = path.relative(String(MANAGED_ROOT), String(filePath));
+    const parts = rel.split(path.sep).filter(Boolean);
+    const first = parts.length ? String(parts[0]) : null;
+    if (!first) return null;
+    if (first === '_Trash') return null;
+    return first;
+  } catch {
+    return null;
+  }
+}
+
+async function reconcileAssetByFilesystem(db, hash) {
+  const ts = now();
+  const rows = await listExistingFileRowsByHash(db, hash);
+  if (!rows.length) return;
+
+  const inTrash = rows.filter((r) => isUnder(TRASH_DIR, r.path));
+  const inManagedNonTrash = rows.filter((r) => isUnder(MANAGED_ROOT, r.path) && !isUnder(TRASH_DIR, r.path));
+
+  // TRASH_DIR means the asset has been deleted and we're keeping the last copy for restore.
+  if (inTrash.length > 0 && inTrash.length === rows.length) {
+    const best = pickBestRow(inTrash) || pickBestRow(rows);
+    if (!best?.path) return;
+
+    db.prepare(`UPDATE assets SET status = 'trash', target_path = ?, updated_at = ? WHERE hash = ?`).run(best.path, ts, hash);
+    db.prepare(`DELETE FROM album_assets WHERE hash = ?`).run(hash);
+    insertChange('asset', hash, 'trash_fs');
+    return;
+  }
+
+  // Any file under managed root (but not _Trash) means "sorted".
+  if (inManagedNonTrash.length > 0) {
+    const best = pickBestRow(inManagedNonTrash) || pickBestRow(rows);
+    if (!best?.path) return;
+
+    db.prepare(`UPDATE assets SET status = 'sorted', target_path = ?, updated_at = ? WHERE hash = ?`).run(best.path, ts, hash);
+    insertChange('asset', hash, 'sorted_fs');
+
+    const albumName = parseAlbumNameFromManagedPath(best.path);
+    if (albumName) {
+      db.prepare(`INSERT OR IGNORE INTO albums (name, created_at, updated_at) VALUES (?, ?, ?)`).run(albumName, ts, ts);
+      db.prepare(`UPDATE albums SET updated_at = ? WHERE name = ?`).run(ts, albumName);
+      const album = db.prepare(`SELECT id FROM albums WHERE name = ?`).get(albumName);
+      const albumId = album?.id;
+      if (albumId != null) {
+        // single-folder semantics
+        db.prepare(`DELETE FROM album_assets WHERE hash = ? AND album_id <> ?`).run(hash, albumId);
+        db.prepare(`INSERT OR REPLACE INTO album_assets (album_id, hash, added_at) VALUES (?, ?, ?)`).run(albumId, hash, ts);
+        db.prepare(`UPDATE albums SET updated_at = ? WHERE id = ?`).run(ts, albumId);
+      }
+    } else {
+      // The file is under MANAGED_ROOT but not under a named album directory; clear album mapping.
+      db.prepare(`DELETE FROM album_assets WHERE hash = ?`).run(hash);
+    }
+
+    return;
+  }
+
+  // Outside managed/trash: default to inbox unless user explicitly ignored it.
+  const current = db.prepare(`SELECT status FROM assets WHERE hash = ?`).get(hash);
+  if (String(current?.status || '') === 'ignored') return;
+
+  db.prepare(`UPDATE assets SET status = 'inbox', target_path = NULL, updated_at = ? WHERE hash = ?`).run(ts, hash);
+  db.prepare(`DELETE FROM album_assets WHERE hash = ?`).run(hash);
+  insertChange('asset', hash, 'inbox_fs');
+}
+
 async function handleEnrich(ctx) {
   const cfg = await ctx.loadConfig();
   const mode = String(ctx.job?.mode || 'missing');
   const concurrency = Math.max(1, Math.min(64, Number(cfg?.tasks?.concurrency?.enrich || 4)));
   const db = getDB();
+  const reconciledHashes = new Set();
 
   const stats = {
     mode,
@@ -132,6 +271,16 @@ async function handleEnrich(ctx) {
         stats.errors++;
       }
 
+      // Filesystem-truth reconciliation: if we are scanning managed/trash, rebuild status even if unchanged.
+      if (shouldReconcileForPath(filePath)) {
+        try {
+          await reconcileAssetByFilesystem(db, hash);
+          reconciledHashes.add(hash);
+        } catch {
+          // ignore reconcile errors (keep enrich robust)
+        }
+      }
+
       stats.skipped++;
       return;
     }
@@ -214,6 +363,18 @@ async function handleEnrich(ctx) {
       insertChange('file', fileId, 'upsert');
       insertChange('asset', hash, 'upsert');
       stats.updated++;
+
+      // Filesystem-truth reconciliation (rebuild sorted/trash + album mapping).
+      // - Always reconcile the first time we see a hash in this run (to fix stale DB).
+      // - Always reconcile when scanning a file under MANAGED_ROOT/TRASH_DIR (to rebuild from filesystem).
+      if (!reconciledHashes.has(hash) || shouldReconcileForPath(filePath)) {
+        try {
+          await reconcileAssetByFilesystem(db, hash);
+          reconciledHashes.add(hash);
+        } catch {
+          // ignore reconcile errors (keep enrich robust)
+        }
+      }
 
       // Best-effort thumbnail
       const extLower = path.extname(filePath).toLowerCase();

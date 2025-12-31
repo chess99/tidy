@@ -58,7 +58,7 @@ const dbSchema = `
 
   CREATE TABLE IF NOT EXISTS file_ops (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    op TEXT NOT NULL CHECK(op IN ('move', 'trash')),
+    op TEXT NOT NULL CHECK(op IN ('move', 'trash', 'delete')),
     hash TEXT,
     file_id INTEGER,
     from_path TEXT,

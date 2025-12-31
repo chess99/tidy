@@ -34,7 +34,12 @@ export const createJob = ({ type, mode = 'missing', params = {} } = {}) =>
   api.post('/jobs', { type, mode, params }).then((res) => res.data);
 export const cancelJob = (id) => api.post(`/jobs/${id}/cancel`).then((res) => res.data);
 export const retryJob = (id) => api.post(`/jobs/${id}/retry`).then((res) => res.data);
-export const getAssets = (page = 1, limit = 50) => api.get('/assets', { params: { page, limit } }).then(res => res.data);
+export const getAssets = (page = 1, limit = 50, opts = {}) => {
+  const status = opts?.status != null ? String(opts.status) : null;
+  const params = { page, limit };
+  if (status) params.status = status;
+  return api.get('/assets', { params }).then((res) => res.data);
+};
 export const getAsset = (hash) => api.get(`/assets/${hash}`).then(res => res.data);
 export const getAssetsBatch = (hashes = []) =>
   api.get('/assets/batch', { params: { hashes: hashes.join(',') } }).then(res => res.data);

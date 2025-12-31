@@ -104,12 +104,6 @@ function validateRootOrThrow(root) {
     e.statusCode = 400;
     throw e;
   }
-  // Prevent scanning tool-managed directories.
-  if (isUnder(MANAGED_ROOT, r) || isUnder(TRASH_DIR, r)) {
-    const e = new Error('root must not be under MANAGED_ROOT/TRASH_DIR');
-    e.statusCode = 400;
-    throw e;
-  }
   return r;
 }
 

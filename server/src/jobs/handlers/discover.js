@@ -106,7 +106,6 @@ async function walkDir(ctx, root, onFile) {
       continue;
     }
     if (stat.isDirectory()) {
-      if (isUnder(MANAGED_ROOT, fullPath) || isUnder(TRASH_DIR, fullPath)) continue;
       // eslint-disable-next-line no-await-in-loop
       await walkDir(ctx, fullPath, onFile);
     } else if (stat.isFile()) {

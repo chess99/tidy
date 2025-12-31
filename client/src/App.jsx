@@ -12,6 +12,7 @@ import { MinimalScanStatus } from './components/MinimalScanStatus';
 import { FilesFilters } from './components/FilesFilters';
 import { FilesGrid } from './components/FilesGrid';
 import { AlbumsView } from './components/AlbumsView';
+import { TrashView } from './components/TrashView';
 import { AssetFacesPanel } from './components/AssetFacesPanel';
 import { AssetViewer } from './components/AssetViewer';
 import { Button } from './components/ui/button';
@@ -25,7 +26,7 @@ const queryClient = new QueryClient();
 function Main() {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [viewerOpen, setViewerOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('files'); // files | albums | admin
+  const [activeTab, setActiveTab] = useState('files'); // files | albums | trash | admin
   const [albumsViewerNav, setAlbumsViewerNav] = useState(() => ({ onPrev: undefined, onNext: undefined }));
   const [filesQuery, setFilesQuery] = useState(() => ({
     filter: localStorage.getItem('filesFilter') || 'all',
@@ -280,6 +281,7 @@ function Main() {
                 <TabsList>
                   <TabsTrigger value="files">全部文件</TabsTrigger>
                   <TabsTrigger value="albums">文件夹/归档</TabsTrigger>
+                  <TabsTrigger value="trash">回收站</TabsTrigger>
                 </TabsList>
               </Tabs>
               <Button variant="outline" onClick={() => setActiveTabSafe('admin')}>
@@ -307,6 +309,13 @@ function Main() {
         <div className="flex-1 relative flex flex-col min-w-0">
           {activeTab === 'admin' ? (
             <SystemAdminView />
+          ) : activeTab === 'trash' ? (
+            <TrashView
+              onAssetClick={(asset) => {
+                setSelectedAsset(asset);
+                filesCtrl.reset();
+              }}
+            />
           ) : activeTab === 'files' ? (
             <FilesGrid
               ref={filesGridRef}

@@ -12,6 +12,7 @@
 - `AlbumAssetsGrid.jsx`：相册内资产网格视图与虚拟化渲染编排。
 - `FilesGrid.jsx`：文件/资产浏览网格（虚拟化 + 选择）。
 - `FilesFilters.jsx`：文件筛选条件与过滤 UI。
+- `TrashView.jsx`：回收站视图（`assets.status='trash'` 列表 + 点击查看）。
 - `AssetViewer.jsx`：单资产查看（图片/视频）与操作入口。
 - `AssetThumbCard.jsx`：网格缩略卡片（预览、选择态、标记等）。
 - `ThumbPlaceholder.jsx`：缩略图占位与加载态表现。

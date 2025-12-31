@@ -104,6 +104,59 @@ function migrateDB(dbConn) {
   } catch {
     // ignore
   }
+
+  // Migrate CHECK constraints that cannot be ALTERed (SQLite): file_ops.op must include 'delete'.
+  try {
+    const row = dbConn
+      .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'file_ops'`)
+      .get();
+    const sql = String(row?.sql || '');
+    const hasTable = !!sql;
+    const hasDelete = sql.includes("'delete'") || sql.includes('"delete"');
+    if (hasTable && !hasDelete) {
+      dbConn.exec('BEGIN');
+      dbConn.exec('ALTER TABLE file_ops RENAME TO file_ops_old');
+      dbConn.exec(`
+        CREATE TABLE file_ops (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          op TEXT NOT NULL CHECK(op IN ('move', 'trash', 'delete')),
+          hash TEXT,
+          file_id INTEGER,
+          from_path TEXT,
+          to_path TEXT,
+          album_id INTEGER,
+          status TEXT NOT NULL CHECK(status IN ('pending', 'done', 'error')) DEFAULT 'pending',
+          error TEXT,
+          created_at INTEGER,
+          updated_at INTEGER,
+          FOREIGN KEY(album_id) REFERENCES albums(id) ON DELETE SET NULL
+        );
+      `);
+      dbConn.exec(`
+        INSERT INTO file_ops (id, op, hash, file_id, from_path, to_path, album_id, status, error, created_at, updated_at)
+        SELECT id, op, hash, file_id, from_path, to_path, album_id, status, error, created_at, updated_at
+        FROM file_ops_old;
+      `);
+      dbConn.exec('DROP TABLE file_ops_old');
+      dbConn.exec(`
+        CREATE INDEX IF NOT EXISTS idx_file_ops_status ON file_ops(status);
+        CREATE INDEX IF NOT EXISTS idx_file_ops_created_at ON file_ops(created_at);
+      `);
+      dbConn.exec('COMMIT');
+    } else if (hasTable) {
+      // Ensure indexes exist (older DBs may miss them).
+      dbConn.exec(`
+        CREATE INDEX IF NOT EXISTS idx_file_ops_status ON file_ops(status);
+        CREATE INDEX IF NOT EXISTS idx_file_ops_created_at ON file_ops(created_at);
+      `);
+    }
+  } catch {
+    try {
+      dbConn.exec('ROLLBACK');
+    } catch {
+      // ignore
+    }
+  }
 }
 
 function initDB() {

@@ -4,7 +4,7 @@
 
 ### 文件
 
-- `schema.js`：数据库表结构与初始化/迁移逻辑。
-- `index.js`：数据库连接与对外暴露的访问入口。
+- `schema.js`：数据库表结构（含 `file_ops(move/trash/delete)`）与初始化 DDL。
+- `index.js`：数据库连接与迁移入口（含不可 ALTER 的 CHECK 约束重建迁移）。
 
 

@@ -8,7 +8,7 @@ const express = require('express');
 const fs = require('fs-extra');
 const path = require('path');
 const { getDB } = require('../db');
-const { MANAGED_ROOT, TRASH_DIR } = require('../config');
+const { MANAGED_ROOT } = require('../config');
 
 const router = express.Router();
 
@@ -94,9 +94,8 @@ router.post('/', async (req, res) => {
 
   const albumDir = path.join(MANAGED_ROOT, sanitizeSegment(albumName));
   await fs.ensureDir(albumDir);
-  await fs.ensureDir(TRASH_DIR);
 
-  const report = { album: { id: albumId, name: albumName }, moved: 0, trashed: 0, errors: 0, messages: [] };
+  const report = { album: { id: albumId, name: albumName }, moved: 0, deleted: 0, errors: 0, messages: [] };
 
   for (const hash of hashesLimited) {
     // eslint-disable-next-line no-await-in-loop
@@ -147,7 +146,7 @@ router.post('/', async (req, res) => {
         insertChange(db, 'asset', hash, 'sorted');
         report.moved++;
 
-        // Trash duplicates (including those already under managed root but not primary)
+        // Delete duplicates (do NOT use TRASH_DIR for dedupe; TRASH_DIR is for user-deleted assets' last-copy keep).
         const dupFiles = files.filter((f) => f.id !== primary.id);
         for (const dup of dupFiles) {
           if (!dup.path) continue;
@@ -158,28 +157,31 @@ router.post('/', async (req, res) => {
             continue;
           }
 
-          const dupBase = path.basename(dup.path);
-          const trashRaw = path.join(TRASH_DIR, `${hash}_${dupBase}`);
-          // eslint-disable-next-line no-await-in-loop
-          const trashPath = await uniquePath(trashRaw);
-
-          const opTrash = db.prepare(`
-            INSERT INTO file_ops (op, hash, file_id, from_path, to_path, album_id, status, created_at, updated_at)
-            VALUES ('trash', ?, ?, ?, ?, ?, 'pending', ?, ?)
-          `).run(hash, dup.id, dup.path, trashPath, albumId, Date.now(), Date.now());
-          const opTrashId = opTrash.lastInsertRowid;
-
+          let opDelId = null;
           try {
+            const ts = Date.now();
+            const opDel = db.prepare(`
+              INSERT INTO file_ops (op, hash, file_id, from_path, to_path, album_id, status, created_at, updated_at)
+              VALUES ('delete', ?, ?, ?, NULL, ?, 'pending', ?, ?)
+            `).run(hash, dup.id, dup.path, albumId, ts, ts);
+            opDelId = opDel.lastInsertRowid;
+
             // eslint-disable-next-line no-await-in-loop
-            await fs.move(dup.path, trashPath, { overwrite: false });
+            await fs.remove(dup.path);
             db.prepare('DELETE FROM files WHERE id = ?').run(dup.id);
-            db.prepare('UPDATE file_ops SET status = ?, updated_at = ? WHERE id = ?').run('done', Date.now(), opTrashId);
+            db.prepare('UPDATE file_ops SET status = ?, updated_at = ? WHERE id = ?').run('done', Date.now(), opDelId);
             insertChange(db, 'file', dup.id, 'deleted');
-            report.trashed++;
+            report.deleted++;
           } catch (e) {
-            db.prepare('UPDATE file_ops SET status = ?, error = ?, updated_at = ? WHERE id = ?').run('error', String(e.message || e), Date.now(), opTrashId);
+            try {
+              if (opDelId != null) {
+                db.prepare('UPDATE file_ops SET status = ?, error = ?, updated_at = ? WHERE id = ?').run('error', String(e.message || e), Date.now(), opDelId);
+              }
+            } catch {
+              // ignore
+            }
             report.errors++;
-            report.messages.push(`Failed to trash dup ${dup.path}: ${String(e.message || e)}`);
+            report.messages.push(`Failed to delete dup ${dup.path}: ${String(e.message || e)}`);
           }
         }
       } catch (e) {
