@@ -511,11 +511,11 @@ function Main() {
                   <div className="grid grid-cols-3 gap-2">
                     <div className="col-span-1 font-semibold">Hash</div>
                     <div className="col-span-2">
-                      <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-col gap-2">
                         <div className="font-mono text-xs break-all text-gray-800">{selectedAsset.hash}</div>
-                        <div className="flex items-center gap-2">
-                          <Button variant="outline" size="sm" onClick={() => applyFilter({ hash: selectedAsset.hash })}>
-                            仅看
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" onClick={() => applyFilter({ hash: selectedAsset.hash })} className="h-7 text-xs flex-1">
+                            仅看同Hash
                           </Button>
                           <Button
                             variant="outline"
@@ -523,10 +523,11 @@ function Main() {
                             disabled={!canFindSimilar}
                             title={
                               canFindSimilar
-                                ? '按 pHash 相似度查找相似图片（结果展示在“全部文件”）'
+                                ? '按 pHash 相似度查找相似图片（结果展示在"全部文件"）'
                                 : '该内容暂无可用 pHash（未计算/非图片）'
                             }
                             onClick={() => applySimilarPhash(selectedAsset)}
+                            className="h-7 text-xs flex-1"
                           >
                             找相似
                           </Button>
@@ -539,14 +540,15 @@ function Main() {
 
                     <div className="col-span-1 font-semibold">Taken</div>
                     <div className="col-span-2">
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-col gap-2">
                         <div>{selectedAsset.taken_at ? new Date(selectedAsset.taken_at).toLocaleString() : '—'}</div>
                         {selectedAsset.taken_at ? (
-                          <div className="flex items-center gap-2">
+                          <div className="flex gap-2">
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => applyFilter({ from: new Date(selectedAsset.taken_at).setHours(0, 0, 0, 0) })}
+                              className="h-7 text-xs flex-1"
                             >
                               设为从
                             </Button>
@@ -554,6 +556,7 @@ function Main() {
                               variant="outline"
                               size="sm"
                               onClick={() => applyFilter({ to: new Date(selectedAsset.taken_at).setHours(23, 59, 59, 999) })}
+                              className="h-7 text-xs flex-1"
                             >
                               设为到
                             </Button>
