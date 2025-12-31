@@ -32,6 +32,11 @@ export function FilesFilters({ value, onChange }) {
   "use no memo"
   const v = value || {};
   const [extInput, setExtInput] = useState('');
+  const similarActive = v.similarKind === 'phash' && Number.isFinite(Number(v.similarToFileId));
+  const similarSeedFileId = Number.isFinite(Number(v.similarToFileId)) ? Number(v.similarToFileId) : null;
+  const similarThreshold = Number.isFinite(Number(v.similarThreshold))
+    ? Math.max(0, Math.min(32, Math.floor(Number(v.similarThreshold))))
+    : 10;
 
   const peopleQuery = useQuery({
     queryKey: ['people'],
@@ -61,7 +66,8 @@ export function FilesFilters({ value, onChange }) {
     (selectedExts.length ? 1 : 0) +
     (v.pathContains ? 1 : 0) +
     (selectedPeopleIds.length ? 1 : 0) +
-    (v.hash ? 1 : 0);
+    (v.hash ? 1 : 0) +
+    (similarActive ? 1 : 0);
 
   const toggleExt = (raw) => {
     const e = normExt(raw);
@@ -107,6 +113,9 @@ export function FilesFilters({ value, onChange }) {
                 people: undefined,
                 pathContains: '',
                 hash: '',
+                similarKind: null,
+                similarToFileId: null,
+                similarThreshold: 10,
               })
             }
           >
@@ -389,6 +398,46 @@ export function FilesFilters({ value, onChange }) {
               </Button>
             ) : null}
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-muted-foreground">相似（pHash）</div>
+          {similarActive ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] text-muted-foreground">
+                  seed file_id：<span className="font-mono">{String(similarSeedFileId)}</span>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onChange({ ...v, similarKind: null, similarToFileId: null })}
+                  title="清除相似筛选"
+                >
+                  清除
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={0}
+                  max={32}
+                  value={similarThreshold}
+                  onChange={(e) => onChange({ ...v, similarThreshold: Number(e.target.value) || 0 })}
+                  className="w-full"
+                />
+                <div className="text-xs font-semibold tabular-nums w-7 text-right">{similarThreshold}</div>
+              </div>
+
+              <div className="text-[11px] text-muted-foreground leading-4">
+                阈值越小越相似（0=完全一致，32=最宽松）。
+              </div>
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground italic">未开启（在详情面板点“找相似”）</div>
+          )}
         </div>
       </div>
     </div>

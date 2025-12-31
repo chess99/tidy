@@ -24,6 +24,7 @@ import { useFilesGridController } from './hooks/useFilesGridController';
 import { SystemAdminView } from './components/SystemAdminView';
 
 const queryClient = new QueryClient();
+const DEFAULT_SIMILAR_THRESHOLD = 10;
 
 function Main() {
   const [selectedAsset, setSelectedAsset] = useState(null);
@@ -43,6 +44,9 @@ function Main() {
     to: undefined,
     pathContains: '',
     hash: '',
+    similarKind: null, // 'phash' | null
+    similarToFileId: null, // number | null (seed file_id)
+    similarThreshold: DEFAULT_SIMILAR_THRESHOLD, // 0..32
   }));
   const qc = useQueryClient();
   const selectedAssetRef = useRef(null);
@@ -220,6 +224,33 @@ function Main() {
     setFilesQuery((prev) => ({ ...prev, ...patch }));
   };
 
+  const pickSimilarSeedFileId = (asset) => {
+    const files = Array.isArray(asset?.files) ? asset.files : [];
+    for (const f of files) {
+      if (f?.phash_status !== 'done') continue;
+      if (!f?.phash) continue;
+      const id = Number(f.id);
+      if (Number.isFinite(id)) return id;
+    }
+    return null;
+  };
+
+  const applySimilarPhash = (asset) => {
+    const seedFileId = pickSimilarSeedFileId(asset);
+    if (!Number.isFinite(seedFileId)) return;
+    setActiveTabSafe('files');
+    setFilesQuery((prev) => ({
+      ...prev,
+      similarKind: 'phash',
+      similarToFileId: seedFileId,
+      similarThreshold: Number.isFinite(Number(prev?.similarThreshold))
+        ? Math.max(0, Math.min(32, Math.floor(Number(prev.similarThreshold))))
+        : DEFAULT_SIMILAR_THRESHOLD,
+      // Similar search and hash-exact are mutually exclusive in practice.
+      hash: '',
+    }));
+  };
+
   const dirPrefixOf = (p) => {
     if (!p) return '';
     const s = String(p);
@@ -273,6 +304,9 @@ function Main() {
       return null;
     }
   })();
+
+  const similarSeedFileId = pickSimilarSeedFileId(selectedAsset);
+  const canFindSimilar = Number.isFinite(similarSeedFileId);
 
   return (
     <div className="flex h-screen flex-col">
@@ -479,9 +513,24 @@ function Main() {
                     <div className="col-span-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="font-mono text-xs break-all text-gray-800">{selectedAsset.hash}</div>
-                        <Button variant="outline" size="sm" onClick={() => applyFilter({ hash: selectedAsset.hash })}>
-                          仅看
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" size="sm" onClick={() => applyFilter({ hash: selectedAsset.hash })}>
+                            仅看
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={!canFindSimilar}
+                            title={
+                              canFindSimilar
+                                ? '按 pHash 相似度查找相似图片（结果展示在“全部文件”）'
+                                : '该内容暂无可用 pHash（未计算/非图片）'
+                            }
+                            onClick={() => applySimilarPhash(selectedAsset)}
+                          >
+                            找相似
+                          </Button>
+                        </div>
                       </div>
                     </div>
 

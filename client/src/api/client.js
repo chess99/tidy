@@ -45,7 +45,23 @@ export const getAssetsBatch = (hashes = []) =>
   api.get('/assets/batch', { params: { hashes: hashes.join(',') } }).then(res => res.data);
 
 export const getFiles = (page = 1, limit = 50, opts = {}) => {
-  const { filter = 'all', organized, from, to, hasDup, pathContains, hash, exts, people, hasPeople, personCountMin, personCountMax } = opts || {};
+  const {
+    filter = 'all',
+    organized,
+    from,
+    to,
+    hasDup,
+    pathContains,
+    hash,
+    exts,
+    people,
+    hasPeople,
+    personCountMin,
+    personCountMax,
+    similarKind,
+    similarToFileId,
+    similarThreshold,
+  } = opts || {};
   const params = { page, limit, filter };
   if (organized != null) params.organized = organized;
   if (hasDup) params.hasDup = hasDup;
@@ -58,10 +74,34 @@ export const getFiles = (page = 1, limit = 50, opts = {}) => {
   if (hash) params.hash = hash;
   if (Array.isArray(exts) && exts.length) params.exts = exts.join(',');
   if (Array.isArray(people) && people.length) params.people = people.join(',');
+  if (similarKind === 'phash') {
+    const fid = Number(similarToFileId);
+    if (Number.isFinite(fid)) {
+      params.similarKind = 'phash';
+      params.similarToFileId = Math.trunc(fid);
+      const th = Number(similarThreshold);
+      if (Number.isFinite(th)) params.similarThreshold = Math.max(0, Math.min(32, Math.trunc(th)));
+    }
+  }
   return api.get('/files', { params }).then(res => res.data);
 };
 export const getFilesDateIndex = (filter = 'all', granularity = 'month', opts = {}) => {
-  const { organized, from, to, hasDup, pathContains, hash, exts, people, hasPeople, personCountMin, personCountMax } = opts || {};
+  const {
+    organized,
+    from,
+    to,
+    hasDup,
+    pathContains,
+    hash,
+    exts,
+    people,
+    hasPeople,
+    personCountMin,
+    personCountMax,
+    similarKind,
+    similarToFileId,
+    similarThreshold,
+  } = opts || {};
   const params = { filter, granularity };
   if (organized != null) params.organized = organized;
   if (hasDup) params.hasDup = hasDup;
@@ -74,6 +114,15 @@ export const getFilesDateIndex = (filter = 'all', granularity = 'month', opts = 
   if (hash) params.hash = hash;
   if (Array.isArray(exts) && exts.length) params.exts = exts.join(',');
   if (Array.isArray(people) && people.length) params.people = people.join(',');
+  if (similarKind === 'phash') {
+    const fid = Number(similarToFileId);
+    if (Number.isFinite(fid)) {
+      params.similarKind = 'phash';
+      params.similarToFileId = Math.trunc(fid);
+      const th = Number(similarThreshold);
+      if (Number.isFinite(th)) params.similarThreshold = Math.max(0, Math.min(32, Math.trunc(th)));
+    }
+  }
   return api.get('/files/date-index', { params }).then(res => res.data);
 };
 export const getFilesBatch = (ids = []) =>

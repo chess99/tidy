@@ -7,6 +7,7 @@
 const express = require('express');
 const path = require('path');
 const { getDB } = require('../db');
+const { hamming64 } = require('../scanner/phash');
 
 const router = express.Router();
 
@@ -51,6 +52,14 @@ function parseIntParam(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return null;
   return Math.trunc(n);
+}
+
+function clampIntParam(v, { min, max, fallback }) {
+  const n = parseIntParam(v);
+  if (!Number.isFinite(n)) return fallback;
+  if (n < min) return min;
+  if (n > max) return max;
+  return n;
 }
 
 function pad2(n) {
@@ -104,6 +113,68 @@ function makeInClause(values) {
   const params = values.slice();
   const clause = `(${params.map(() => '?').join(',')})`;
   return { clause, params };
+}
+
+function computeSimilarFileIdsByPhash(db, { seedFileId, threshold, maxIds = 2000 } = {}) {
+  const seedId = Number(seedFileId);
+  if (!Number.isFinite(seedId)) return [];
+  const th = clampIntParam(threshold, { min: 0, max: 32, fallback: 10 });
+
+  const seed = db
+    .prepare(
+      `
+      SELECT phash
+      FROM files
+      WHERE id = ?
+        AND missing = 0
+        AND phash IS NOT NULL
+        AND phash_status = 'done'
+      LIMIT 1
+      `
+    )
+    .get(seedId);
+  const seedPhash = seed?.phash ? String(seed.phash) : '';
+  if (!seedPhash) return [];
+
+  const b1 = seedPhash.slice(0, 4);
+  const b2 = seedPhash.slice(4, 8);
+  const b3 = seedPhash.slice(8, 12);
+  const b4 = seedPhash.slice(12, 16);
+
+  const rows = db
+    .prepare(
+      `
+      SELECT f.id, f.phash
+      FROM files f
+      LEFT JOIN assets a ON a.hash = f.hash
+      WHERE f.missing = 0
+        AND f.phash IS NOT NULL
+        AND f.phash_status = 'done'
+        AND (a.status IS NULL OR a.status != 'trash')
+        AND COALESCE(a.mime_type, f.mime_guess) LIKE 'image/%'
+        AND (
+          substr(f.phash, 1, 4) = ?
+          OR substr(f.phash, 5, 4) = ?
+          OR substr(f.phash, 9, 4) = ?
+          OR substr(f.phash, 13, 4) = ?
+        )
+      LIMIT 5000
+      `
+    )
+    .all(b1, b2, b3, b4);
+
+  const out = [];
+  for (const r of rows) {
+    const id = Number(r?.id);
+    if (!Number.isFinite(id)) continue;
+    const ph = r?.phash ? String(r.phash) : '';
+    if (!ph) continue;
+    const d = hamming64(seedPhash, ph);
+    if (d == null || d > th) continue;
+    out.push(id);
+    if (out.length >= maxIds) break;
+  }
+  return out;
 }
 
 function toFileRow(r) {
@@ -163,9 +234,18 @@ router.get('/date-index', (req, res) => {
   const fromMs = req.query.from != null ? Number(req.query.from) : null;
   const toMs = req.query.to != null ? Number(req.query.to) : null;
   const people = parseCsvParam(req.query.people).map(n => parseInt(n)).filter(n => Number.isFinite(n));
+  const similarKind = req.query.similarKind != null ? String(req.query.similarKind) : null;
+  const similarToFileId = parseIntParam(req.query.similarToFileId);
+  const similarThreshold = clampIntParam(req.query.similarThreshold, { min: 0, max: 32, fallback: 10 });
 
   if (granularity !== 'month' && granularity !== 'day') {
     return res.status(400).json({ error: 'Invalid granularity' });
+  }
+  if (similarKind && similarKind !== 'phash') {
+    return res.status(400).json({ error: 'Invalid similarKind' });
+  }
+  if (similarKind === 'phash' && !Number.isFinite(similarToFileId)) {
+    return res.status(400).json({ error: 'similarToFileId is required for similarKind=phash' });
   }
 
   let where = '';
@@ -247,6 +327,20 @@ router.get('/date-index', (req, res) => {
     whereParams.push(pid);
   }
 
+  if (similarKind === 'phash') {
+    const ids = computeSimilarFileIdsByPhash(db, {
+      seedFileId: similarToFileId,
+      threshold: similarThreshold,
+      maxIds: 2000,
+    });
+    if (ids.length === 0) {
+      return res.json({ total: 0, filter, granularity, points: [] });
+    }
+    const { clause, params } = makeInClause(ids);
+    where += ` AND f.id IN ${clause}`;
+    whereParams.push(...params);
+  }
+
   const totalQuery = `
     SELECT COUNT(*) as count
     FROM files f
@@ -299,6 +393,15 @@ router.get('/', (req, res) => {
   const fromMs = req.query.from != null ? Number(req.query.from) : null;
   const toMs = req.query.to != null ? Number(req.query.to) : null;
   const people = parseCsvParam(req.query.people).map(n => parseInt(n)).filter(n => Number.isFinite(n));
+  const similarKind = req.query.similarKind != null ? String(req.query.similarKind) : null;
+  const similarToFileId = parseIntParam(req.query.similarToFileId);
+  const similarThreshold = clampIntParam(req.query.similarThreshold, { min: 0, max: 32, fallback: 10 });
+  if (similarKind && similarKind !== 'phash') {
+    return res.status(400).json({ error: 'Invalid similarKind' });
+  }
+  if (similarKind === 'phash' && !Number.isFinite(similarToFileId)) {
+    return res.status(400).json({ error: 'similarToFileId is required for similarKind=phash' });
+  }
 
   let where = '';
   let whereParams = [];
@@ -398,6 +501,24 @@ router.get('/', (req, res) => {
   for (const pid of people) {
     where += ` AND f.hash IN (SELECT hash FROM faces WHERE person_id = ?)`;
     whereParams.push(pid);
+  }
+
+  if (similarKind === 'phash') {
+    const ids = computeSimilarFileIdsByPhash(db, {
+      seedFileId: similarToFileId,
+      threshold: similarThreshold,
+      maxIds: 2000,
+    });
+    if (ids.length === 0) {
+      return res.json({
+        data: [],
+        pagination: { page, limit, total: 0 },
+        applied: { filter },
+      });
+    }
+    const { clause, params } = makeInClause(ids);
+    where += ` AND f.id IN ${clause}`;
+    whereParams.push(...params);
   }
 
   // Optimize dup_count: if we are filtering by hasDup=1, we know dup_count > 1.
