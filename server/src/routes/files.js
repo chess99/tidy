@@ -184,6 +184,8 @@ router.get('/date-index', (req, res) => {
 
   // Extend WHERE with additional filters (mirror /files list route)
   if (!where) where = 'WHERE 1=1';
+  // Exclude deleted files (status = 'trash') from all file views
+  where += ` AND (a.status IS NULL OR a.status != 'trash')`;
   if (organized === 1) {
     where += ` AND f.hash IN (${organizedHashesQuery})`;
   } else if (organized === 0) {
@@ -314,6 +316,8 @@ router.get('/', (req, res) => {
 
   // Extend WHERE with additional filters.
   if (!where) where = 'WHERE 1=1';
+  // Exclude deleted files (status = 'trash') from all file views
+  where += ` AND (a.status IS NULL OR a.status != 'trash')`;
 
   if (organized === 1) {
     where += ` AND f.hash IN (${organizedHashesQuery})`;
