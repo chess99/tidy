@@ -15,6 +15,10 @@ app.use(express.json());
 // Initialize DB
 initDB();
 
+// Start background job runner (DB-backed task queue).
+const { startJobRunner } = require('./src/jobs/runner');
+startJobRunner({ pollIntervalMs: 500 });
+
 // Log effective config (helps cross-platform setup).
 console.log('[config] WORK_ROOT  =', WORK_ROOT);
 console.log('[config] MANAGED_ROOT=', MANAGED_ROOT);
@@ -26,9 +30,8 @@ console.log('[config] PREVIEW_DIR=', PREVIEW_DIR);
 console.log('[config] POSTER_DIR =', POSTER_DIR);
 
 // Routes
-const scanRoutes = require('./src/routes/scan');
+const jobsRoutes = require('./src/routes/jobs');
 const assetRoutes = require('./src/routes/assets');
-const syncRoutes = require('./src/routes/sync');
 const fileRoutes = require('./src/routes/files');
 const changeRoutes = require('./src/routes/changes');
 const albumRoutes = require('./src/routes/albums');
@@ -38,11 +41,10 @@ const configRoutes = require('./src/routes/config');
 const libraryRoutes = require('./src/routes/library');
 const faceRoutes = require('./src/routes/faces');
 
-app.use('/api/scan', scanRoutes);
+app.use('/api/jobs', jobsRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/library', libraryRoutes);
 app.use('/api/assets', assetRoutes);
-app.use('/api/sync', syncRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/changes', changeRoutes);
 app.use('/api/albums', albumRoutes);

@@ -7,3 +7,4 @@ onnxruntime==1.20.1
 insightface==0.7.3
 
 
+

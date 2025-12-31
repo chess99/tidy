@@ -6,7 +6,9 @@ const { DATA_DIR, WORK_ROOT, MANAGED_ROOT, TRASH_DIR } = require('./config');
 // server/data/config.json:
 // {
 //   scanRoots: [{ root: string, enabled: boolean }],
-//   scanType: { exts: string[], includeNoExt: boolean }
+//   scanType: { exts: string[], includeNoExt: boolean },
+//   scan: { excludeGlobs: string[], minFileSizeBytes: number },
+//   tasks: { concurrency: { discover?: number, enrich?: number, faces?: number, thumbs?: number }, autoTrigger: { afterDiscover: string[] } }
 // }
 
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
@@ -26,6 +28,31 @@ const DEFAULT_SCAN_EXTS = [
 const DEFAULT_CONFIG = {
   scanRoots: DEFAULT_SCAN_ROOTS,
   scanType: { exts: DEFAULT_SCAN_EXTS, includeNoExt: false },
+  scan: {
+    excludeGlobs: [
+      '**/.git/**',
+      '**/node_modules/**',
+      '**/.DS_Store',
+      '**/.stversions/**',
+      '**/.stfolder/**',
+      '**/#recycle/**',
+      '**/#snapshot/**',
+      '**/@eaDir/**',
+      '**/.@__thumb/**',
+    ],
+    minFileSizeBytes: 0,
+  },
+  tasks: {
+    concurrency: {
+      discover: 1,
+      enrich: 4,
+      faces: 1,
+      thumbs: 1,
+    },
+    autoTrigger: {
+      afterDiscover: ['enrich'],
+    },
+  },
 };
 
 function abs(p) {
@@ -124,6 +151,61 @@ function dedupeRoots(items) {
   return out;
 }
 
+function normalizeStringList(list, { maxItems = 200, maxLen = 300 } = {}) {
+  const raw = Array.isArray(list) ? list : [];
+  const out = [];
+  const seen = new Set();
+  for (const it of raw) {
+    const s = String(it ?? '').trim();
+    if (!s) continue;
+    if (s.length > maxLen) continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
+function normalizeScanOptions(scan) {
+  const excludeGlobs = normalizeStringList(scan?.excludeGlobs, { maxItems: 200, maxLen: 300 });
+  const minRaw = scan?.minFileSizeBytes ?? 0;
+  const minN = Number(minRaw);
+  const minFileSizeBytes = Number.isFinite(minN) && minN >= 0 ? Math.trunc(minN) : 0;
+  return { excludeGlobs, minFileSizeBytes };
+}
+
+function normalizeConcurrency(concurrency) {
+  const c = concurrency || {};
+  const pick = (k, fallback) => {
+    const n = Number(c?.[k]);
+    if (!Number.isFinite(n)) return fallback;
+    const i = Math.trunc(n);
+    if (i < 1) return 1;
+    if (i > 64) return 64;
+    return i;
+  };
+  return {
+    discover: pick('discover', DEFAULT_CONFIG.tasks.concurrency.discover),
+    enrich: pick('enrich', DEFAULT_CONFIG.tasks.concurrency.enrich),
+    faces: pick('faces', DEFAULT_CONFIG.tasks.concurrency.faces),
+    thumbs: pick('thumbs', DEFAULT_CONFIG.tasks.concurrency.thumbs),
+  };
+}
+
+function normalizeAutoTrigger(autoTrigger) {
+  return {
+    afterDiscover: normalizeStringList(autoTrigger?.afterDiscover, { maxItems: 20, maxLen: 40 }),
+  };
+}
+
+function normalizeTasks(tasks) {
+  return {
+    concurrency: normalizeConcurrency(tasks?.concurrency),
+    autoTrigger: normalizeAutoTrigger(tasks?.autoTrigger),
+  };
+}
+
 async function loadConfig() {
   try {
     const exists = await fs.pathExists(CONFIG_FILE);
@@ -137,7 +219,9 @@ async function loadConfig() {
     // No legacy compat: validate strictly. If invalid, reset to defaults (demo-stage safety).
     const scanRoots = dedupeRoots(json?.scanRoots);
     const scanType = normalizeScanType(json?.scanType);
-    return { scanRoots, scanType };
+    const scan = normalizeScanOptions(json?.scan || DEFAULT_CONFIG.scan);
+    const tasks = normalizeTasks(json?.tasks || DEFAULT_CONFIG.tasks);
+    return { scanRoots, scanType, scan, tasks };
   } catch {
     await saveConfig(DEFAULT_CONFIG);
     return { ...DEFAULT_CONFIG };
@@ -147,11 +231,13 @@ async function loadConfig() {
 async function saveConfig(cfg) {
   const scanRoots = dedupeRoots(cfg?.scanRoots);
   const scanType = normalizeScanType(cfg?.scanType);
+  const scan = normalizeScanOptions(cfg?.scan || DEFAULT_CONFIG.scan);
+  const tasks = normalizeTasks(cfg?.tasks || DEFAULT_CONFIG.tasks);
   await fs.ensureDir(path.dirname(CONFIG_FILE));
   const tmp = CONFIG_FILE + '.tmp';
-  await fs.writeFile(tmp, JSON.stringify({ scanRoots, scanType }, null, 2), 'utf8');
+  await fs.writeFile(tmp, JSON.stringify({ scanRoots, scanType, scan, tasks }, null, 2), 'utf8');
   await fs.move(tmp, CONFIG_FILE, { overwrite: true });
-  return { scanRoots, scanType };
+  return { scanRoots, scanType, scan, tasks };
 }
 
 async function setScanRoots(scanRoots) {
@@ -205,6 +291,18 @@ async function setScanType(scanType) {
   return await saveConfig({ ...cfg, scanType: st });
 }
 
+async function setScanOptions(scan) {
+  const cfg = await loadConfig();
+  const next = normalizeScanOptions(scan);
+  return await saveConfig({ ...cfg, scan: next });
+}
+
+async function setTaskSettings(tasks) {
+  const cfg = await loadConfig();
+  const next = normalizeTasks(tasks);
+  return await saveConfig({ ...cfg, tasks: next });
+}
+
 function getEnabledRoots(cfg) {
   const list = Array.isArray(cfg?.scanRoots) ? cfg.scanRoots : [];
   return list.filter((r) => r && r.enabled).map((r) => r.root);
@@ -219,6 +317,8 @@ module.exports = {
   setScanRootEnabled,
   removeScanRoot,
   setScanType,
+  setScanOptions,
+  setTaskSettings,
   getEnabledRoots,
   validateRootOrThrow,
   normalizeExt,

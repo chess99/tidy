@@ -8,6 +8,8 @@ const {
   setScanRootEnabled,
   removeScanRoot,
   setScanType,
+  setScanOptions,
+  setTaskSettings,
   validateRootOrThrow,
 } = require('../configStore');
 
@@ -20,10 +22,10 @@ router.get('/', async (req, res) => {
   try {
     const cfg = await loadConfig();
     res.json({
-      scan: {
-        scanRoots: cfg.scanRoots,
-        scanType: cfg.scanType,
-      },
+      scan: cfg.scan,
+      scanRoots: cfg.scanRoots,
+      scanType: cfg.scanType,
+      tasks: cfg.tasks,
       workspace: { WORK_ROOT, MANAGED_ROOT, TRASH_DIR, DATA_DIR, DB_PATH, THUMB_DIR },
     });
   } catch (e) {
@@ -90,6 +92,28 @@ router.put('/scan-type', async (req, res) => {
     const scanType = req.body || {};
     const cfg = await setScanType(scanType);
     res.json({ scanType: cfg.scanType });
+  } catch (e) {
+    res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
+  }
+});
+
+// Update scan options (excludeGlobs, minFileSizeBytes)
+router.put('/scan-options', async (req, res) => {
+  try {
+    const scan = req.body || {};
+    const cfg = await setScanOptions(scan);
+    res.json({ scan: cfg.scan });
+  } catch (e) {
+    res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
+  }
+});
+
+// Update task settings (concurrency, autoTrigger)
+router.put('/tasks', async (req, res) => {
+  try {
+    const tasks = req.body || {};
+    const cfg = await setTaskSettings(tasks);
+    res.json({ tasks: cfg.tasks });
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
   }

@@ -1,10 +1,9 @@
 import { QueryClient, QueryClientProvider, useMutation, useQueryClient } from '@tanstack/react-query';
-import { RefreshCw, Trash2, X, FolderCheck } from 'lucide-react';
+import { Trash2, X, FolderCheck } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { apiUrl, getAsset, getAssetsBatch, getFiles, getFilesBatch, scanPath, syncChanges, updateAssetStatus } from './api/client';
+import { apiUrl, getAsset, getAssetsBatch, getFiles, getFilesBatch, updateAssetStatus } from './api/client';
 import { MinimalScanStatus } from './components/MinimalScanStatus';
-import { ScanStatusSidebar } from './components/ScanStatusSidebar';
-import { ConfigView } from './components/ConfigView';
+import { JobsStatusSidebar } from './components/JobsStatusSidebar';
 import { FilesFilters } from './components/FilesFilters';
 import { FilesGrid } from './components/FilesGrid';
 import { AlbumsView } from './components/AlbumsView';
@@ -14,13 +13,16 @@ import { Button } from './components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
 import { GRID_COLUMNS } from './utils/gridLayout';
 import { useFilesGridController } from './hooks/useFilesGridController';
+import { TasksView } from './components/TasksView';
+import { SettingsView } from './components/SettingsView';
 
 const queryClient = new QueryClient();
 
 function Main() {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [viewerOpen, setViewerOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('config'); // config | files | albums
+  const [activeTab, setActiveTab] = useState('tasks'); // tasks | settings | files | albums
+  const [settingsAnchor, setSettingsAnchor] = useState(null);
   const [albumsViewerNav, setAlbumsViewerNav] = useState(() => ({ onPrev: undefined, onNext: undefined }));
   const [filesQuery, setFilesQuery] = useState(() => ({
     filter: localStorage.getItem('filesFilter') || 'all',
@@ -57,6 +59,7 @@ function Main() {
 
   const setActiveTabSafe = (nextTab) => {
     setActiveTab(nextTab);
+    if (nextTab !== 'settings') setSettingsAnchor(null);
     if (nextTab !== 'files') {
       filesCtrl.reset();
     }
@@ -64,22 +67,6 @@ function Main() {
       setAlbumsViewerNav({ onPrev: undefined, onNext: undefined });
     }
   };
-
-  const scanMutation = useMutation({
-    mutationFn: scanPath,
-    onSuccess: () => {
-      // Trigger polling effectively by invalidating (though polling is set in ScanProgress)
-      qc.invalidateQueries(['scanStatus']);
-    }
-  });
-
-  const syncMutation = useMutation({
-    mutationFn: syncChanges,
-    onSuccess: (data) => {
-      alert(`Sync Complete!\nMoved: ${data.moved}\nDeleted: ${data.deleted}`);
-      qc.invalidateQueries(['assets']);
-    }
-  });
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ hash, status }) => updateAssetStatus(hash, status),
@@ -287,45 +274,44 @@ function Main() {
         <div className="flex gap-2">
           <Tabs value={activeTab} onValueChange={setActiveTabSafe}>
             <TabsList>
-              <TabsTrigger value="config">配置&扫描</TabsTrigger>
+              <TabsTrigger value="tasks">任务队列</TabsTrigger>
+              <TabsTrigger value="settings">设置</TabsTrigger>
               <TabsTrigger value="files">全部文件</TabsTrigger>
               <TabsTrigger value="albums">文件夹/归档</TabsTrigger>
             </TabsList>
           </Tabs>
-          <Button
-            variant="secondary"
-            onClick={() => syncMutation.mutate()}
-            disabled={syncMutation.isPending}
-          >
-            <RefreshCw size={14} /> 同步变更
-          </Button>
         </div>
       </header>
 
       {/* {activeTab === 'config' ? <ScanProgress /> : null} REMOVED */}
       
       <div className="flex-1 flex overflow-hidden relative">
-        {/* Floating Minimal Status for non-config pages */}
-        {activeTab !== 'config' && <MinimalScanStatus />}
+        {/* Floating Minimal Status for non-task pages */}
+        {activeTab !== 'tasks' && <MinimalScanStatus />}
 
         {activeTab === 'files' ? (
           <FilesFilters value={filesQuery} onChange={setFilesQuery} />
         ) : null}
 
         <div className="flex-1 relative flex flex-col min-w-0">
-          {activeTab === 'config' ? (
+          {activeTab === 'tasks' ? (
             <div className="flex h-full">
               <div className="flex-1 overflow-y-auto">
-                <ConfigView
-                  onScan={() => scanMutation.mutate({})}
-                  onAfterClear={() => {
-                    qc.invalidateQueries({ queryKey: ['files'] });
-                    qc.invalidateQueries({ queryKey: ['assets'] });
-                    qc.invalidateQueries({ queryKey: ['albums'] });
+                <TasksView
+                  onJumpSettings={(anchor) => {
+                    setSettingsAnchor(anchor || null);
+                    setActiveTabSafe('settings');
                   }}
                 />
               </div>
-              <ScanStatusSidebar className="w-80 border-l bg-gray-50" />
+              <JobsStatusSidebar className="w-80 border-l bg-gray-50" />
+            </div>
+          ) : activeTab === 'settings' ? (
+            <div className="flex h-full">
+              <div className="flex-1 overflow-y-auto">
+                <SettingsView anchor={settingsAnchor} />
+              </div>
+              <JobsStatusSidebar className="w-80 border-l bg-gray-50" />
             </div>
           ) : activeTab === 'files' ? (
             <FilesGrid
@@ -348,7 +334,7 @@ function Main() {
           )}
         </div>
 
-        {selectedAsset && activeTab !== 'config' && (
+        {selectedAsset && activeTab !== 'tasks' && activeTab !== 'settings' && (
           <aside className="w-96 bg-white border-l shadow-xl z-20 flex flex-col h-full">
             <div className="p-4 border-b flex justify-between items-center bg-gray-50">
               <h2 className="font-bold text-gray-700">详情</h2>

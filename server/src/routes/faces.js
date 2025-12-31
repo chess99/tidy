@@ -1,55 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const { getDB } = require('../db');
-const scanner = require('../scanner');
-const { reclusterPeople } = require('../services/reclusterPeople');
-
-// Trigger face scan
-router.post('/scan', (req, res) => {
-  if (scanner.isScanning) {
-    return res.status(409).json({ error: 'Scan in progress' });
-  }
-  // Run in background
-  scanner.scanFaces().catch(console.error);
-  res.json({ success: true, message: 'Face scan started' });
-});
-
-// Reset face scan marker so images are eligible for scanning again
-router.post('/reset-scan-marker', (req, res) => {
-  try {
-    const db = getDB();
-    const clearFaces = !!req.body?.clearFaces;
-    const clearPeople = !!req.body?.clearPeople;
-    const now = Date.now();
-
-    const tx = db.transaction(() => {
-      const r = db.prepare('UPDATE assets SET face_scanned_at = NULL').run();
-      if (clearFaces) db.prepare('DELETE FROM faces').run();
-      if (clearPeople) db.prepare('DELETE FROM people').run();
-      // best-effort bump assets.updated_at so UI cache busting can notice changes later if needed
-      db.prepare('UPDATE assets SET updated_at = COALESCE(updated_at, ?)').run(now);
-      return { assetsReset: r.changes, clearFaces, clearPeople };
-    });
-
-    res.json({ success: true, ...tx() });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Recluster all faces into people (DBSCAN cosine distance)
-router.post('/recluster', (req, res) => {
-  try {
-    const db = getDB();
-    const eps = req.body?.eps != null ? Number(req.body.eps) : undefined;
-    const minSamples = req.body?.minSamples != null ? Number(req.body.minSamples) : undefined;
-
-    const result = reclusterPeople(db, { eps, minSamples });
-    res.json({ success: true, result });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // Merge one person into another: moves all faces from :id -> intoPersonId, deletes source person
 router.post('/people/:id/merge', (req, res) => {

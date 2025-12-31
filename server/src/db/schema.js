@@ -120,6 +120,36 @@ const dbSchema = `
   CREATE INDEX IF NOT EXISTS idx_asset_tags_tag ON asset_tags(tag_id);
   CREATE INDEX IF NOT EXISTS idx_faces_hash ON faces(hash);
   CREATE INDEX IF NOT EXISTS idx_faces_person_id ON faces(person_id);
+
+  -- Jobs (task queue / execution log)
+  CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'finished', 'failed', 'cancelled', 'interrupted')) DEFAULT 'queued',
+    params_json TEXT,
+    progress_json TEXT,
+    result_json TEXT,
+    last_error TEXT,
+    cancel_requested INTEGER DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    started_at INTEGER,
+    finished_at INTEGER,
+    heartbeat_at INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS job_checkpoints (
+    job_id INTEGER NOT NULL,
+    key TEXT NOT NULL,
+    value_json TEXT,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (job_id, key),
+    FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_jobs_status_created ON jobs(status, created_at);
+  CREATE INDEX IF NOT EXISTS idx_jobs_heartbeat ON jobs(heartbeat_at);
 `;
 
 module.exports = dbSchema;

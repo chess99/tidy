@@ -20,10 +20,14 @@ const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
-// Scan: optionally pass a root (absolute path) to scan.
-export const scanPath = ({ root } = {}) => api.post('/scan', root ? { root } : {});
-export const getScanStatus = () => api.get('/scan/status').then(res => res.data);
-export const rebuildThumbs = ({ mode = 'all' } = {}) => api.post('/scan/thumbs/rebuild', { mode }).then((res) => res.data);
+// Jobs (task queue)
+export const listJobs = ({ limit = 50, offset = 0, status, type } = {}) =>
+  api.get('/jobs', { params: { limit, offset, status, type } }).then((res) => res.data);
+export const getJob = (id) => api.get(`/jobs/${id}`).then((res) => res.data);
+export const createJob = ({ type, mode = 'missing', params = {} } = {}) =>
+  api.post('/jobs', { type, mode, params }).then((res) => res.data);
+export const cancelJob = (id) => api.post(`/jobs/${id}/cancel`).then((res) => res.data);
+export const retryJob = (id) => api.post(`/jobs/${id}/retry`).then((res) => res.data);
 export const getAssets = (page = 1, limit = 50) => api.get('/assets', { params: { page, limit } }).then(res => res.data);
 export const getAsset = (hash) => api.get(`/assets/${hash}`).then(res => res.data);
 export const getAssetsBatch = (hashes = []) =>
@@ -77,6 +81,10 @@ export const removeScanRoot = ({ root, clearDb = false }) =>
   api.delete('/config/scan-root', { data: { root, clearDb: !!clearDb } }).then((res) => res.data);
 export const setScanType = ({ exts = [], includeNoExt = false }) =>
   api.put('/config/scan-type', { exts, includeNoExt: !!includeNoExt }).then((res) => res.data);
+export const setScanOptions = ({ excludeGlobs = [], minFileSizeBytes = 0 } = {}) =>
+  api.put('/config/scan-options', { excludeGlobs, minFileSizeBytes }).then((res) => res.data);
+export const setTaskSettings = ({ concurrency = {}, autoTrigger = {} } = {}) =>
+  api.put('/config/tasks', { concurrency, autoTrigger }).then((res) => res.data);
 
 export const clearLibraryByRoot = ({ root, dryRun = false }) => api.post('/library/clear', { root, dryRun }).then((res) => res.data);
 
@@ -97,18 +105,13 @@ export const getAssetTags = (hash) => api.get(`/tags/asset/${hash}`).then(res =>
 export const addAssetTag = (hash, tagId) => api.post(`/tags/asset/${hash}`, { tagId }).then(res => res.data);
 export const removeAssetTag = (hash, tagId) => api.delete(`/tags/asset/${hash}/${tagId}`).then(res => res.data);
 
-// Faces
+// Faces (data management; scanning/recluster/reset are jobs)
 export const getFaces = (hash) => api.get(`/faces/asset/${hash}`).then(res => res.data);
 export const getPeople = () => api.get(`/faces/people`).then(res => res.data);
 export const createPerson = (name) => api.post(`/faces/people`, { name }).then(res => res.data);
 export const renamePerson = (personId, name) => api.patch(`/faces/people/${personId}`, { name }).then((res) => res.data);
 export const updateFace = (id, { person_id }) => api.put(`/faces/${id}`, { person_id }).then(res => res.data);
 export const createPersonFromFace = (faceId, name) => api.post(`/faces/create-from-face`, { face_id: faceId, name }).then(res => res.data);
-export const scanFaces = () => api.post(`/faces/scan`).then(res => res.data);
-export const resetFaceScanMarker = ({ clearFaces = false, clearPeople = false } = {}) =>
-  api.post(`/faces/reset-scan-marker`, { clearFaces: !!clearFaces, clearPeople: !!clearPeople }).then(res => res.data);
-export const reclusterFaces = ({ eps, minSamples } = {}) =>
-  api.post(`/faces/recluster`, { eps, minSamples }).then(res => res.data);
 export const mergePerson = (fromPersonId, intoPersonId) =>
   api.post(`/faces/people/${fromPersonId}/merge`, { intoPersonId }).then((res) => res.data);
 export const splitPerson = (fromPersonId, faceIds = []) =>
