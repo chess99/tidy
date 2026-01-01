@@ -9,7 +9,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { apiUrl, createAlbum, getAlbums, getFiles, getFilesBatch, getFilesDateIndex, organizeAssets, updateAssetsStatusBatch } from '../api/client';
+import { apiUrl, createAlbum, getAlbums, getFilesUnified, getFilesBatch, getFilesDateIndex, organizeAssets, updateAssetsStatusBatch } from '../api/client';
 import { GRID_COLUMNS, ROW_HEIGHT_PX } from '../utils/gridLayout';
 import { AssetThumbCard } from './AssetThumbCard';
 import { SelectedDrawer } from './SelectedDrawer';
@@ -44,11 +44,14 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
   }, [queryOpts]);
 
   const filter = filesQueryOpts.filter || 'all';
+  const smartQuery = String(filesQueryOpts.smartQuery || '').trim();
+  const smartActive = !!smartQuery;
+  const similarityOrderActive = filesQueryOpts.similarKind === 'clip';
 
   // Always fetch page 1 to learn total and confirm applied filter.
   const page1 = useQuery({
     queryKey: ['files', filesQueryOpts, 1],
-    queryFn: () => getFiles(1, LIMIT, filesQueryOpts),
+    queryFn: () => getFilesUnified(1, LIMIT, filesQueryOpts),
   });
 
   const total = page1.data?.pagination?.total ?? 0;
@@ -133,6 +136,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
     queryKey: ['filesDateIndex', filesQueryOpts, 'month'],
     queryFn: () => getFilesDateIndex(filter, 'month', filesQueryOpts),
     staleTime: 10 * 60_000,
+    enabled: !smartActive && !similarityOrderActive,
   });
 
   const albumsQuery = useQuery({
@@ -301,7 +305,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
   const pageQueries = useQueries({
     queries: neededPages.map((p) => ({
       queryKey: ['files', filesQueryOpts, p],
-      queryFn: () => getFiles(p, LIMIT, filesQueryOpts),
+      queryFn: () => getFilesUnified(p, LIMIT, filesQueryOpts),
       enabled: !!total && p >= 1,
       staleTime: 30_000,
     })),
@@ -411,7 +415,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
     for (let p = 1; p <= pages; p++) {
       const res = await qc.fetchQuery({
         queryKey: ['files', filesQueryOpts, p],
-        queryFn: () => getFiles(p, LIMIT, filesQueryOpts),
+        queryFn: () => getFilesUnified(p, LIMIT, filesQueryOpts),
         staleTime: 30_000,
       });
       for (const row of res?.data || []) ids.push(row.id);

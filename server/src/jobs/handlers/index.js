@@ -12,6 +12,8 @@ const { handleFacesReset } = require('./facesReset');
 const { handleFacesRecluster } = require('./facesRecluster');
 const { handleSync } = require('./sync');
 const { handlePlaceholder } = require('./placeholder');
+const { handleClipEnrich } = require('./clipEnrich');
+const { handleClipIndex } = require('./clipIndex');
 
 function getHandler(type) {
   switch (String(type)) {
@@ -29,7 +31,10 @@ function getHandler(type) {
       return handleFacesRecluster;
     case 'sync':
       return handleSync;
-    case 'clip':
+    case 'clip_enrich':
+      return handleClipEnrich;
+    case 'clip_index':
+      return handleClipIndex;
     case 'ocr':
       return handlePlaceholder;
     default:

@@ -32,11 +32,16 @@ export function FilesFilters({ value, onChange }) {
   "use no memo"
   const v = value || {};
   const [extInput, setExtInput] = useState('');
-  const similarActive = v.similarKind === 'phash' && Number.isFinite(Number(v.similarToFileId));
+  const smartQuery = String(v.smartQuery || '').trim();
+  const smartActive = !!smartQuery;
+
+  const similarActive = (v.similarKind === 'phash' || v.similarKind === 'clip') && Number.isFinite(Number(v.similarToFileId));
   const similarSeedFileId = Number.isFinite(Number(v.similarToFileId)) ? Number(v.similarToFileId) : null;
   const similarThreshold = Number.isFinite(Number(v.similarThreshold))
     ? Math.max(0, Math.min(32, Math.floor(Number(v.similarThreshold))))
     : 10;
+  const similarMinScore = Number.isFinite(Number(v.similarMinScore)) ? Number(v.similarMinScore) : 0.25;
+  const smartMinScore = Number.isFinite(Number(v.smartMinScore)) ? Number(v.smartMinScore) : 0.25;
 
   const peopleQuery = useQuery({
     queryKey: ['people'],
@@ -67,7 +72,8 @@ export function FilesFilters({ value, onChange }) {
     (v.pathContains ? 1 : 0) +
     (selectedPeopleIds.length ? 1 : 0) +
     (v.hash ? 1 : 0) +
-    (similarActive ? 1 : 0);
+    (similarActive ? 1 : 0) +
+    (smartActive ? 1 : 0);
 
   const toggleExt = (raw) => {
     const e = normExt(raw);
@@ -116,6 +122,11 @@ export function FilesFilters({ value, onChange }) {
                 similarKind: null,
                 similarToFileId: null,
                 similarThreshold: 10,
+                similarTopK: 500,
+                similarMinScore: 0.25,
+                smartQuery: '',
+                smartTopK: 1000,
+                smartMinScore: 0.25,
               })
             }
           >
@@ -127,6 +138,52 @@ export function FilesFilters({ value, onChange }) {
       <Separator className="my-4" />
 
       <div className="space-y-6">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold text-muted-foreground">智能搜索（CLIP）</div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onChange({ ...v, smartQuery: '' })}
+              title="清除智能搜索"
+              className={smartActive ? undefined : 'opacity-0 pointer-events-none'}
+              aria-hidden={!smartActive}
+              tabIndex={smartActive ? 0 : -1}
+            >
+              清除
+            </Button>
+          </div>
+
+          <Input
+            value={v.smartQuery || ''}
+            onChange={(e) => onChange({ ...v, smartQuery: e.target.value })}
+            placeholder="输入文字：例如『海边 日落 狗』"
+          />
+
+          {smartActive ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <div className="text-[11px] text-muted-foreground w-12">阈值</div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={Math.max(0, Math.min(1, smartMinScore))}
+                  onChange={(e) => onChange({ ...v, smartMinScore: Number(e.target.value) })}
+                  className="w-full"
+                />
+                <div className="text-xs font-semibold tabular-nums w-12 text-right">{Math.max(0, Math.min(1, smartMinScore)).toFixed(2)}</div>
+              </div>
+              <div className="text-[11px] text-muted-foreground leading-4">
+                提示：当前智能搜索结果按相似度排序展示；其它筛选条件暂不参与检索（如需叠加筛选，我们再把 filters 带到后端）。
+              </div>
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground italic">未启用</div>
+          )}
+        </div>
         <div className="space-y-2">
           <div className="text-xs font-semibold text-muted-foreground">范围</div>
           <Select
@@ -401,7 +458,7 @@ export function FilesFilters({ value, onChange }) {
         </div>
 
         <div className="space-y-2">
-          <div className="text-xs font-semibold text-muted-foreground">相似（pHash）</div>
+          <div className="text-xs font-semibold text-muted-foreground">相似（pHash / CLIP）</div>
           {similarActive ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
@@ -419,21 +476,43 @@ export function FilesFilters({ value, onChange }) {
                 </Button>
               </div>
 
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min={0}
-                  max={32}
-                  value={similarThreshold}
-                  onChange={(e) => onChange({ ...v, similarThreshold: Number(e.target.value) || 0 })}
-                  className="w-full"
-                />
-                <div className="text-xs font-semibold tabular-nums w-7 text-right">{similarThreshold}</div>
-              </div>
-
-              <div className="text-[11px] text-muted-foreground leading-4">
-                阈值越小越相似（0=完全一致，32=最宽松）。
-              </div>
+              {v.similarKind === 'phash' ? (
+                <>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min={0}
+                      max={32}
+                      value={similarThreshold}
+                      onChange={(e) => onChange({ ...v, similarThreshold: Number(e.target.value) || 0 })}
+                      className="w-full"
+                    />
+                    <div className="text-xs font-semibold tabular-nums w-7 text-right">{similarThreshold}</div>
+                  </div>
+                  <div className="text-[11px] text-muted-foreground leading-4">
+                    pHash 汉明距离阈值：越小越相似（0=完全一致，32=最宽松）。
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3">
+                    <div className="text-[11px] text-muted-foreground w-12">阈值</div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={Math.max(0, Math.min(1, similarMinScore))}
+                      onChange={(e) => onChange({ ...v, similarMinScore: Number(e.target.value) })}
+                      className="w-full"
+                    />
+                    <div className="text-xs font-semibold tabular-nums w-12 text-right">{Math.max(0, Math.min(1, similarMinScore)).toFixed(2)}</div>
+                  </div>
+                  <div className="text-[11px] text-muted-foreground leading-4">
+                    CLIP cosine similarity 阈值：越大越相似（建议从 0.25~0.35 试起）。
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             <div className="text-xs text-muted-foreground italic">未开启（在详情面板点“找相似”）</div>

@@ -6,6 +6,7 @@
 
 - `assets.js`：资产相关 API（查询、预览、标记；回收站语义：仅保留最后一份副本到 `TRASH_DIR`）。
 - `files.js`：文件路径/文件实体相关 API（全部文件视图排除已删除文件 `assets.status='trash'`；支持相似(pHash)筛选）。
+- `search.js`：智能搜索 API（CLIP 文本→图片，按相似度排序返回）。
 - `albums.js`：相册相关 API。
 - `faces.js`：人脸检测/聚类/人物相关 API。
 - `tags.js`：标签相关 API。

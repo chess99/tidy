@@ -26,6 +26,15 @@ const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
+// Smart search (CLIP): text -> images (ranked)
+export const smartSearch = ({ query, page = 1, limit = 50, topK = 1000, minScore } = {}) => {
+  const q = String(query || '').trim();
+  if (!q) return Promise.resolve({ data: [], pagination: { page, limit, total: 0 }, applied: { query: '' } });
+  const body = { query: q, page, limit, topK };
+  if (minScore != null && Number.isFinite(Number(minScore))) body.minScore = Number(minScore);
+  return api.post('/search', body).then((res) => res.data);
+};
+
 // Jobs (task queue)
 export const listJobs = ({ limit = 50, offset = 0, status, type } = {}) =>
   api.get('/jobs', { params: { limit, offset, status, type } }).then((res) => res.data);
@@ -61,6 +70,8 @@ export const getFiles = (page = 1, limit = 50, opts = {}) => {
     similarKind,
     similarToFileId,
     similarThreshold,
+    similarTopK,
+    similarMinScore,
   } = opts || {};
   const params = { page, limit, filter };
   if (organized != null) params.organized = organized;
@@ -83,7 +94,30 @@ export const getFiles = (page = 1, limit = 50, opts = {}) => {
       if (Number.isFinite(th)) params.similarThreshold = Math.max(0, Math.min(32, Math.trunc(th)));
     }
   }
+  if (similarKind === 'clip') {
+    const fid = Number(similarToFileId);
+    if (Number.isFinite(fid)) {
+      params.similarKind = 'clip';
+      params.similarToFileId = Math.trunc(fid);
+      const k = Number(similarTopK);
+      if (Number.isFinite(k)) params.similarTopK = Math.max(1, Math.min(5000, Math.trunc(k)));
+      const ms = Number(similarMinScore);
+      if (Number.isFinite(ms)) params.similarMinScore = ms;
+    }
+  }
   return api.get('/files', { params }).then(res => res.data);
+};
+
+// Unified files fetcher:
+// - normal browse/filters: GET /files
+// - smart search: POST /search (ranked)
+export const getFilesUnified = (page = 1, limit = 50, opts = {}) => {
+  const q = String(opts?.smartQuery || '').trim();
+  if (q) {
+    const topK = Number.isFinite(Number(opts?.smartTopK)) ? Number(opts.smartTopK) : 1000;
+    return smartSearch({ query: q, page, limit, topK, minScore: opts?.smartMinScore });
+  }
+  return getFiles(page, limit, opts);
 };
 export const getFilesDateIndex = (filter = 'all', granularity = 'month', opts = {}) => {
   const {

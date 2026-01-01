@@ -82,6 +82,23 @@ const TASK_DEFS = [
     settingsAnchor: 'concurrency',
   },
   {
+    type: 'clip_enrich',
+    title: 'CLIP Embedding（入库）',
+    desc: '为图片补算 CLIP embedding（写入 clip_embeddings），用于“智能搜索/相似(CLIP)”。',
+    actions: [
+      { label: '缺失/补扫', mode: 'missing', variant: 'outline', title: '只补算缺失 embedding' },
+      { label: '全部', mode: 'all', variant: 'default', title: '全量重算 embedding（模型切换/校准后用）' },
+    ],
+    settingsAnchor: 'concurrency',
+  },
+  {
+    type: 'clip_index',
+    title: 'CLIP 索引（HNSW）',
+    desc: '重建向量近邻索引文件（server/data/index/clip_hnsw.bin），用于毫秒级检索。',
+    actions: [{ label: '重建', mode: 'rebuild', variant: 'default', title: '从 clip_embeddings 重建索引' }],
+    settingsAnchor: null,
+  },
+  {
     type: 'faces_recluster',
     title: '人脸重聚类（维护）',
     desc: '按当前 faces.descriptor 进行聚类生成 people，并写回 faces.person_id。',
@@ -235,7 +252,7 @@ export function TasksView({ onJumpSettings, embedded = false }) {
           <div>
             <div className="text-2xl font-bold text-gray-900">任务队列</div>
             <div className="text-sm text-gray-600 mt-1">
-              先配置扫描规则与并发，再按任务触发：Discover → Enrich → Thumbs/Faces → Sync。
+              先配置扫描规则与并发，再按任务触发：Discover → Enrich → Thumbs/Faces/CLIP → Sync。
             </div>
           </div>
         </div>

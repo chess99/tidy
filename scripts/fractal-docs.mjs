@@ -6,7 +6,7 @@ const ROOT = process.cwd();
 const SOURCE_ROOTS = [
   'client/src',
   'server/src',
-  'face-service/app',
+  'ai-service/app',
 ];
 
 const CODE_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx', '.py']);
@@ -94,8 +94,8 @@ function describe(rel) {
     return mk('环境变量/配置 + DB', '服务端模块导出', '服务端核心模块：被 server 入口与路由/任务依赖');
   }
 
-  if (p === 'face-service/app/main.py') {
-    return mk('base64 图片 + InsightFace/OpenCV', '人脸检测框/关键点/embedding 向量', 'Python 人脸服务入口：供主服务调用');
+  if (p === 'ai-service/app/main.py') {
+    return mk('base64 图片/本地路径 + InsightFace/OpenCV + CLIP', '人脸检测框/关键点/embedding 向量；CLIP 图像/文本 embedding', 'Python AI 服务入口：供主服务调用');
   }
 
   return mk('外部依赖', '对外导出', '模块');

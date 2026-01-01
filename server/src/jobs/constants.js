@@ -12,11 +12,12 @@ const JOB_TYPES = [
   'faces_reset',
   'faces_recluster',
   'sync',
-  'clip',
+  'clip_enrich',
+  'clip_index',
   'ocr',
 ];
 
-const JOB_MODES = ['all', 'missing'];
+const JOB_MODES = ['all', 'missing', 'rebuild'];
 
 const JOB_STATUSES = ['queued', 'running', 'finished', 'failed', 'cancelled', 'interrupted'];
 

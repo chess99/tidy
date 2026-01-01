@@ -8,6 +8,7 @@ const express = require('express');
 const path = require('path');
 const { getDB } = require('../db');
 const { hamming64 } = require('../scanner/phash');
+const { queryTopKByFileId } = require('../services/clipIndex');
 
 const router = express.Router();
 
@@ -115,6 +116,13 @@ function makeInClause(values) {
   return { clause, params };
 }
 
+function orderByCaseIds(ids) {
+  const parts = [];
+  for (let i = 0; i < ids.length; i++) parts.push(`WHEN ? THEN ${i}`);
+  const sql = `CASE f.id ${parts.join(' ')} ELSE ${ids.length} END`;
+  return { sql, params: ids.slice() };
+}
+
 function computeSimilarFileIdsByPhash(db, { seedFileId, threshold, maxIds = 2000 } = {}) {
   const seedId = Number(seedFileId);
   if (!Number.isFinite(seedId)) return [];
@@ -215,11 +223,12 @@ function toFileRow(r) {
     asset_mime_type: r.asset_mime_type,
     asset_updated_at: r.asset_updated_at,
     asset_thumb_updated_at: r.asset_thumb_updated_at,
+    score: r.score != null ? Number(r.score) : null,
   };
 }
 
 // Date index: build quick lookup points for month/day -> start index in the sorted list
-router.get('/date-index', (req, res) => {
+router.get('/date-index', async (req, res) => {
   const db = getDB();
   const filter = String(req.query.filter || 'all');
   const granularity = String(req.query.granularity || 'month');
@@ -237,15 +246,17 @@ router.get('/date-index', (req, res) => {
   const similarKind = req.query.similarKind != null ? String(req.query.similarKind) : null;
   const similarToFileId = parseIntParam(req.query.similarToFileId);
   const similarThreshold = clampIntParam(req.query.similarThreshold, { min: 0, max: 32, fallback: 10 });
+  const similarTopK = clampIntParam(req.query.similarTopK, { min: 1, max: 5000, fallback: 500 });
+  const similarMinScore = req.query.similarMinScore != null && req.query.similarMinScore !== '' ? Number(req.query.similarMinScore) : null;
 
   if (granularity !== 'month' && granularity !== 'day') {
     return res.status(400).json({ error: 'Invalid granularity' });
   }
-  if (similarKind && similarKind !== 'phash') {
+  if (similarKind && similarKind !== 'phash' && similarKind !== 'clip') {
     return res.status(400).json({ error: 'Invalid similarKind' });
   }
-  if (similarKind === 'phash' && !Number.isFinite(similarToFileId)) {
-    return res.status(400).json({ error: 'similarToFileId is required for similarKind=phash' });
+  if ((similarKind === 'phash' || similarKind === 'clip') && !Number.isFinite(similarToFileId)) {
+    return res.status(400).json({ error: 'similarToFileId is required for similarKind' });
   }
 
   let where = '';
@@ -341,6 +352,31 @@ router.get('/date-index', (req, res) => {
     whereParams.push(...params);
   }
 
+  if (similarKind === 'clip') {
+    try {
+      const r = await queryTopKByFileId(similarToFileId, { topK: similarTopK, minScore: similarMinScore });
+      const orderedIds = (r.matches || []).map((m) => Number(m.file_id)).filter(Number.isFinite);
+      if (orderedIds.length === 0) {
+        return res.json({ total: 0, filter, granularity, points: [] });
+      }
+      const { clause, params } = makeInClause(orderedIds);
+      where += ` AND f.id IN ${clause}`;
+      whereParams.push(...params);
+
+      // Date index is not meaningful under similarity ordering; return empty points.
+      const totalQuery = `
+        SELECT COUNT(*) as count
+        FROM files f
+        LEFT JOIN assets a ON a.hash = f.hash
+        ${where}
+      `;
+      const total = db.prepare(totalQuery).get(...whereParams).count;
+      return res.json({ total, filter, granularity, points: [] });
+    } catch (e) {
+      return res.status(500).json({ error: String(e?.message || e) });
+    }
+  }
+
   const totalQuery = `
     SELECT COUNT(*) as count
     FROM files f
@@ -376,7 +412,7 @@ router.get('/date-index', (req, res) => {
 });
 
 // List files (Tab1)
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const db = getDB();
   const page = parseInt(req.query.page) || 1;
   const limit = Math.min(parseInt(req.query.limit) || 50, 200);
@@ -396,11 +432,13 @@ router.get('/', (req, res) => {
   const similarKind = req.query.similarKind != null ? String(req.query.similarKind) : null;
   const similarToFileId = parseIntParam(req.query.similarToFileId);
   const similarThreshold = clampIntParam(req.query.similarThreshold, { min: 0, max: 32, fallback: 10 });
-  if (similarKind && similarKind !== 'phash') {
+  const similarTopK = clampIntParam(req.query.similarTopK, { min: 1, max: 5000, fallback: 500 });
+  const similarMinScore = req.query.similarMinScore != null && req.query.similarMinScore !== '' ? Number(req.query.similarMinScore) : null;
+  if (similarKind && similarKind !== 'phash' && similarKind !== 'clip') {
     return res.status(400).json({ error: 'Invalid similarKind' });
   }
-  if (similarKind === 'phash' && !Number.isFinite(similarToFileId)) {
-    return res.status(400).json({ error: 'similarToFileId is required for similarKind=phash' });
+  if ((similarKind === 'phash' || similarKind === 'clip') && !Number.isFinite(similarToFileId)) {
+    return res.status(400).json({ error: 'similarToFileId is required for similarKind' });
   }
 
   let where = '';
@@ -521,6 +559,31 @@ router.get('/', (req, res) => {
     whereParams.push(...params);
   }
 
+  let clipScoreById = null;
+  let clipOrder = null;
+  if (similarKind === 'clip') {
+    try {
+      const r = await queryTopKByFileId(similarToFileId, { topK: similarTopK, minScore: similarMinScore });
+      const matches = Array.isArray(r.matches) ? r.matches : [];
+      const orderedIds = matches.map((m) => Number(m.file_id)).filter(Number.isFinite);
+      if (orderedIds.length === 0) {
+        return res.json({
+          data: [],
+          pagination: { page, limit, total: 0 },
+          applied: { filter },
+        });
+      }
+      clipScoreById = new Map(matches.map((m) => [Number(m.file_id), Number(m.score)]));
+      clipOrder = orderByCaseIds(orderedIds);
+
+      const { clause, params } = makeInClause(orderedIds);
+      where += ` AND f.id IN ${clause}`;
+      whereParams.push(...params);
+    } catch (e) {
+      return res.status(500).json({ error: String(e?.message || e) });
+    }
+  }
+
   // Optimize dup_count: if we are filtering by hasDup=1, we know dup_count > 1.
   // If we are showing all (hasDup=0 or null), we still need to calculate it.
   // The original correlated subquery is slow: (SELECT COUNT(*) FROM files f2 WHERE f2.hash = f.hash)
@@ -554,11 +617,16 @@ router.get('/', (req, res) => {
     FROM files f
     LEFT JOIN assets a ON a.hash = f.hash
     ${where}
-    ORDER BY ${timeExpr} DESC
+    ORDER BY ${clipOrder ? clipOrder.sql : `${timeExpr} DESC`}
     LIMIT ? OFFSET ?
   `;
 
-  const rows = db.prepare(query).all(...whereParams, limit, offset);
+  const rows = db.prepare(query).all(...(clipOrder ? [...whereParams, ...clipOrder.params] : whereParams), limit, offset);
+  if (clipScoreById) {
+    rows.forEach((r) => {
+      r.score = clipScoreById.get(Number(r.id)) ?? null;
+    });
+  }
 
   const totalQuery = `
     SELECT COUNT(*) as count

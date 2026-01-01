@@ -7,7 +7,7 @@
 import { QueryClient, QueryClientProvider, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2, X, FolderCheck, Wrench } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { apiUrl, getAsset, getAssetsBatch, getFiles, getFilesBatch, updateAssetStatus } from './api/client';
+import { apiUrl, getAsset, getAssetsBatch, getFilesUnified, getFilesBatch, updateAssetStatus } from './api/client';
 import { MinimalScanStatus } from './components/MinimalScanStatus';
 import { FilesFilters } from './components/FilesFilters';
 import { FilesGrid } from './components/FilesGrid';
@@ -47,6 +47,11 @@ function Main() {
     similarKind: null, // 'phash' | null
     similarToFileId: null, // number | null (seed file_id)
     similarThreshold: DEFAULT_SIMILAR_THRESHOLD, // 0..32
+    similarTopK: 500, // clip only
+    similarMinScore: 0.25, // clip only (cosine similarity)
+    smartQuery: '',
+    smartTopK: 1000,
+    smartMinScore: 0.25,
   }));
   const qc = useQueryClient();
   const selectedAssetRef = useRef(null);
@@ -63,7 +68,7 @@ function Main() {
     columns: COLUMNS,
     limit: LIMIT,
     filesGridRef,
-    getFiles,
+    getFiles: getFilesUnified,
     getAsset,
     setSelectedAsset,
   });
@@ -251,6 +256,30 @@ function Main() {
     }));
   };
 
+  const pickClipSeedFileId = (asset) => {
+    const files = Array.isArray(asset?.files) ? asset.files : [];
+    for (const f of files) {
+      const id = Number(f?.id);
+      if (Number.isFinite(id)) return id;
+    }
+    return null;
+  };
+
+  const applySimilarClip = (asset) => {
+    const seedFileId = pickClipSeedFileId(asset);
+    if (!Number.isFinite(seedFileId)) return;
+    setActiveTabSafe('files');
+    setFilesQuery((prev) => ({
+      ...prev,
+      smartQuery: '',
+      similarKind: 'clip',
+      similarToFileId: seedFileId,
+      similarTopK: Number.isFinite(Number(prev?.similarTopK)) ? Math.max(1, Math.min(5000, Math.floor(Number(prev.similarTopK)))) : 500,
+      similarMinScore: Number.isFinite(Number(prev?.similarMinScore)) ? Number(prev.similarMinScore) : 0.25,
+      hash: '',
+    }));
+  };
+
   const dirPrefixOf = (p) => {
     if (!p) return '';
     const s = String(p);
@@ -307,6 +336,8 @@ function Main() {
 
   const similarSeedFileId = pickSimilarSeedFileId(selectedAsset);
   const canFindSimilar = Number.isFinite(similarSeedFileId);
+  const canFindSimilarClip =
+    String(selectedAsset?.mime_type || '').toLowerCase().startsWith('image/') && Number.isFinite(pickClipSeedFileId(selectedAsset));
 
   return (
     <div className="flex h-screen flex-col">
@@ -530,6 +561,16 @@ function Main() {
                             className="h-7 text-xs flex-1"
                           >
                             找相似
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={!canFindSimilarClip}
+                            title="按 CLIP 向量相似度查找相似图片（支持裁剪/调色，需先补算 embedding + 构建索引）"
+                            onClick={() => applySimilarClip(selectedAsset)}
+                            className="h-7 text-xs flex-1"
+                          >
+                            相似(CLIP)
                           </Button>
                         </div>
                       </div>

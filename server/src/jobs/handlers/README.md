@@ -12,6 +12,8 @@
 - `facesScan.js`：人脸扫描任务（检测/嵌入/写库）。
 - `facesReset.js`：人脸数据重置任务（清理/回收）。
 - `facesRecluster.js`：人脸重新聚类任务（人物分组重算）。
+- `clipEnrich.js`：CLIP embedding 补算任务（写入 `clip_embeddings`，用于智能搜索/找相似）。
+- `clipIndex.js`：CLIP 索引重建任务（构建 HNSW 索引文件，用于 ANN 近邻检索）。
 - `sync.js`：同步/对账类任务。
 - `placeholder.js`：占位/示例任务（开发期或空实现）。
 

@@ -41,6 +41,7 @@ const configRoutes = require('./src/routes/config');
 const libraryRoutes = require('./src/routes/library');
 const faceRoutes = require('./src/routes/faces');
 const duplicatesRoutes = require('./src/routes/duplicates');
+const searchRoutes = require('./src/routes/search');
 
 app.use('/api/jobs', jobsRoutes);
 app.use('/api/config', configRoutes);
@@ -53,6 +54,7 @@ app.use('/api/organize', organizeRoutes);
 app.use('/api/tags', tagRoutes);
 app.use('/api/faces', faceRoutes);
 app.use('/api/duplicates', duplicatesRoutes);
+app.use('/api/search', searchRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

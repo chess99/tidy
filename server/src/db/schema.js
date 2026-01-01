@@ -119,6 +119,31 @@ const dbSchema = `
     FOREIGN KEY(person_id) REFERENCES people(id) ON DELETE SET NULL
   );
 
+  -- CLIP embeddings (for smart search / similarity)
+  CREATE TABLE IF NOT EXISTS clip_embeddings (
+    file_id INTEGER PRIMARY KEY,
+    hash TEXT,
+    model TEXT NOT NULL,
+    dim INTEGER NOT NULL,
+    normalized INTEGER NOT NULL DEFAULT 1,
+    embedding BLOB NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY(file_id) REFERENCES files(id) ON DELETE CASCADE,
+    FOREIGN KEY(hash) REFERENCES assets(hash) ON DELETE SET NULL
+  );
+
+  -- Index metadata for ANN (the actual index is stored as a file under data/)
+  CREATE TABLE IF NOT EXISTS clip_index_meta (
+    name TEXT PRIMARY KEY,
+    model TEXT NOT NULL,
+    dim INTEGER NOT NULL,
+    normalized INTEGER NOT NULL DEFAULT 1,
+    built_at INTEGER NOT NULL,
+    file_count INTEGER NOT NULL,
+    params_json TEXT,
+    index_path TEXT
+  );
+
   CREATE INDEX IF NOT EXISTS idx_assets_taken_at ON assets(taken_at);
   CREATE INDEX IF NOT EXISTS idx_files_hash ON files(hash);
   CREATE INDEX IF NOT EXISTS idx_changes_ts ON changes(ts);
@@ -128,6 +153,8 @@ const dbSchema = `
   CREATE INDEX IF NOT EXISTS idx_asset_tags_tag ON asset_tags(tag_id);
   CREATE INDEX IF NOT EXISTS idx_faces_hash ON faces(hash);
   CREATE INDEX IF NOT EXISTS idx_faces_person_id ON faces(person_id);
+  CREATE INDEX IF NOT EXISTS idx_clip_embeddings_hash ON clip_embeddings(hash);
+  CREATE INDEX IF NOT EXISTS idx_clip_embeddings_updated_at ON clip_embeddings(updated_at);
 
   -- Jobs (task queue / execution log)
   CREATE TABLE IF NOT EXISTS jobs (
