@@ -11,4 +11,8 @@ insightface==0.7.3
 torch==2.6.0
 transformers==4.46.3
 
+# Jina CLIP v2 and similar vision encoders often depend on these utilities
+einops==0.8.1
+timm==1.0.12
+
 

@@ -57,7 +57,7 @@ const FACE_MIN_PX = numEnv('FACE_MIN_PX', 40);
 // AI service (Python) for face/CLIP inference
 const AI_SERVICE_URL = String(process.env.AI_SERVICE_URL || 'http://localhost:8002').trim();
 // CLIP model id (must match ai-service TIDY_CLIP_MODEL_ID for consistent indexing)
-const CLIP_MODEL_ID = String(process.env.CLIP_MODEL_ID || 'openai/clip-vit-base-patch32').trim();
+const CLIP_MODEL_ID = String(process.env.CLIP_MODEL_ID || 'jinaai/jina-clip-v2').trim();
 
 module.exports = {
   WORK_ROOT,

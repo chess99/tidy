@@ -82,7 +82,9 @@ async function tick() {
   if (_running) return;
   _running = true;
   try {
-    interruptStaleRunningJobs({ staleAfterMs: 30_000 });
+    // Jobs like CLIP embedding can spend minutes in one inference step (model warmup/download).
+    // Stale interruption should be conservative to avoid killing healthy long-running jobs.
+    interruptStaleRunningJobs({ staleAfterMs: 60 * 60_000 });
     const job = pickNextQueuedJob();
     if (job) {
       await runOne(job);

@@ -69,7 +69,7 @@ $$
 - `POST /clip/text-embed`
 - `POST /clip/image-embed`
 
-模型由 `TIDY_CLIP_MODEL_ID` 控制（默认 `openai/clip-vit-base-patch32`）。
+模型由 `TIDY_CLIP_MODEL_ID` 控制（默认 `jinaai/jina-clip-v2`）。
 
 > 约束：server 侧 `CLIP_MODEL_ID` 需要与 ai-service 侧模型一致（否则 embedding/索引语义不一致）。
 

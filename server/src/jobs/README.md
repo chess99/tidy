@@ -11,6 +11,7 @@
 - `constants.js`：任务类型/状态等常量定义。
 - `store.js`：任务状态存储（创建、更新、查询）。
 - `runner.js`：任务执行器（调度、并发/串行控制、生命周期）。
+  - stale 判定阈值为小时级，避免误杀长推理任务（如首次加载/下载模型的 CLIP embedding 补算）。
   - 任务类型补充：`clip_enrich`（补算 CLIP embedding）、`clip_index`（重建 CLIP HNSW 索引）。
 
 

@@ -1,0 +1,7 @@
+{
+  "include": ["ai-service"],
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none"
+}
+
+

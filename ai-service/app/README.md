@@ -5,5 +5,7 @@
 ### 文件
 
 - `main.py`：FastAPI 应用与 `/health`、`/detect+embed`、`/clip/*` 实现。
+- `clip_encoder.py`：CLIP 编码抽象层（统一 `encode_text/encode_images`，便于替换模型，如 Jina v2 / Chinese-CLIP / SigLIP）。
+- `__init__.py`：包标记文件，保证 `app.*` 导入稳定。
 
 
