@@ -86,7 +86,7 @@ function startServer(name, cwd) {
   return proc.pid;
 }
 
-function startAiService() {
+async function startAiService() {
   const cwd = path.join(__dirname, 'ai-service');
   const isWindows = process.platform === 'win32';
 
@@ -95,6 +95,18 @@ function startAiService() {
     : path.join(cwd, '.venv', 'bin', 'python');
 
   const python = exists(venvPython) ? venvPython : (process.env.PYTHON || (isWindows ? 'python' : 'python3.13'));
+
+  async function isAiUp() {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 600);
+      const res = await fetch('http://127.0.0.1:8002/health', { signal: ctrl.signal });
+      clearTimeout(t);
+      return !!res.ok;
+    } catch {
+      return false;
+    }
+  }
 
   // If venv is missing, attempt to create it and install requirements once (best-effort).
   if (!exists(venvPython)) {
@@ -127,6 +139,14 @@ function startAiService() {
       log(colors.red, 'AI', `Bootstrap error: ${e.message || e}`);
     }
     // We can't reliably return a PID when bootstrapping asynchronously; caller should handle missing pid.
+    return null;
+  }
+
+  // Avoid starting a second instance (common during development). If already running, skip.
+  // Note: in this case we won't manage its PID via dev-start.js stop.
+  const up = await isAiUp();
+  if (up) {
+    log(colors.yellow, 'AI', 'ai-service already running on :8002; skipping spawn.');
     return null;
   }
 
@@ -171,8 +191,8 @@ function main() {
   const backendPid = startServer('BACKEND', 'server');
 
   // Wait a bit before starting frontend
-  setTimeout(() => {
-    const aiPid = startAiService();
+  setTimeout(async () => {
+    const aiPid = await startAiService();
     const frontendPid = startServer('FRONTEND', 'client');
     savePids({ backend: backendPid, frontend: frontendPid, ai: aiPid });
   }, 1000);

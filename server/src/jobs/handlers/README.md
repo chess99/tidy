@@ -14,6 +14,11 @@
 - `facesRecluster.js`：人脸重新聚类任务（人物分组重算）。
 - `clipEnrich.js`：CLIP embedding 补算任务（写入 `clip_embeddings`，用于智能搜索/找相似）。
 - `clipIndex.js`：CLIP 索引重建任务（构建 HNSW 索引文件，用于 ANN 近邻检索）。
+
+### 重要约定
+
+- **任务并发**：`thumbsRebuild/facesScan/clipEnrich` 会读取 `config.tasks.concurrency` 对应字段作为内部并发（与 UI 的“正在处理”一致）。
+- **CLIP 全量**：`clipEnrich(mode=all)` 会强制重算可用图片的 embedding（模型切换/校准后使用）。
 - `sync.js`：同步/对账类任务。
 - `placeholder.js`：占位/示例任务（开发期或空实现）。
 

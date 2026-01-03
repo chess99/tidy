@@ -5,6 +5,7 @@
  */
 
 const fs = require('fs-extra');
+const fastq = require('fastq');
 const { getDB } = require('../../db');
 const { loadModels, processImageFaces } = require('../../scanner/face');
 const { now } = require('./_util');
@@ -12,6 +13,8 @@ const { now } = require('./_util');
 async function handleFacesScan(ctx) {
   const db = getDB();
   const mode = String(ctx.job?.mode || 'missing');
+  const cfg = await ctx.loadConfig();
+  const concurrency = Math.max(1, Math.min(16, Number(cfg?.tasks?.concurrency?.faces || 1)));
 
   await loadModels();
 
@@ -49,6 +52,7 @@ async function handleFacesScan(ctx) {
 
   const stats = {
     mode,
+    concurrency,
     total: assets.length,
     done: 0,
     scanned: 0,
@@ -59,26 +63,26 @@ async function handleFacesScan(ctx) {
 
   ctx.heartbeat({ phase: 'faces', total: stats.total, done: 0 });
 
-  for (const { hash, path: filePath } of assets) {
-    if (ctx.isCancelRequested()) break;
+  const worker = async ({ hash, path: filePath }) => {
+    if (ctx.isCancelRequested()) return;
     stats.done++;
     try {
       if (!filePath || !(await fs.pathExists(filePath))) {
         stats.skipped++;
-        continue;
+        return;
       }
       // For safety (avoid duplicating/overwriting user assignments), do not rescan hashes that already have faces.
       const hasFaces = db.prepare('SELECT 1 AS ok FROM faces WHERE hash = ? LIMIT 1').get(hash);
       if (hasFaces) {
         stats.skipped++;
         db.prepare('UPDATE assets SET face_scanned_at = ? WHERE hash = ?').run(now(), hash);
-        continue;
+        return;
       }
 
       await processImageFaces(filePath, hash);
       db.prepare('UPDATE assets SET face_scanned_at = ? WHERE hash = ?').run(now(), hash);
       stats.scanned++;
-    } catch (e) {
+    } catch {
       stats.errors++;
       try {
         db.prepare('UPDATE assets SET face_scanned_at = ? WHERE hash = ?').run(now(), hash);
@@ -90,7 +94,14 @@ async function handleFacesScan(ctx) {
     if (stats.done % 10 === 0) {
       ctx.heartbeat({ phase: 'faces', done: stats.done, scanned: stats.scanned, skipped: stats.skipped, errors: stats.errors });
     }
+  };
+
+  const q = fastq.promise(worker, concurrency);
+  for (const it of assets) {
+    if (ctx.isCancelRequested()) break;
+    q.push(it);
   }
+  await q.drained();
 
   ctx.heartbeat({ phase: 'faces_done', done: stats.done, scanned: stats.scanned, errors: stats.errors });
   return { ok: true, ...stats, finishedAt: now() };

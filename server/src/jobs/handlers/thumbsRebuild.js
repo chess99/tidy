@@ -6,6 +6,7 @@
 
 const fs = require('fs-extra');
 const path = require('path');
+const fastq = require('fastq');
 const { getDB } = require('../../db');
 const { generateThumbnail, getThumbnailPath, RAW_EXTS } = require('../../scanner/thumbnail');
 const { insertChange, now } = require('./_util');
@@ -30,6 +31,8 @@ async function chooseFileForHash(db, hash) {
 async function handleThumbsRebuild(ctx) {
   const mode = String(ctx.job?.mode || 'missing');
   const db = getDB();
+  const cfg = await ctx.loadConfig();
+  const concurrency = Math.max(1, Math.min(16, Number(cfg?.tasks?.concurrency?.thumbs || 1)));
 
   const hashes = db
     .prepare(`SELECT DISTINCT hash FROM files WHERE hash IS NOT NULL`)
@@ -39,6 +42,7 @@ async function handleThumbsRebuild(ctx) {
 
   const stats = {
     mode,
+    concurrency,
     total: hashes.length,
     done: 0,
     ok: 0,
@@ -49,20 +53,20 @@ async function handleThumbsRebuild(ctx) {
 
   ctx.heartbeat({ phase: 'thumbs', total: stats.total, done: 0 });
 
-  for (const hash of hashes) {
-    if (ctx.isCancelRequested()) break;
+  const worker = async (hash) => {
+    if (ctx.isCancelRequested()) return;
     stats.done++;
     try {
       const thumbPath = getThumbnailPath(hash);
       if (mode === 'missing' && await fs.pathExists(thumbPath)) {
         stats.skipped++;
-        continue;
+        return;
       }
 
       const f = await chooseFileForHash(db, hash);
       if (!f?.path || !(await fs.pathExists(f.path))) {
         stats.skipped++;
-        continue;
+        return;
       }
 
       // Force rebuild: remove old thumb then regenerate.
@@ -79,7 +83,7 @@ async function handleThumbsRebuild(ctx) {
 
       if (!shouldTryThumb) {
         stats.skipped++;
-        continue;
+        return;
       }
 
       const created = await generateThumbnail(f.path, hash, { ext: extLower, force: true });
@@ -104,7 +108,14 @@ async function handleThumbsRebuild(ctx) {
     if (stats.done % 50 === 0) {
       ctx.heartbeat({ phase: 'thumbs', done: stats.done, ok: stats.ok, skipped: stats.skipped, errors: stats.errors });
     }
+  };
+
+  const q = fastq.promise(worker, concurrency);
+  for (const hash of hashes) {
+    if (ctx.isCancelRequested()) break;
+    q.push(hash);
   }
+  await q.drained();
 
   ctx.heartbeat({ phase: 'thumbs_done', done: stats.done, ok: stats.ok, errors: stats.errors });
   return { ok: true, ...stats, finishedAt: now() };

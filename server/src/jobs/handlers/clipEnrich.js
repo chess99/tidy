@@ -5,6 +5,7 @@
  */
 
 const fs = require('fs-extra');
+const fastq = require('fastq');
 const { getDB } = require('../../db');
 const { CLIP_MODEL_ID } = require('../../config');
 const { now } = require('./_util');
@@ -15,6 +16,8 @@ async function handleClipEnrich(ctx) {
   const db = getDB();
   const mode = String(ctx.job?.mode || 'missing'); // missing | all
   const model = CLIP_MODEL_ID;
+  const cfg = await ctx.loadConfig();
+  const concurrency = Math.max(1, Math.min(32, Number(cfg?.tasks?.concurrency?.clip || 1)));
 
   // Pick one representative file per asset (stable) to avoid storing duplicate embeddings for duplicates.
   const where =
@@ -61,6 +64,7 @@ async function handleClipEnrich(ctx) {
   const stats = {
     mode,
     model,
+    concurrency,
     total: assets.length,
     done: 0,
     embedded: 0,
@@ -69,7 +73,7 @@ async function handleClipEnrich(ctx) {
     startedAt: now(),
   };
 
-  ctx.heartbeat({ phase: 'clip_pick', total: stats.total, done: 0 });
+  ctx.heartbeat({ phase: 'clip_pick', total: stats.total, done: 0, embedded: 0, skipped: 0, errors: 0 });
 
   const upsert = db.prepare(`
     INSERT INTO clip_embeddings (file_id, hash, model, dim, normalized, embedding, updated_at)
@@ -83,8 +87,8 @@ async function handleClipEnrich(ctx) {
       updated_at=excluded.updated_at
   `);
 
-  for (const it of assets) {
-    if (ctx.isCancelRequested()) break;
+  const worker = async (it) => {
+    if (ctx.isCancelRequested()) return;
     stats.done++;
 
     const hash = it?.hash ? String(it.hash) : null;
@@ -92,20 +96,25 @@ async function handleClipEnrich(ctx) {
     const filePath = it?.path ? String(it.path) : null;
     if (!hash || !Number.isFinite(fileId) || !filePath) {
       stats.skipped++;
-      continue;
+      return;
     }
 
     try {
       if (!(await fs.pathExists(filePath))) {
         stats.skipped++;
-        continue;
+        return;
       }
 
-      // Ensure we don't recompute if already present (race-safe).
-      const exists = db.prepare('SELECT 1 AS ok FROM clip_embeddings WHERE file_id = ? AND model = ? LIMIT 1').get(fileId, model);
-      if (exists) {
-        stats.skipped++;
-        continue;
+      // missing: skip if already present (race-safe)
+      // all: force recompute (model switch / calibration)
+      if (mode !== 'all') {
+        const exists = db
+          .prepare('SELECT 1 AS ok FROM clip_embeddings WHERE file_id = ? AND model = ? LIMIT 1')
+          .get(fileId, model);
+        if (exists) {
+          stats.skipped++;
+          return;
+        }
       }
 
       const r = await clipImageEmbed({ imagePath: filePath, normalize: true });
@@ -122,7 +131,14 @@ async function handleClipEnrich(ctx) {
     if (stats.done % 10 === 0) {
       ctx.heartbeat({ phase: 'clip', done: stats.done, embedded: stats.embedded, skipped: stats.skipped, errors: stats.errors });
     }
+  };
+
+  const q = fastq.promise(worker, concurrency);
+  for (const it of assets) {
+    if (ctx.isCancelRequested()) break;
+    q.push(it);
   }
+  await q.drained();
 
   ctx.heartbeat({ phase: 'clip_done', done: stats.done, embedded: stats.embedded, errors: stats.errors });
   return { ok: true, ...stats, finishedAt: now() };

@@ -7,17 +7,32 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Play, RotateCcw, X } from 'lucide-react';
 import { useMemo } from 'react';
-import { cancelJob, createJob, listJobs, retryJob } from '../api/client';
+import { cancelJob, createJob, getConfig, listJobs, retryJob } from '../api/client';
 import { Button } from './ui/button';
+
+function getProgressNumbers(job) {
+  const p = job?.progress || {};
+  const phase = p?.phase ? String(p.phase) : null;
+  const total = Number.isFinite(p?.total) ? Number(p.total) : null;
+  const done = Number.isFinite(p?.done) ? Number(p.done) : (Number.isFinite(p?.processed) ? Number(p.processed) : null);
+  const ok = Number.isFinite(p?.ok) ? Number(p.ok) : (Number.isFinite(p?.embedded) ? Number(p.embedded) : null);
+  const skipped = Number.isFinite(p?.skipped) ? Number(p.skipped) : null;
+  const errors = Number.isFinite(p?.errors) ? Number(p.errors) : null;
+  const updated = Number.isFinite(p?.updated) ? Number(p.updated) : null;
+  return { phase, total, done, ok, skipped, errors, updated };
+}
 
 function fmtProgress(job) {
   if (!job) return null;
-  const phase = job?.progress?.phase ? String(job.progress.phase) : null;
-  const processed = Number.isFinite(job?.progress?.processed) ? job.progress.processed : null;
-  const total = Number.isFinite(job?.progress?.total) ? job.progress.total : null;
+  const { phase, total, done, ok, skipped, errors, updated } = getProgressNumbers(job);
   const parts = [];
   if (phase) parts.push(phase);
-  if (processed != null || total != null) parts.push(`${processed ?? '—'}${total != null ? ` / ${total}` : ''}`);
+  if (done != null || total != null) parts.push(`${done ?? '—'}${total != null ? ` / ${total}` : ''}`);
+  // Keep it compact and comparable across tasks.
+  if (ok != null) parts.push(`ok ${ok}`);
+  if (updated != null) parts.push(`updated ${updated}`);
+  if (skipped != null) parts.push(`skip ${skipped}`);
+  if (errors != null) parts.push(`err ${errors}`);
   return parts.length ? parts.join(' · ') : null;
 }
 
@@ -114,33 +129,48 @@ const TASK_DEFS = [
   },
 ];
 
-function TaskCardImmich({ def, jobs, onCreate, onCancel, onRetry, pending, onJumpSettings }) {
+function getConcurrencyForType(tasksCfg, type) {
+  const c = tasksCfg?.concurrency || {};
+  if (type === 'discover') return Number(c.discover) || 1;
+  if (type === 'enrich') return Number(c.enrich) || 1;
+  if (type === 'thumbs_rebuild') return Number(c.thumbs) || 1;
+  if (type === 'faces_scan') return Number(c.faces) || 1;
+  if (type === 'clip_enrich') return Number(c.clip) || 1;
+  if (type === 'ocr') return Number(c.ocr) || 1;
+  return 1;
+}
+
+function TaskCardImmich({ def, jobs, tasksCfg, onCreate, onCancel, onRetry, pending, onJumpSettings }) {
   const type = def.type;
-  const typeJobs = jobs.filter((j) => j.type === type);
-  const runningCount = typeJobs.filter((j) => j.status === 'running').length;
-  const queuedCount = typeJobs.filter((j) => j.status === 'queued').length;
+  const typeJobs = jobs.filter((j) => j.type === type).slice().sort((a, b) => Number(b.id) - Number(a.id));
+  const latest = typeJobs[0] || null;
   const active = typeJobs.find((j) => j.status === 'running') || typeJobs.find((j) => j.status === 'queued') || null;
-  const failed = typeJobs.find((j) => j.status === 'failed' || j.status === 'interrupted') || null;
+
+  const isRunning = active?.status === 'running';
+  const isQueued = active?.status === 'queued';
+  const isFailed = latest?.status === 'failed' || latest?.status === 'interrupted';
+
+  // Immich-style semantics:
+  // - 正在处理: current worker concurrency (not number of jobs)
+  // - 准备处理: remaining items in the current job (best-effort)
+  const runningCount = isRunning ? getConcurrencyForType(tasksCfg, type) : 0;
+  let queuedCount = 0;
+  if (isRunning) {
+    const { total, done } = getProgressNumbers(active);
+    if (total != null && done != null) queuedCount = Math.max(0, total - done);
+  } else if (isQueued) {
+    queuedCount = 1;
+  }
 
   const statusLabel =
-    active?.status === 'running'
-      ? '正在处理'
-      : active?.status === 'queued'
-        ? '准备处理'
-        : failed
-          ? '上次失败'
-          : '空闲';
+    isRunning ? '正在处理' : isQueued ? '准备处理' : isFailed ? '上次失败' : '空闲';
 
   const accentClass =
-    active?.status === 'running'
-      ? 'bg-blue-50'
-      : active?.status === 'queued'
-        ? 'bg-gray-50'
-        : failed
-          ? 'bg-red-50'
-          : 'bg-green-50';
+    isRunning ? 'bg-blue-50' : isQueued ? 'bg-gray-50' : isFailed ? 'bg-red-50' : 'bg-green-50';
 
-  const progressText = fmtProgress(active) || (failed?.last_error ? String(failed.last_error) : null);
+  const progressText =
+    (isRunning || isQueued ? fmtProgress(active) : null) ||
+    (isFailed && latest?.last_error ? String(latest.last_error) : null);
 
   return (
     <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
@@ -202,12 +232,12 @@ function TaskCardImmich({ def, jobs, onCreate, onCancel, onRetry, pending, onJum
               </button>
             ) : null}
 
-            {failed ? (
+            {isFailed ? (
               <button
                 type="button"
                 className="inline-flex items-center gap-1 hover:text-gray-900"
                 disabled={pending}
-                onClick={() => onRetry?.(failed.id)}
+                onClick={() => onRetry?.(latest.id)}
                 title="以相同参数重试"
               >
                 <RotateCcw size={14} />
@@ -223,6 +253,12 @@ function TaskCardImmich({ def, jobs, onCreate, onCancel, onRetry, pending, onJum
 
 export function TasksView({ onJumpSettings, embedded = false }) {
   const qc = useQueryClient();
+  const cfgQuery = useQuery({
+    queryKey: ['config'],
+    queryFn: getConfig,
+    staleTime: 2_000,
+  });
+  const tasksCfg = useMemo(() => cfgQuery.data?.tasks || { concurrency: {} }, [cfgQuery.data]);
   const jobsQuery = useQuery({
     queryKey: ['jobs', 'admin'],
     queryFn: () => listJobs({ limit: 200 }),
@@ -262,6 +298,7 @@ export function TasksView({ onJumpSettings, embedded = false }) {
             key={def.type}
             def={def}
             jobs={jobs}
+            tasksCfg={tasksCfg}
             pending={pending}
             onCreate={({ type, mode, params }) => createMutation.mutate({ type, mode, params })}
             onCancel={(id) => cancelMutation.mutate(id)}

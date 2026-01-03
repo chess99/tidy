@@ -19,7 +19,7 @@
 - `ThumbPlaceholder.jsx`：缩略图占位与加载态表现。
 - `SelectedDrawer.jsx`：已选资产抽屉（批量操作入口）。
 - `SystemAdminView.jsx`：系统管理入口（左：配置；右：任务队列，immich 风格）。
-- `TasksView.jsx`：任务队列面板（按任务类型显示状态条/进度与操作）。
+- `TasksView.jsx`：任务队列面板（immich 风格：显示并发“正在处理”与剩余“准备处理”，并展示标准化进度/错误）。
 - `SettingsView.jsx`：配置面板（扫描目录/类型/排除规则/任务并发等）。
 - `MinimalScanStatus.jsx`：扫描状态的轻量提示组件。
 - `AssetFacesPanel.jsx`：资产的人脸识别/聚类面板（人物、分组、操作）。

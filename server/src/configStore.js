@@ -14,7 +14,7 @@ const { DATA_DIR, WORK_ROOT, MANAGED_ROOT, TRASH_DIR } = require('./config');
 //   scanRoots: [{ root: string, enabled: boolean }],
 //   scanType: { exts: string[], includeNoExt: boolean },
 //   scan: { excludeGlobs: string[], minFileSizeBytes: number },
-//   tasks: { concurrency: { discover?: number, enrich?: number, faces?: number, thumbs?: number }, autoTrigger: { afterDiscover: string[] } }
+//   tasks: { concurrency: { discover?: number, enrich?: number, faces?: number, thumbs?: number, clip?: number, ocr?: number }, autoTrigger: { afterDiscover: string[] } }
 // }
 
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
@@ -54,6 +54,8 @@ const DEFAULT_CONFIG = {
       enrich: 4,
       faces: 1,
       thumbs: 1,
+      clip: 1,
+      ocr: 1,
     },
     autoTrigger: {
       afterDiscover: ['enrich'],
@@ -190,6 +192,8 @@ function normalizeConcurrency(concurrency) {
     enrich: pick('enrich', DEFAULT_CONFIG.tasks.concurrency.enrich),
     faces: pick('faces', DEFAULT_CONFIG.tasks.concurrency.faces),
     thumbs: pick('thumbs', DEFAULT_CONFIG.tasks.concurrency.thumbs),
+    clip: pick('clip', DEFAULT_CONFIG.tasks.concurrency.clip),
+    ocr: pick('ocr', DEFAULT_CONFIG.tasks.concurrency.ocr),
   };
 }
 
