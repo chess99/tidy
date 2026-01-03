@@ -113,6 +113,13 @@ function listEmbeddings(db, { model }) {
 let _index = null; // hnsw index instance
 let _indexInfo = null; // { model, dim, normalized, path, builtAt, fileCount }
 
+function makeIndexNotReadyError(message) {
+  const e = new Error(String(message || 'CLIP index not ready'));
+  e.statusCode = 409;
+  e.code = 'CLIP_INDEX_NOT_READY';
+  return e;
+}
+
 async function rebuildIndex({ model = CLIP_MODEL_ID, m = 16, efConstruction = 200 } = {}) {
   const db = getDB();
   const rows = listEmbeddings(db, { model });
@@ -168,20 +175,24 @@ async function ensureIndexLoaded({ model = CLIP_MODEL_ID } = {}) {
   const dim = meta?.dim != null ? Number(meta.dim) : null;
   const metaModel = meta?.model ? String(meta.model) : null;
 
-  if (metaModel !== model || !Number.isFinite(dim) || dim <= 0) {
-    // Model changed or no meta: rebuild.
-    await rebuildIndex({ model });
-    return _indexInfo;
+  if (!meta) {
+    throw makeIndexNotReadyError('CLIP index not built. Run task: clip_index (rebuild).');
+  }
+  if (metaModel !== model) {
+    throw makeIndexNotReadyError(`CLIP index model mismatch (index=${metaModel || 'unknown'}, expected=${model}). Run task: clip_index (rebuild).`);
+  }
+  if (!Number.isFinite(dim) || dim <= 0) {
+    throw makeIndexNotReadyError('CLIP index meta invalid. Run task: clip_index (rebuild).');
   }
 
   const H = requireHnsw();
   if (!(await fs.pathExists(indexPath))) {
-    await rebuildIndex({ model });
-    return _indexInfo;
+    throw makeIndexNotReadyError(`CLIP index file missing: ${indexPath}. Run task: clip_index (rebuild).`);
   }
 
   const index = new H.HierarchicalNSW('ip', dim);
-  index.readIndexSync(indexPath, dim);
+  // hnswlib-node v3 stores dimensionality in the index; passing a numeric 2nd arg breaks (expects boolean).
+  index.readIndexSync(indexPath);
   _index = index;
   _indexInfo = {
     model,
@@ -269,7 +280,7 @@ async function ensureEmbeddingForFileId(fileId, { model = CLIP_MODEL_ID } = {}) 
 
 async function queryTopKByVector(vec, { model = CLIP_MODEL_ID, topK = 50, minScore = null, efSearch = 128 } = {}) {
   const info = await ensureIndexLoaded({ model });
-  if (!_index || !info) return { matches: [], model, dim: null, normalized: true };
+  if (!_index || !info) throw makeIndexNotReadyError('CLIP index not ready. Run task: clip_index (rebuild).');
 
   const k = Math.max(1, Math.min(Number(topK) || 50, 5000));
   const db = getDB();

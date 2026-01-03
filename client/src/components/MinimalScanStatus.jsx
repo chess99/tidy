@@ -45,15 +45,24 @@ export function MinimalScanStatus() {
     );
   }
 
-  // Keep prior behavior: only show something when there are errors on the latest finished job.
-  const latestFailed = jobs.find((j) => j.status === 'failed');
-  if (latestFailed) {
+  // Align with TasksView semantics: only show failure when the latest job (by id) is failed/interrupted.
+  const latest = jobs[0] || null;
+  if (latest && (latest.status === 'failed' || latest.status === 'interrupted')) {
+      const errText = latest?.last_error ? String(latest.last_error) : null;
       return (
         <div className="absolute top-4 right-4 z-50 animate-in fade-in slide-in-from-top-4 duration-300">
             <div className="bg-red-50/90 backdrop-blur-sm shadow-lg border border-red-100 rounded-full px-4 py-2 flex items-center gap-2 text-sm text-red-700">
                 <AlertTriangle size={16} />
-                <span>任务失败：{latestFailed.type}</span>
-                <button onClick={() => window.location.reload()} className="ml-2 underline text-xs">重置</button>
+                <span>任务失败：</span>
+                <span className="font-mono">{latest.type}</span>
+                {errText ? (
+                  <span className="text-[11px] text-red-700/80 max-w-[260px] truncate" title={errText}>
+                    · {errText}
+                  </span>
+                ) : null}
+                <button onClick={() => window.location.reload()} className="ml-2 underline text-xs" title="刷新页面">
+                  刷新
+                </button>
             </div>
         </div>
       );

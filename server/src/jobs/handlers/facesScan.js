@@ -26,6 +26,11 @@ async function handleFacesScan(ctx) {
       ? `
         a.mime_type LIKE 'image/%'
         AND a.status NOT IN ('trash', 'ignored')
+        AND EXISTS (
+          SELECT 1 FROM files ff
+          WHERE ff.hash = a.hash AND ff.missing = 0 AND ff.path IS NOT NULL
+          LIMIT 1
+        )
         AND (
           a.face_scanned_at IS NULL
           OR NOT EXISTS (SELECT 1 FROM faces f WHERE f.hash = a.hash)
@@ -34,6 +39,11 @@ async function handleFacesScan(ctx) {
       : `
         a.mime_type LIKE 'image/%'
         AND a.status NOT IN ('trash', 'ignored')
+        AND EXISTS (
+          SELECT 1 FROM files ff
+          WHERE ff.hash = a.hash AND ff.missing = 0 AND ff.path IS NOT NULL
+          LIMIT 1
+        )
         AND a.face_scanned_at IS NULL
       `;
 
@@ -41,7 +51,7 @@ async function handleFacesScan(ctx) {
     SELECT a.hash, (
       SELECT f.path
       FROM files f
-      WHERE f.hash = a.hash
+      WHERE f.hash = a.hash AND f.missing = 0 AND f.path IS NOT NULL
       ORDER BY COALESCE(f.updated_at, 0) DESC, f.id DESC
       LIMIT 1
     ) AS path

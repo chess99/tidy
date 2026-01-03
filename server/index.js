@@ -60,3 +60,18 @@ app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
 
+// Best-effort warmup:
+// - CLIP index loading can take ~1s+ on first query (disk read). Preload it in background to avoid
+//   the first `/api/search` feeling "stuck".
+try {
+  const { ensureIndexLoaded } = require('./src/services/clipIndex');
+  const { clipTextEmbed } = require('./src/services/aiClient');
+  setImmediate(() => {
+    ensureIndexLoaded({}).catch(() => {});
+    // Also warm up the text-embed path (model load/caches) without blocking user requests.
+    clipTextEmbed({ query: 'warmup', normalize: true }).catch(() => {});
+  });
+} catch {
+  // ignore warmup failures
+}
+

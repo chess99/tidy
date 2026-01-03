@@ -98,28 +98,28 @@ export function FilesFilters({ value, onChange }) {
   return (
     <div className="h-full w-80 shrink-0 border-r bg-background overflow-auto">
       <div className="sticky top-0 px-4 pt-4 pb-3 bg-background z-10 border-b">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold text-foreground">筛选</div>
-          <div className="flex items-center gap-2">
-            {activeCount ? <Badge variant="secondary">{activeCount}</Badge> : null}
-            <Button
-              variant="ghost"
-              size="icon"
-              title="清空筛选"
-              onClick={() =>
-                onChange({
-                  ...v,
-                  organized: undefined,
-                  hasDup: false,
-                  hasPeople: false,
-                  personCountMin: undefined,
-                  personCountMax: undefined,
-                  from: undefined,
-                  to: undefined,
-                  exts: [],
-                  people: undefined,
-                  pathContains: '',
-                  hash: '',
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-semibold text-foreground">筛选</div>
+        <div className="flex items-center gap-2">
+          {activeCount ? <Badge variant="secondary">{activeCount}</Badge> : null}
+          <Button
+            variant="ghost"
+            size="icon"
+            title="清空筛选"
+            onClick={() =>
+              onChange({
+                ...v,
+                organized: undefined,
+                hasDup: false,
+                hasPeople: false,
+                personCountMin: undefined,
+                personCountMax: undefined,
+                from: undefined,
+                to: undefined,
+                exts: [],
+                people: undefined,
+                pathContains: '',
+                hash: '',
                   similarKind: null,
                   similarToFileId: null,
                   similarThreshold: 10,
@@ -128,12 +128,12 @@ export function FilesFilters({ value, onChange }) {
                   smartQuery: '',
                   smartTopK: 1000,
                   smartMinScore: 0.25,
-                })
-              }
-            >
-              <FilterX className="h-4 w-4" />
-            </Button>
-          </div>
+              })
+            }
+          >
+            <FilterX className="h-4 w-4" />
+          </Button>
+        </div>
         </div>
       </div>
 
@@ -153,7 +153,7 @@ export function FilesFilters({ value, onChange }) {
             >
               清除
             </Button>
-          </div>
+      </div>
 
           <Input
             value={v.smartQuery || ''}

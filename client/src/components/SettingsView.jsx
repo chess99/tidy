@@ -287,7 +287,7 @@ function ScanOptionsSection({ scan, onSave }) {
 }
 
 function TaskSettingsSection({ tasks, onSave }) {
-  const base = { discover: 1, enrich: 4, faces: 1, thumbs: 1, clip: 1, ocr: 1 };
+  const base = { enrich: 4, thumbs: 4, faces: 1, clip: 1 };
   const [concurrency, setConcurrency] = useState(() => ({ ...base, ...(tasks?.concurrency || {}) }));
   const [afterDiscover, setAfterDiscover] = useState(() => (Array.isArray(tasks?.autoTrigger?.afterDiscover) ? tasks.autoTrigger.afterDiscover.slice() : []));
   const [dirty, setDirty] = useState(false);
@@ -296,7 +296,7 @@ function TaskSettingsSection({ tasks, onSave }) {
   return (
     <>
       <div className="grid grid-cols-2 gap-4">
-        {['discover', 'enrich', 'thumbs', 'faces', 'clip', 'ocr'].map((k) => (
+        {['enrich', 'thumbs', 'faces', 'clip'].map((k) => (
           <div key={k} className="space-y-1">
             <div className="text-xs text-gray-500">{k}</div>
             <Input

@@ -138,7 +138,7 @@ router.post('/', async (req, res) => {
       applied: { query: q, minScore, model: r.model },
     });
   } catch (e) {
-    return res.status(500).json({ error: String(e?.message || e) });
+    return res.status(e?.statusCode || 500).json({ error: String(e?.message || e) });
   }
 });
 

@@ -25,10 +25,20 @@ async function handleClipEnrich(ctx) {
       ? `
         a.status NOT IN ('trash', 'ignored')
         AND a.mime_type LIKE 'image/%'
+        AND EXISTS (
+          SELECT 1 FROM files ff
+          WHERE ff.hash = a.hash AND ff.missing = 0 AND ff.path IS NOT NULL
+          LIMIT 1
+        )
       `
       : `
         a.status NOT IN ('trash', 'ignored')
         AND a.mime_type LIKE 'image/%'
+        AND EXISTS (
+          SELECT 1 FROM files ff
+          WHERE ff.hash = a.hash AND ff.missing = 0 AND ff.path IS NOT NULL
+          LIMIT 1
+        )
         AND NOT EXISTS (
           SELECT 1
           FROM clip_embeddings ce

@@ -18,6 +18,7 @@
 ### 重要约定
 
 - **任务并发**：`thumbsRebuild/facesScan/clipEnrich` 会读取 `config.tasks.concurrency` 对应字段作为内部并发（与 UI 的“正在处理”一致）。
+- **skipped 语义**：SQL 会尽量前置过滤；仍可能因文件被删除/路径不可读/竞态等在 worker 内被记为 skipped（best-effort，避免额外 DB/IO 成本）。
 - **CLIP 全量**：`clipEnrich(mode=all)` 会强制重算可用图片的 embedding（模型切换/校准后使用）。
 - `sync.js`：同步/对账类任务。
 - `placeholder.js`：占位/示例任务（开发期或空实现）。

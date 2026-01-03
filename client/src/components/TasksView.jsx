@@ -131,12 +131,11 @@ const TASK_DEFS = [
 
 function getConcurrencyForType(tasksCfg, type) {
   const c = tasksCfg?.concurrency || {};
-  if (type === 'discover') return Number(c.discover) || 1;
   if (type === 'enrich') return Number(c.enrich) || 1;
   if (type === 'thumbs_rebuild') return Number(c.thumbs) || 1;
   if (type === 'faces_scan') return Number(c.faces) || 1;
   if (type === 'clip_enrich') return Number(c.clip) || 1;
-  if (type === 'ocr') return Number(c.ocr) || 1;
+  if (type === 'discover') return 1;
   return 1;
 }
 

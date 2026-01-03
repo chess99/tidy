@@ -373,7 +373,7 @@ router.get('/date-index', async (req, res) => {
       const total = db.prepare(totalQuery).get(...whereParams).count;
       return res.json({ total, filter, granularity, points: [] });
     } catch (e) {
-      return res.status(500).json({ error: String(e?.message || e) });
+      return res.status(e?.statusCode || 500).json({ error: String(e?.message || e) });
     }
   }
 
@@ -580,7 +580,7 @@ router.get('/', async (req, res) => {
       where += ` AND f.id IN ${clause}`;
       whereParams.push(...params);
     } catch (e) {
-      return res.status(500).json({ error: String(e?.message || e) });
+      return res.status(e?.statusCode || 500).json({ error: String(e?.message || e) });
     }
   }
 

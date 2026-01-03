@@ -93,12 +93,15 @@ $$
 2. 跑 `clip_index`（rebuild）
 3. 前端可用智能搜索与 CLIP 相似
 
+> 重要：`/api/search` 与 `similarKind=clip` 不会在请求路径自动重建索引；如果索引未就绪，会返回 **409** 并提示先跑 `clip_index`。
+
 ## 4. API 形态
 
 ### 4.1 智能搜索（text→image）
 - `POST /api/search`
   - body：`{ query, page, limit, topK, minScore }`
   - 返回：按相似度排序的 files 列表（每条带 `score`）
+  - 失败：索引未就绪时返回 **409**（需要先跑 `clip_index`）
 
 ### 4.2 相似检索（image→image）
 - `GET /api/files?similarKind=clip&similarToFileId=...&similarTopK=...&similarMinScore=...`

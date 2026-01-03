@@ -14,7 +14,7 @@ const { DATA_DIR, WORK_ROOT, MANAGED_ROOT, TRASH_DIR } = require('./config');
 //   scanRoots: [{ root: string, enabled: boolean }],
 //   scanType: { exts: string[], includeNoExt: boolean },
 //   scan: { excludeGlobs: string[], minFileSizeBytes: number },
-//   tasks: { concurrency: { discover?: number, enrich?: number, faces?: number, thumbs?: number, clip?: number, ocr?: number }, autoTrigger: { afterDiscover: string[] } }
+//   tasks: { concurrency: { enrich?: number, faces?: number, thumbs?: number, clip?: number }, autoTrigger: { afterDiscover: string[] } }
 // }
 
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
@@ -50,12 +50,10 @@ const DEFAULT_CONFIG = {
   },
   tasks: {
     concurrency: {
-      discover: 1,
       enrich: 4,
       faces: 1,
-      thumbs: 1,
+      thumbs: 4,
       clip: 1,
-      ocr: 1,
     },
     autoTrigger: {
       afterDiscover: ['enrich'],
@@ -188,12 +186,10 @@ function normalizeConcurrency(concurrency) {
     return i;
   };
   return {
-    discover: pick('discover', DEFAULT_CONFIG.tasks.concurrency.discover),
     enrich: pick('enrich', DEFAULT_CONFIG.tasks.concurrency.enrich),
     faces: pick('faces', DEFAULT_CONFIG.tasks.concurrency.faces),
     thumbs: pick('thumbs', DEFAULT_CONFIG.tasks.concurrency.thumbs),
     clip: pick('clip', DEFAULT_CONFIG.tasks.concurrency.clip),
-    ocr: pick('ocr', DEFAULT_CONFIG.tasks.concurrency.ocr),
   };
 }
 
@@ -225,7 +221,20 @@ async function loadConfig() {
     const scanType = normalizeScanType(json?.scanType);
     const scan = normalizeScanOptions(json?.scan || DEFAULT_CONFIG.scan);
     const tasks = normalizeTasks(json?.tasks || DEFAULT_CONFIG.tasks);
-    return { scanRoots, scanType, scan, tasks };
+    const normalized = { scanRoots, scanType, scan, tasks };
+
+    // One-time auto-fix: when schema evolves (e.g. removing non-configurable concurrency keys),
+    // persist the normalized config to strip unknown fields.
+    try {
+      const nextRaw = JSON.stringify(normalized, null, 2);
+      if (String(raw || '').trim() !== String(nextRaw || '').trim()) {
+        await saveConfig(normalized);
+      }
+    } catch {
+      // ignore auto-fix errors; returning normalized config is still correct.
+    }
+
+    return normalized;
   } catch {
     await saveConfig(DEFAULT_CONFIG);
     return { ...DEFAULT_CONFIG };

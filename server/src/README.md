@@ -15,6 +15,6 @@
 ### 文件
 
 - `config.js`：配置读取与默认值（运行时参数入口）。
-- `configStore.js`：配置持久化（读写/变更通知；任务并发含 discover/enrich/thumbs/faces/clip/ocr）。
+- `configStore.js`：配置持久化（读写/变更通知；任务并发仅支持 enrich/thumbs/faces/clip；thumbs 默认并发为 4）。
 
 

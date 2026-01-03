@@ -577,7 +577,7 @@ function Main() {
                             className="h-7 text-xs col-span-2"
                           >
                             相似CLIP
-                          </Button>
+                        </Button>
                         </div>
                       </div>
                     </div>
