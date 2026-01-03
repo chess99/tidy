@@ -102,6 +102,7 @@ $$
   - body：`{ query, page, limit, topK, minScore }`
   - 返回：按相似度排序的 files 列表（每条带 `score`）
   - 失败：索引未就绪时返回 **409**（需要先跑 `clip_index`）
+  - 调试：加请求头 `x-tidy-profile: 1` 或 query `?profile=1`，响应会附带 `profile`（分段耗时 + CPU/内存增量 + event loop 延迟），用于定位慢点；ai-service 的 `/clip/*` 同样支持该 profiling
 
 ### 4.2 相似检索（image→image）
 - `GET /api/files?similarKind=clip&similarToFileId=...&similarTopK=...&similarMinScore=...`

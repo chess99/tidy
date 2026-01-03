@@ -105,7 +105,7 @@ class ClipEncoder:
             arr = arr.reshape(1, -1)
         return arr
 
-    def encode_text(self, texts: List[str], normalize: bool = True) -> ClipEncodeResult:
+    def encode_text(self, texts: List[str], normalize: bool = True, profile: Any = None) -> ClipEncodeResult:
         import torch  # type: ignore
 
         items = [str(t).strip() for t in texts if str(t).strip()]
@@ -114,25 +114,52 @@ class ClipEncoder:
 
         with torch.no_grad():
             if hasattr(self.model, "encode_text"):
-                feats = self.model.encode_text(items)  # type: ignore[attr-defined]
+                if profile is not None:
+                    feats = profile.wrap("clip.encode_text.model.encode_text", lambda: self.model.encode_text(items))  # type: ignore[attr-defined]
+                else:
+                    feats = self.model.encode_text(items)  # type: ignore[attr-defined]
             else:
-                inputs = self.processor(text=items, images=None, return_tensors="pt", padding=True, truncation=True)
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                if profile is not None:
+                    inputs = profile.wrap(
+                        "clip.encode_text.processor",
+                        lambda: self.processor(text=items, images=None, return_tensors="pt", padding=True, truncation=True),
+                        {"n": len(items)},
+                    )
+                else:
+                    inputs = self.processor(text=items, images=None, return_tensors="pt", padding=True, truncation=True)
+                if profile is not None:
+                    inputs = profile.wrap(
+                        "clip.encode_text.to_device", lambda: {k: v.to(self.device) for k, v in inputs.items()}, {"device": self.device}
+                    )
+                else:
+                    inputs = {k: v.to(self.device) for k, v in inputs.items()}
                 if hasattr(self.model, "get_text_features"):
-                    feats = self.model.get_text_features(**inputs)  # type: ignore[attr-defined]
+                    if profile is not None:
+                        feats = profile.wrap("clip.encode_text.model.get_text_features", lambda: self.model.get_text_features(**inputs))  # type: ignore[attr-defined]
+                    else:
+                        feats = self.model.get_text_features(**inputs)  # type: ignore[attr-defined]
                 else:
                     # Best-effort generic fallback: forward pass and take pooled output if present.
-                    out = self.model(**inputs)
+                    if profile is not None:
+                        out = profile.wrap("clip.encode_text.model.forward", lambda: self.model(**inputs))
+                    else:
+                        out = self.model(**inputs)
                     feats = getattr(out, "pooler_output", None) or getattr(out, "text_embeds", None)
                     if feats is None:
                         raise RuntimeError("model does not support text encoding (missing encode_text/get_text_features)")
 
-        arr = self._to_numpy(feats)
+        if profile is not None:
+            arr = profile.wrap("clip.encode_text.to_numpy", lambda: self._to_numpy(feats))
+        else:
+            arr = self._to_numpy(feats)
         if normalize:
-            arr = np.stack([_l2_normalize(v) for v in arr], axis=0)
+            if profile is not None:
+                arr = profile.wrap("clip.encode_text.l2_normalize", lambda: np.stack([_l2_normalize(v) for v in arr], axis=0), {"n": int(arr.shape[0])})
+            else:
+                arr = np.stack([_l2_normalize(v) for v in arr], axis=0)
         return ClipEncodeResult(model=self.model_id, device=self.device, dim=int(arr.shape[1]), normalized=bool(normalize), embeddings=arr)
 
-    def encode_images(self, images: List[Any], normalize: bool = True) -> ClipEncodeResult:
+    def encode_images(self, images: List[Any], normalize: bool = True, profile: Any = None) -> ClipEncodeResult:
         import torch  # type: ignore
 
         if not images:
@@ -140,21 +167,44 @@ class ClipEncoder:
 
         with torch.no_grad():
             if hasattr(self.model, "encode_image"):
-                feats = self.model.encode_image(images)  # type: ignore[attr-defined]
-            else:
-                inputs = self.processor(text=None, images=images, return_tensors="pt")
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
-                if hasattr(self.model, "get_image_features"):
-                    feats = self.model.get_image_features(**inputs)  # type: ignore[attr-defined]
+                if profile is not None:
+                    feats = profile.wrap("clip.encode_image.model.encode_image", lambda: self.model.encode_image(images))  # type: ignore[attr-defined]
                 else:
-                    out = self.model(**inputs)
+                    feats = self.model.encode_image(images)  # type: ignore[attr-defined]
+            else:
+                if profile is not None:
+                    inputs = profile.wrap("clip.encode_image.processor", lambda: self.processor(text=None, images=images, return_tensors="pt"), {"n": len(images)})
+                else:
+                    inputs = self.processor(text=None, images=images, return_tensors="pt")
+                if profile is not None:
+                    inputs = profile.wrap(
+                        "clip.encode_image.to_device", lambda: {k: v.to(self.device) for k, v in inputs.items()}, {"device": self.device}
+                    )
+                else:
+                    inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                if hasattr(self.model, "get_image_features"):
+                    if profile is not None:
+                        feats = profile.wrap("clip.encode_image.model.get_image_features", lambda: self.model.get_image_features(**inputs))  # type: ignore[attr-defined]
+                    else:
+                        feats = self.model.get_image_features(**inputs)  # type: ignore[attr-defined]
+                else:
+                    if profile is not None:
+                        out = profile.wrap("clip.encode_image.model.forward", lambda: self.model(**inputs))
+                    else:
+                        out = self.model(**inputs)
                     feats = getattr(out, "pooler_output", None) or getattr(out, "image_embeds", None)
                     if feats is None:
                         raise RuntimeError("model does not support image encoding (missing encode_image/get_image_features)")
 
-        arr = self._to_numpy(feats)
+        if profile is not None:
+            arr = profile.wrap("clip.encode_image.to_numpy", lambda: self._to_numpy(feats))
+        else:
+            arr = self._to_numpy(feats)
         if normalize:
-            arr = np.stack([_l2_normalize(v) for v in arr], axis=0)
+            if profile is not None:
+                arr = profile.wrap("clip.encode_image.l2_normalize", lambda: np.stack([_l2_normalize(v) for v in arr], axis=0), {"n": int(arr.shape[0])})
+            else:
+                arr = np.stack([_l2_normalize(v) for v in arr], axis=0)
         return ClipEncodeResult(model=self.model_id, device=self.device, dim=int(arr.shape[1]), normalized=bool(normalize), embeddings=arr)
 
 

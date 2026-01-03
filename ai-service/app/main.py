@@ -6,10 +6,11 @@ pos: Python AI 服务入口：供主服务调用（变更需同步更新本头�
 import base64
 import io
 import os
+import time
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 
 try:
     import cv2  # type: ignore
@@ -140,10 +141,18 @@ def detect_embed(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @app.post("/clip/text-embed")
-def clip_text_embed(payload: Dict[str, Any]) -> Dict[str, Any]:
+def clip_text_embed(payload: Dict[str, Any], request: Request) -> Dict[str, Any]:
     text = payload.get("text")
     texts = payload.get("texts")
     normalize = payload.get("normalize", True)
+    want_profile = str(request.query_params.get("profile", "")).strip() == "1" or str(request.headers.get("x-tidy-profile", "")).strip() == "1"
+    request_id = f"{int(time.time() * 1000)}-{os.urandom(3).hex()}"
+    prof = None
+    if want_profile:
+        from app.profiler import Profiler  # type: ignore
+
+        prof = Profiler(name="POST /clip/text-embed", request_id=request_id, enabled=True)
+        prof.mark("start")
 
     if isinstance(text, str) and text.strip():
         items = [text.strip()]
@@ -152,20 +161,27 @@ def clip_text_embed(payload: Dict[str, Any]) -> Dict[str, Any]:
     else:
         raise HTTPException(status_code=400, detail="text (string) or texts (string[]) required")
 
-    enc = _get_clip()
-    out = enc.encode_text(items, normalize=bool(normalize))
+    if prof is not None:
+        prof.mark("parsed", {"n": len(items), "normalize": bool(normalize)})
+    cold = _clip is None
+    enc = prof.wrap("clip.get_encoder", _get_clip, {"cold": bool(cold)}) if prof is not None else _get_clip()
+    out = prof.wrap("clip.encode_text", lambda: enc.encode_text(items, normalize=bool(normalize), profile=prof), {"n": len(items)}) if prof is not None else enc.encode_text(items, normalize=bool(normalize))
     arr = out.embeddings
-    return {
+    payload_out: Dict[str, Any] = {
         "model": out.model,
         "device": out.device,
         "dim": int(out.dim),
         "normalized": bool(out.normalized),
         "embeddings": arr.tolist(),
     }
+    if prof is not None:
+        prof.mark("serialized", {"n": len(items), "dim": int(out.dim), "device": out.device})
+        payload_out["profile"] = prof.finish()
+    return payload_out
 
 
 @app.post("/clip/image-embed")
-def clip_image_embed(payload: Dict[str, Any]) -> Dict[str, Any]:
+def clip_image_embed(payload: Dict[str, Any], request: Request) -> Dict[str, Any]:
   # One of:
   # - image_path: absolute path on local filesystem (recommended for indexing)
   # - image_paths: absolute path list (batch)
@@ -176,28 +192,47 @@ def clip_image_embed(payload: Dict[str, Any]) -> Dict[str, Any]:
     image_b64 = payload.get("image_base64")
     image_b64s = payload.get("image_base64s")
     normalize = payload.get("normalize", True)
+    want_profile = str(request.query_params.get("profile", "")).strip() == "1" or str(request.headers.get("x-tidy-profile", "")).strip() == "1"
+    request_id = f"{int(time.time() * 1000)}-{os.urandom(3).hex()}"
+    prof = None
+    if want_profile:
+        from app.profiler import Profiler  # type: ignore
+
+        prof = Profiler(name="POST /clip/image-embed", request_id=request_id, enabled=True)
+        prof.mark("start")
 
     images: List[Image.Image] = []
     if isinstance(image_path, str) and image_path:
-        images = [_pil_from_path(image_path)]
+        images = [prof.wrap("decode.image_path", lambda: _pil_from_path(image_path), {"mode": "image_path"})] if prof is not None else [_pil_from_path(image_path)]
     elif isinstance(image_paths, list) and all(isinstance(p, str) for p in image_paths) and len(image_paths) > 0:
         images = [_pil_from_path(str(p)) for p in image_paths]
     elif isinstance(image_b64, str) and image_b64:
-        images = [_decode_pil_from_b64(image_b64)]
+        images = [prof.wrap("decode.image_base64", lambda: _decode_pil_from_b64(image_b64), {"mode": "image_base64"})] if prof is not None else [_decode_pil_from_b64(image_b64)]
     elif isinstance(image_b64s, list) and all(isinstance(b, str) for b in image_b64s) and len(image_b64s) > 0:
         images = [_decode_pil_from_b64(str(b)) for b in image_b64s]
     else:
         raise HTTPException(status_code=400, detail="image_path/image_paths (absolute) or image_base64/image_base64s required")
 
-    enc = _get_clip()
-    out = enc.encode_images(images, normalize=bool(normalize))
+    if prof is not None:
+        prof.mark("parsed", {"n": len(images), "normalize": bool(normalize)})
+    cold = _clip is None
+    enc = prof.wrap("clip.get_encoder", _get_clip, {"cold": bool(cold)}) if prof is not None else _get_clip()
+    out = (
+        prof.wrap("clip.encode_images", lambda: enc.encode_images(images, normalize=bool(normalize), profile=prof), {"n": len(images)})
+        if prof is not None
+        else enc.encode_images(images, normalize=bool(normalize))
+    )
     arr = out.embeddings
-    return {
+    payload_out2: Dict[str, Any] = {
         "model": out.model,
         "device": out.device,
         "dim": int(out.dim),
         "normalized": bool(out.normalized),
         "embeddings": arr.tolist(),
     }
+    if prof is not None:
+        prof.mark("serialized", {"n": len(images), "dim": int(out.dim), "device": out.device})
+        payload_out2["profile"] = prof.finish()
+    return payload_out2
 
 

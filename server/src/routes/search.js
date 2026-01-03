@@ -9,6 +9,7 @@ const path = require('path');
 const { getDB } = require('../db');
 const { clipTextEmbed } = require('../services/aiClient');
 const { queryTopKByVector } = require('../services/clipIndex');
+const { createProfiler } = require('../utils/profiler');
 
 const router = express.Router();
 
@@ -68,6 +69,13 @@ function orderByCaseIds(ids) {
 // POST /api/search
 // body: { query: string, page?: number, limit?: number, topK?: number, minScore?: number }
 router.post('/', async (req, res) => {
+  const wantProfile =
+    String(req.query?.profile || '').trim() === '1' ||
+    String(req.headers['x-tidy-profile'] || '').trim() === '1';
+  const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const profiler = createProfiler({ enabled: wantProfile, name: 'POST /api/search', requestId, eventLoop: true });
+  profiler.mark('start');
+
   const q = String(req.body?.query || '').trim();
   if (!q) return res.status(400).json({ error: 'query required' });
 
@@ -81,20 +89,28 @@ router.post('/', async (req, res) => {
   const requestedTopK = parseIntSafe(req.body?.topK, 1000);
   const need = Math.max(offset + limit, 1);
   const topK = Math.max(need, Math.min(requestedTopK, 5000));
+  profiler.mark('parsed', { page, limit, topK, offset, minScore, queryLen: q.length });
 
   try {
-    const { embedding } = await clipTextEmbed({ query: q, normalize: true });
-    const r = await queryTopKByVector(embedding, { topK, minScore });
+    const embedOut = await clipTextEmbed({ query: q, normalize: true, profile: profiler });
+    const embedding = embedOut?.embedding;
+    const aiServiceProfile = embedOut?.profile || null;
+    profiler.mark('clip.text.embed.done');
+
+    const r = await queryTopKByVector(embedding, { topK, minScore, profile: profiler });
+    profiler.mark('clip.ann.done', { model: r.model, got: Array.isArray(r.matches) ? r.matches.length : 0 });
     const matches = Array.isArray(r.matches) ? r.matches : [];
     const total = matches.length;
 
     const slice = matches.slice(offset, offset + limit);
     const ids = slice.map((m) => Number(m.file_id)).filter(Number.isFinite);
     if (!ids.length) {
+      const profile = profiler.end({ empty: true, total, aiService: aiServiceProfile || undefined });
       return res.json({
         data: [],
         pagination: { page, limit, total },
         applied: { query: q, minScore, model: r.model },
+        ...(profile ? { profile } : {}),
       });
     }
 
@@ -129,16 +145,23 @@ router.post('/', async (req, res) => {
       ORDER BY ${orderSql}
     `;
 
-    const rows = db.prepare(query).all(...ids, ...orderParams);
+    const rows = profiler.wrap
+      ? await profiler.wrap('db.files.batch', () => db.prepare(query).all(...ids, ...orderParams), { ids: ids.length })
+      : db.prepare(query).all(...ids, ...orderParams);
+    profiler.mark('db.files.batch.done', { rows: rows.length });
     const data = rows.map((row) => ({ ...row, score: scoreById.get(Number(row.id)) ?? null })).map(toFileRow);
+    profiler.mark('serialized', { data: data.length });
 
+    const profile = profiler.end({ total, returned: data.length, aiService: aiServiceProfile || undefined });
     return res.json({
       data,
       pagination: { page, limit, total },
       applied: { query: q, minScore, model: r.model },
+      ...(profile ? { profile } : {}),
     });
   } catch (e) {
-    return res.status(e?.statusCode || 500).json({ error: String(e?.message || e) });
+    const profile = profiler.end({ error: String(e?.message || e) });
+    return res.status(e?.statusCode || 500).json({ error: String(e?.message || e), ...(profile ? { profile } : {}) });
   }
 });
 

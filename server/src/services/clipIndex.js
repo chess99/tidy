@@ -278,8 +278,11 @@ async function ensureEmbeddingForFileId(fileId, { model = CLIP_MODEL_ID } = {}) 
   return { ok: true, existed: false, dim };
 }
 
-async function queryTopKByVector(vec, { model = CLIP_MODEL_ID, topK = 50, minScore = null, efSearch = 128 } = {}) {
-  const info = await ensureIndexLoaded({ model });
+async function queryTopKByVector(
+  vec,
+  { model = CLIP_MODEL_ID, topK = 50, minScore = null, efSearch = 128, profile = null } = {}
+) {
+  const info = await (profile?.wrap ? profile.wrap('clip.index.ensureLoaded', () => ensureIndexLoaded({ model })) : ensureIndexLoaded({ model }));
   if (!_index || !info) throw makeIndexNotReadyError('CLIP index not ready. Run task: clip_index (rebuild).');
 
   const k = Math.max(1, Math.min(Number(topK) || 50, 5000));
@@ -287,24 +290,44 @@ async function queryTopKByVector(vec, { model = CLIP_MODEL_ID, topK = 50, minSco
 
   const q = Array.isArray(vec) ? vec.map(Number) : [];
   const qn = l2Normalize(q);
+  profile?.mark?.('clip.query.normalize', { dim: qn.length, k, efSearch });
+
   _index.setEf(efSearch);
-  const ids = _index.searchKnn(qn, k);
+  const ids = profile?.wrap
+    ? await profile.wrap('clip.query.hnsw.searchKnn', () => _index.searchKnn(qn, k), { k, efSearch })
+    : _index.searchKnn(qn, k);
   // hnswlib-node returns { neighbors: number[], distances: number[] } in some versions,
   // or a tuple; normalize defensively.
   const neighbors = Array.isArray(ids?.neighbors) ? ids.neighbors : (Array.isArray(ids?.labels) ? ids.labels : ids[0]);
   const cand = Array.isArray(neighbors) ? neighbors.map(Number).filter(Number.isFinite) : [];
   if (!cand.length) return { matches: [], model, dim: info.dim, normalized: true };
 
-  const rows = db
-    .prepare(
-      `
-      SELECT file_id, dim, normalized, embedding
-      FROM clip_embeddings
-      WHERE file_id IN (${cand.map(() => '?').join(',')})
-        AND model = ?
-      `
-    )
-    .all(...cand, model);
+  const rows = profile?.wrap
+    ? await profile.wrap(
+        'clip.query.db.clip_embeddings',
+        () =>
+          db
+            .prepare(
+              `
+              SELECT file_id, dim, normalized, embedding
+              FROM clip_embeddings
+              WHERE file_id IN (${cand.map(() => '?').join(',')})
+                AND model = ?
+              `
+            )
+            .all(...cand, model),
+        { cand: cand.length }
+      )
+    : db
+        .prepare(
+          `
+          SELECT file_id, dim, normalized, embedding
+          FROM clip_embeddings
+          WHERE file_id IN (${cand.map(() => '?').join(',')})
+            AND model = ?
+          `
+        )
+        .all(...cand, model);
 
   const map = new Map(rows.map((r) => [Number(r.file_id), r]));
   const matches = [];
@@ -318,7 +341,9 @@ async function queryTopKByVector(vec, { model = CLIP_MODEL_ID, topK = 50, minSco
     matches.push({ file_id: fid, score });
   }
 
+  profile?.mark?.('clip.query.scored', { candidates: cand.length, kept: matches.length });
   matches.sort((a, b) => b.score - a.score);
+  profile?.mark?.('clip.query.sorted', { kept: matches.length });
   return { matches, model, dim: info.dim, normalized: true };
 }
 

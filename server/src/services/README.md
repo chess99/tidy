@@ -5,8 +5,8 @@
 ### 文件
 
 - `clearByRoot.js`：按库根目录清理/回收相关数据与派生文件。
-- `aiClient.js`：AI 服务客户端（调用 `ai-service` 的 CLIP 推理接口）。
-- `clipIndex.js`：CLIP 向量索引（HNSW）构建/加载/查询（智能搜索/相似检索；索引未就绪会返回 409，需先跑 `clip_index` 任务）。
+- `aiClient.js`：AI 服务客户端（调用 `ai-service` 的 CLIP 推理接口；支持可选 `profile` 埋点）。
+- `clipIndex.js`：CLIP 向量索引（HNSW）构建/加载/查询（智能搜索/相似检索；索引未就绪会返回 409，需先跑 `clip_index` 任务；支持可选 `profile` 埋点）。
 - `faceClustering.js`：人脸聚类算法/流程封装。
 - `reclusterPeople.js`：人物重聚类的高层编排（可能组合 DB + clustering + job）。
 

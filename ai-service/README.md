@@ -29,6 +29,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8002
 - `POST /detect+embed`：人脸检测 + embedding（输入 `image_base64`）
 - `POST /clip/text-embed`：文本 embedding（输入 `text` 或 `texts`）
 - `POST /clip/image-embed`：图片 embedding（输入 `image_path` 或 `image_base64`）
+  - 调试：加请求头 `x-tidy-profile: 1` 或 query `?profile=1`，响应会附带 `profile`（分段耗时 + CPU 时间 + RSS 峰值）
 
 ## 环境变量
 

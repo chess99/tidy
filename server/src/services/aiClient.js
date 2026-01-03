@@ -15,40 +15,71 @@ function ensureUrl(base, p) {
   return `${b}/${path}`;
 }
 
-async function postJson(url, body) {
-  const res = await fetch(url, {
+function withQuery(url, key, value) {
+  const u = String(url || '');
+  const k = String(key || '').trim();
+  if (!k) return u;
+  const hasQ = u.includes('?');
+  const sep = hasQ ? '&' : '?';
+  return `${u}${sep}${encodeURIComponent(k)}=${encodeURIComponent(String(value))}`;
+}
+
+async function postJson(url, body, { profile = null } = {}) {
+  const wantsRemoteProfile = !!profile?.enabled;
+  const u0 = String(url || '');
+  const u = wantsRemoteProfile ? withQuery(u0, 'profile', '1') : u0;
+  const startedAt = Date.now();
+  const res = await fetch(u, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(wantsRemoteProfile ? { 'x-tidy-profile': '1' } : {}),
+    },
     body: JSON.stringify(body || {}),
   });
+  profile?.mark('ai.http', { url: u, status: res.status, ms: Date.now() - startedAt });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`ai-service error ${res.status}: ${text || res.statusText}`);
   }
-  return await res.json();
+  const out = await res.json();
+  profile?.mark('ai.json', { url: u });
+  return out;
 }
 
-async function clipTextEmbed({ query, normalize = true } = {}) {
+async function clipTextEmbed({ query, normalize = true, profile = null } = {}) {
   const q = String(query || '').trim();
   if (!q) throw new Error('query required');
   const url = ensureUrl(AI_SERVICE_URL, '/clip/text-embed');
   const payload = { text: q, normalize };
   // Note: CLIP model selection is handled inside ai-service via env (TIDY_CLIP_MODEL_ID).
   // We keep CLIP_MODEL_ID in server config for index/metadata consistency.
-  const out = await postJson(url, payload);
+  const out = await postJson(url, payload, { profile });
   const emb = Array.isArray(out?.embeddings) ? out.embeddings[0] : null;
   if (!Array.isArray(emb)) throw new Error('invalid clip/text-embed response');
-  return { model: String(out.model || CLIP_MODEL_ID), dim: Number(out.dim), normalized: !!out.normalized, embedding: emb };
+  return {
+    model: String(out.model || CLIP_MODEL_ID),
+    dim: Number(out.dim),
+    normalized: !!out.normalized,
+    embedding: emb,
+    profile: out?.profile || null,
+  };
 }
 
-async function clipImageEmbed({ imagePath, normalize = true } = {}) {
+async function clipImageEmbed({ imagePath, normalize = true, profile = null } = {}) {
   const p = String(imagePath || '').trim();
   if (!p) throw new Error('imagePath required');
   const url = ensureUrl(AI_SERVICE_URL, '/clip/image-embed');
-  const out = await postJson(url, { image_path: p, normalize });
+  const out = await postJson(url, { image_path: p, normalize }, { profile });
   const emb = Array.isArray(out?.embeddings) ? out.embeddings[0] : null;
   if (!Array.isArray(emb)) throw new Error('invalid clip/image-embed response');
-  return { model: String(out.model || CLIP_MODEL_ID), dim: Number(out.dim), normalized: !!out.normalized, embedding: emb };
+  return {
+    model: String(out.model || CLIP_MODEL_ID),
+    dim: Number(out.dim),
+    normalized: !!out.normalized,
+    embedding: emb,
+    profile: out?.profile || null,
+  };
 }
 
 module.exports = { clipTextEmbed, clipImageEmbed };
