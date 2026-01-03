@@ -13,6 +13,15 @@ tidy.db
 tidy.db-shm
 tidy.db-wal
 
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+ai-service/.venv/
+
 # Face API models (generated / copied at install time)
 server/models/
 

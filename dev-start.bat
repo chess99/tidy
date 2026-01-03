@@ -4,6 +4,14 @@ echo.
 
 cd /d %~dp0
 
+echo Starting AI service...
+if exist "ai-service\.venv\Scripts\python.exe" (
+  start "AI Service" cmd /k "cd ai-service && .venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8002"
+) else (
+  echo [AI] ai-service venv missing. Run:
+  echo   cd ai-service ^&^& python -m venv .venv ^&^& .venv\\Scripts\\python -m pip install -r requirements.txt
+)
+
 echo Starting backend server...
 start "Backend Server" cmd /k "cd server && npm run dev"
 

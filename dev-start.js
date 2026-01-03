@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+/**
+ * input: 本地 Node/npm + Python(可选) + 进程管理/信号
+ * output: 一键启动/停止（backend/frontend/ai-service）并维护 PID 文件
+ * pos: 开发辅助脚本：提升本地开发体验（变更需同步更新本头注释与所属目录 README）
+ */
 
 const { spawn } = require('child_process');
 const path = require('path');
@@ -49,6 +54,14 @@ function killProcess(pid) {
   }
 }
 
+function exists(p) {
+  try {
+    return fs.existsSync(p);
+  } catch {
+    return false;
+  }
+}
+
 function startServer(name, cwd) {
   log(colors.blue, name, 'Starting...');
   
@@ -73,6 +86,60 @@ function startServer(name, cwd) {
   return proc.pid;
 }
 
+function startAiService() {
+  const cwd = path.join(__dirname, 'ai-service');
+  const isWindows = process.platform === 'win32';
+
+  const venvPython = isWindows
+    ? path.join(cwd, '.venv', 'Scripts', 'python.exe')
+    : path.join(cwd, '.venv', 'bin', 'python');
+
+  const python = exists(venvPython) ? venvPython : (process.env.PYTHON || (isWindows ? 'python' : 'python3.13'));
+
+  // If venv is missing, attempt to create it and install requirements once (best-effort).
+  if (!exists(venvPython)) {
+    log(colors.yellow, 'AI', 'Virtualenv missing; bootstrapping .venv (may take a while)...');
+    try {
+      const venv = spawn(python, ['-m', 'venv', '.venv'], { cwd, shell: true, stdio: 'inherit' });
+      venv.on('exit', (code) => {
+        if (code !== 0) {
+          log(colors.red, 'AI', `venv creation failed (code ${code}). Skipping ai-service.`);
+          return;
+        }
+        const pipPython = venvPython;
+        const pip = spawn(pipPython, ['-m', 'pip', 'install', '-r', 'requirements.txt'], { cwd, shell: true, stdio: 'inherit' });
+        pip.on('exit', (code2) => {
+          if (code2 !== 0) {
+            log(colors.red, 'AI', `pip install failed (code ${code2}). Skipping ai-service.`);
+            return;
+          }
+          // Start uvicorn after deps are ready.
+          log(colors.blue, 'AI', 'Starting ai-service...');
+          spawn(pipPython, ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '8002'], {
+            cwd,
+            shell: true,
+            stdio: 'inherit',
+            detached: false,
+          });
+        });
+      });
+    } catch (e) {
+      log(colors.red, 'AI', `Bootstrap error: ${e.message || e}`);
+    }
+    // We can't reliably return a PID when bootstrapping asynchronously; caller should handle missing pid.
+    return null;
+  }
+
+  log(colors.blue, 'AI', 'Starting ai-service...');
+  const proc = spawn(python, ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '8002'], {
+    cwd,
+    shell: true,
+    stdio: 'inherit',
+    detached: false,
+  });
+  return proc.pid;
+}
+
 function main() {
   const command = process.argv[2];
 
@@ -82,6 +149,7 @@ function main() {
     if (pids) {
       if (pids.backend) killProcess(pids.backend);
       if (pids.frontend) killProcess(pids.frontend);
+      if (pids.ai) killProcess(pids.ai);
       fs.unlinkSync(PID_FILE);
       log(colors.green, 'STOP', 'All servers stopped.');
     } else {
@@ -104,8 +172,9 @@ function main() {
 
   // Wait a bit before starting frontend
   setTimeout(() => {
+    const aiPid = startAiService();
     const frontendPid = startServer('FRONTEND', 'client');
-    savePids({ backend: backendPid, frontend: frontendPid });
+    savePids({ backend: backendPid, frontend: frontendPid, ai: aiPid });
   }, 1000);
 
   // Handle cleanup on exit
@@ -115,6 +184,7 @@ function main() {
     if (pids) {
       if (pids.backend) killProcess(pids.backend);
       if (pids.frontend) killProcess(pids.frontend);
+      if (pids.ai) killProcess(pids.ai);
       fs.unlinkSync(PID_FILE);
     }
     process.exit(0);

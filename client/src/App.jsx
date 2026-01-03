@@ -544,9 +544,15 @@ function Main() {
                     <div className="col-span-2">
                       <div className="flex flex-col gap-2">
                         <div className="font-mono text-xs break-all text-gray-800">{selectedAsset.hash}</div>
-                        <div className="flex gap-2">
-                          <Button variant="outline" size="sm" onClick={() => applyFilter({ hash: selectedAsset.hash })} className="h-7 text-xs flex-1">
-                            仅看同Hash
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => applyFilter({ hash: selectedAsset.hash })}
+                            className="h-7 text-xs"
+                            title="仅看同一 hash 的文件"
+                          >
+                            同Hash
                           </Button>
                           <Button
                             variant="outline"
@@ -554,23 +560,23 @@ function Main() {
                             disabled={!canFindSimilar}
                             title={
                               canFindSimilar
-                                ? '按 pHash 相似度查找相似图片（结果展示在"全部文件"）'
+                                ? '按 pHash 相似度查找相似图片'
                                 : '该内容暂无可用 pHash（未计算/非图片）'
                             }
                             onClick={() => applySimilarPhash(selectedAsset)}
-                            className="h-7 text-xs flex-1"
+                            className="h-7 text-xs"
                           >
-                            找相似
+                            相似(pHash)
                           </Button>
                           <Button
                             variant="outline"
                             size="sm"
                             disabled={!canFindSimilarClip}
-                            title="按 CLIP 向量相似度查找相似图片（支持裁剪/调色，需先补算 embedding + 构建索引）"
+                            title="按 CLIP 向量相似度查找相似图片（支持裁剪/调色）"
                             onClick={() => applySimilarClip(selectedAsset)}
-                            className="h-7 text-xs flex-1"
+                            className="h-7 text-xs col-span-2"
                           >
-                            相似(CLIP)
+                            相似CLIP
                           </Button>
                         </div>
                       </div>
