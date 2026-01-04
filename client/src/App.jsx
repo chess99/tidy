@@ -5,7 +5,7 @@
  */
 
 import { QueryClient, QueryClientProvider, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Trash2, X, FolderCheck, Wrench } from 'lucide-react';
+import { Trash2, X, FolderCheck, Briefcase, Copy } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { apiUrl, getAsset, getAssetsBatch, getFilesUnified, getFilesBatch, updateAssetStatus } from './api/client';
 import { MinimalScanStatus } from './components/MinimalScanStatus';
@@ -358,7 +358,7 @@ function Main() {
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="icon" title="实用工具">
-                    <Wrench className="h-4 w-4" />
+                    <Briefcase className="h-4 w-4" />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="w-80 p-3">
@@ -373,7 +373,7 @@ function Main() {
                     >
                       <div className="flex items-start gap-3">
                         <div className="mt-0.5 text-gray-800">
-                          <Wrench className="h-4 w-4" />
+                          <Copy className="h-4 w-4" />
                         </div>
                         <div className="min-w-0">
                           <div className="text-sm font-semibold text-gray-900">检查重复项</div>
