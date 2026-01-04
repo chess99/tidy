@@ -12,6 +12,7 @@ const { queryTopKByVector } = require('../services/clipIndex');
 const { createProfiler } = require('../utils/profiler');
 
 const router = express.Router();
+let searchInflight = 0;
 
 function parseIntSafe(v, fallback) {
   const n = Number(v);
@@ -91,6 +92,10 @@ router.post('/', async (req, res) => {
   const topK = Math.max(need, Math.min(requestedTopK, 5000));
   profiler.mark('parsed', { page, limit, topK, offset, minScore, queryLen: q.length });
 
+  searchInflight += 1;
+  const inflightAtStart = searchInflight;
+  profiler.mark('inflight', { searchInflight: inflightAtStart });
+
   try {
     const embedOut = await clipTextEmbed({ query: q, normalize: true, profile: profiler });
     const embedding = embedOut?.embedding;
@@ -105,7 +110,7 @@ router.post('/', async (req, res) => {
     const slice = matches.slice(offset, offset + limit);
     const ids = slice.map((m) => Number(m.file_id)).filter(Number.isFinite);
     if (!ids.length) {
-      const profile = profiler.end({ empty: true, total, aiService: aiServiceProfile || undefined });
+      const profile = profiler.end({ empty: true, total, aiService: aiServiceProfile || undefined, searchInflight: inflightAtStart });
       return res.json({
         data: [],
         pagination: { page, limit, total },
@@ -152,7 +157,7 @@ router.post('/', async (req, res) => {
     const data = rows.map((row) => ({ ...row, score: scoreById.get(Number(row.id)) ?? null })).map(toFileRow);
     profiler.mark('serialized', { data: data.length });
 
-    const profile = profiler.end({ total, returned: data.length, aiService: aiServiceProfile || undefined });
+    const profile = profiler.end({ total, returned: data.length, aiService: aiServiceProfile || undefined, searchInflight: inflightAtStart });
     return res.json({
       data,
       pagination: { page, limit, total },
@@ -160,8 +165,10 @@ router.post('/', async (req, res) => {
       ...(profile ? { profile } : {}),
     });
   } catch (e) {
-    const profile = profiler.end({ error: String(e?.message || e) });
+    const profile = profiler.end({ error: String(e?.message || e), searchInflight: inflightAtStart });
     return res.status(e?.statusCode || 500).json({ error: String(e?.message || e), ...(profile ? { profile } : {}) });
+  } finally {
+    searchInflight = Math.max(0, searchInflight - 1);
   }
 });
 

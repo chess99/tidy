@@ -51,7 +51,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
   // Always fetch page 1 to learn total and confirm applied filter.
   const page1 = useQuery({
     queryKey: ['files', filesQueryOpts, 1],
-    queryFn: () => getFilesUnified(1, LIMIT, filesQueryOpts),
+    queryFn: ({ signal }) => getFilesUnified(1, LIMIT, filesQueryOpts, { signal }),
   });
 
   const total = page1.data?.pagination?.total ?? 0;
@@ -305,7 +305,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
   const pageQueries = useQueries({
     queries: neededPages.map((p) => ({
       queryKey: ['files', filesQueryOpts, p],
-      queryFn: () => getFilesUnified(p, LIMIT, filesQueryOpts),
+      queryFn: ({ signal }) => getFilesUnified(p, LIMIT, filesQueryOpts, { signal }),
       enabled: !!total && p >= 1,
       staleTime: 30_000,
     })),
@@ -415,7 +415,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
     for (let p = 1; p <= pages; p++) {
       const res = await qc.fetchQuery({
         queryKey: ['files', filesQueryOpts, p],
-        queryFn: () => getFilesUnified(p, LIMIT, filesQueryOpts),
+        queryFn: ({ signal }) => getFilesUnified(p, LIMIT, filesQueryOpts, { signal }),
         staleTime: 30_000,
       });
       for (const row of res?.data || []) ids.push(row.id);

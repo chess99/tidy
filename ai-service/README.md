@@ -35,5 +35,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8002
 
 - `TIDY_CLIP_MODEL_ID`：CLIP 模型 id 或本地路径（默认 `jinaai/jina-clip-v2`）
 - `TIDY_CLIP_TRUST_REMOTE_CODE`：是否允许 Transformers `trust_remote_code`（默认开启；Jina CLIP v2 需要）
+- `TIDY_CLIP_CONCURRENCY`：CLIP 推理并发（默认 `1`）。
+  - 说明：FastAPI 的同步 handler 会跑在线程池里；如果允许多请求并发进 Torch 推理，CPU/MPS/CUDA 很容易争用并产生严重长尾。
+  - 调参：结合 profiling 中的 `clip.slot.waitMs`（排队等待）与 `totalMs`（端到端）一起看，避免“吞吐略升但 P95/P99 暴涨”。
 
 

@@ -27,12 +27,12 @@ const api = axios.create({
 });
 
 // Smart search (CLIP): text -> images (ranked)
-export const smartSearch = ({ query, page = 1, limit = 50, topK = 1000, minScore } = {}) => {
+export const smartSearch = ({ query, page = 1, limit = 50, topK = 1000, minScore } = {}, { signal } = {}) => {
   const q = String(query || '').trim();
   if (!q) return Promise.resolve({ data: [], pagination: { page, limit, total: 0 }, applied: { query: '' } });
   const body = { query: q, page, limit, topK };
   if (minScore != null && Number.isFinite(Number(minScore))) body.minScore = Number(minScore);
-  return api.post('/search', body).then((res) => res.data);
+  return api.post('/search', body, { signal }).then((res) => res.data);
 };
 
 // Jobs (task queue)
@@ -53,7 +53,7 @@ export const getAsset = (hash) => api.get(`/assets/${hash}`).then(res => res.dat
 export const getAssetsBatch = (hashes = []) =>
   api.get('/assets/batch', { params: { hashes: hashes.join(',') } }).then(res => res.data);
 
-export const getFiles = (page = 1, limit = 50, opts = {}) => {
+export const getFiles = (page = 1, limit = 50, opts = {}, { signal } = {}) => {
   const {
     filter = 'all',
     organized,
@@ -105,19 +105,19 @@ export const getFiles = (page = 1, limit = 50, opts = {}) => {
       if (Number.isFinite(ms)) params.similarMinScore = ms;
     }
   }
-  return api.get('/files', { params }).then(res => res.data);
+  return api.get('/files', { params, signal }).then(res => res.data);
 };
 
 // Unified files fetcher:
 // - normal browse/filters: GET /files
 // - smart search: POST /search (ranked)
-export const getFilesUnified = (page = 1, limit = 50, opts = {}) => {
+export const getFilesUnified = (page = 1, limit = 50, opts = {}, { signal } = {}) => {
   const q = String(opts?.smartQuery || '').trim();
   if (q) {
     const topK = Number.isFinite(Number(opts?.smartTopK)) ? Number(opts.smartTopK) : 1000;
-    return smartSearch({ query: q, page, limit, topK, minScore: opts?.smartMinScore });
+    return smartSearch({ query: q, page, limit, topK, minScore: opts?.smartMinScore }, { signal });
   }
-  return getFiles(page, limit, opts);
+  return getFiles(page, limit, opts, { signal });
 };
 export const getFilesDateIndex = (filter = 'all', granularity = 'month', opts = {}) => {
   const {

@@ -4,7 +4,7 @@
  * pos: 客户端视图层：拼装业务交互（变更需同步更新本头注释与所属目录 README）
  */
 
-import { FilterX, Plus, X } from 'lucide-react';
+import { Check, FilterX, Plus, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getPeople } from '../api/client';
@@ -32,8 +32,12 @@ export function FilesFilters({ value, onChange }) {
   "use no memo"
   const v = value || {};
   const [extInput, setExtInput] = useState('');
-  const smartQuery = String(v.smartQuery || '').trim();
-  const smartActive = !!smartQuery;
+  const [smartDraft, setSmartDraft] = useState(() => String(v.smartQuery || ''));
+  const [smartComposing, setSmartComposing] = useState(false);
+  const smartQueryAppliedRaw = String(v.smartQuery || '');
+  const smartQueryApplied = smartQueryAppliedRaw.trim();
+  const smartActive = !!smartQueryApplied;
+  const smartDirty = smartDraft !== smartQueryAppliedRaw;
 
   const similarActive = (v.similarKind === 'phash' || v.similarKind === 'clip') && Number.isFinite(Number(v.similarToFileId));
   const similarSeedFileId = Number.isFinite(Number(v.similarToFileId)) ? Number(v.similarToFileId) : null;
@@ -106,7 +110,8 @@ export function FilesFilters({ value, onChange }) {
             variant="ghost"
             size="icon"
             title="清空筛选"
-            onClick={() =>
+            onClick={() => {
+              setSmartDraft('');
               onChange({
                 ...v,
                 organized: undefined,
@@ -120,16 +125,16 @@ export function FilesFilters({ value, onChange }) {
                 people: undefined,
                 pathContains: '',
                 hash: '',
-                  similarKind: null,
-                  similarToFileId: null,
-                  similarThreshold: 10,
-                  similarTopK: 500,
-                  similarMinScore: 0.25,
-                  smartQuery: '',
-                  smartTopK: 1000,
-                  smartMinScore: 0.25,
-              })
-            }
+                similarKind: null,
+                similarToFileId: null,
+                similarThreshold: 10,
+                similarTopK: 500,
+                similarMinScore: 0.25,
+                smartQuery: '',
+                smartTopK: 1000,
+                smartMinScore: 0.25,
+              });
+            }}
           >
             <FilterX className="h-4 w-4" />
           </Button>
@@ -145,7 +150,10 @@ export function FilesFilters({ value, onChange }) {
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => onChange({ ...v, smartQuery: '' })}
+              onClick={() => {
+                setSmartDraft('');
+                onChange({ ...v, smartQuery: '' });
+              }}
               title="清除智能搜索"
               className={smartActive ? undefined : 'opacity-0 pointer-events-none'}
               aria-hidden={!smartActive}
@@ -155,11 +163,40 @@ export function FilesFilters({ value, onChange }) {
             </Button>
       </div>
 
-          <Input
-            value={v.smartQuery || ''}
-            onChange={(e) => onChange({ ...v, smartQuery: e.target.value })}
-            placeholder="输入文字：例如『海边 日落 狗』"
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              value={smartDraft}
+              onChange={(e) => setSmartDraft(e.target.value)}
+              onCompositionStart={() => setSmartComposing(true)}
+              onCompositionEnd={(e) => {
+                setSmartComposing(false);
+                setSmartDraft(e.target.value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !smartComposing) {
+                  e.preventDefault();
+                  onChange({ ...v, smartQuery: smartDraft });
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setSmartDraft(smartQueryAppliedRaw);
+                }
+              }}
+              placeholder="输入文字：例如『海边 日落 狗』"
+            />
+            <Button
+              type="button"
+              variant={smartDirty ? 'default' : 'ghost'}
+              size="icon"
+              title={smartDirty ? '应用智能搜索（Enter）' : '已应用'}
+              className={smartDirty ? undefined : 'opacity-0 pointer-events-none'}
+              aria-hidden={!smartDirty}
+              tabIndex={smartDirty ? 0 : -1}
+              onClick={() => onChange({ ...v, smartQuery: smartDraft })}
+            >
+              <Check className="h-4 w-4" />
+            </Button>
+          </div>
 
           {smartActive ? (
             <div className="space-y-2">

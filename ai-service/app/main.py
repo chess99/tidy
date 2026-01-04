@@ -6,6 +6,7 @@ pos: Python AI 服务入口：供主服务调用（变更需同步更新本头�
 import base64
 import io
 import os
+import threading
 import time
 from typing import Any, Dict, List, Optional
 
@@ -34,6 +35,19 @@ _fa: Optional[FaceAnalysis] = None
 
 # CLIP model is loaded lazily because it is heavy and may require offline model files.
 _clip: Optional[Any] = None  # ClipEncoder (lazy)
+_clip_load_lock = threading.Lock()
+
+# CLIP inference concurrency control:
+# - FastAPI runs sync endpoints in a threadpool, so without a guard, multiple concurrent requests will run
+#   Torch inference at the same time and can thrash CPU/MPS/CUDA, causing severe tail latency.
+try:
+    _clip_concurrency = int(str(os.environ.get("TIDY_CLIP_CONCURRENCY", "1")).strip() or "1")
+except Exception:
+    _clip_concurrency = 1
+_clip_concurrency = max(1, _clip_concurrency)
+_clip_sem = threading.Semaphore(_clip_concurrency)
+_clip_inflight = 0
+_clip_inflight_lock = threading.Lock()
 
 
 def _decode_image_b64(b64: str) -> np.ndarray:
@@ -95,15 +109,36 @@ def _get_clip():
     global _clip
     if _clip is not None:
         return _clip
+    with _clip_load_lock:
+        if _clip is not None:
+            return _clip
+        try:
+            from app.clip_encoder import get_encoder  # type: ignore
+        except Exception as e:  # pragma: no cover
+            raise HTTPException(status_code=500, detail=f"CLIP encoder import failed: {e}") from e
+        try:
+            _clip = get_encoder()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return _clip
+
+
+def _with_clip_slot(kind: str, prof, fn):
+    global _clip_inflight
+    t0 = time.perf_counter_ns()
+    _clip_sem.acquire()
+    wait_ms = (time.perf_counter_ns() - t0) / 1e6
+    with _clip_inflight_lock:
+        _clip_inflight += 1
+        inflight = _clip_inflight
+    if prof is not None:
+        prof.mark("clip.slot", {"kind": str(kind), "waitMs": float(wait_ms), "inflight": int(inflight), "concurrency": int(_clip_concurrency)})
     try:
-        from app.clip_encoder import get_encoder  # type: ignore
-    except Exception as e:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=f"CLIP encoder import failed: {e}") from e
-    try:
-        _clip = get_encoder()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-    return _clip
+        return fn()
+    finally:
+        with _clip_inflight_lock:
+            _clip_inflight -= 1
+        _clip_sem.release()
 
 
 def _l2_normalize(vec: np.ndarray) -> np.ndarray:
@@ -165,7 +200,15 @@ def clip_text_embed(payload: Dict[str, Any], request: Request) -> Dict[str, Any]
         prof.mark("parsed", {"n": len(items), "normalize": bool(normalize)})
     cold = _clip is None
     enc = prof.wrap("clip.get_encoder", _get_clip, {"cold": bool(cold)}) if prof is not None else _get_clip()
-    out = prof.wrap("clip.encode_text", lambda: enc.encode_text(items, normalize=bool(normalize), profile=prof), {"n": len(items)}) if prof is not None else enc.encode_text(items, normalize=bool(normalize))
+    out = (
+        prof.wrap(
+            "clip.encode_text",
+            lambda: _with_clip_slot("text", prof, lambda: enc.encode_text(items, normalize=bool(normalize), profile=prof)),
+            {"n": len(items)},
+        )
+        if prof is not None
+        else _with_clip_slot("text", None, lambda: enc.encode_text(items, normalize=bool(normalize)))
+    )
     arr = out.embeddings
     payload_out: Dict[str, Any] = {
         "model": out.model,
@@ -218,9 +261,13 @@ def clip_image_embed(payload: Dict[str, Any], request: Request) -> Dict[str, Any
     cold = _clip is None
     enc = prof.wrap("clip.get_encoder", _get_clip, {"cold": bool(cold)}) if prof is not None else _get_clip()
     out = (
-        prof.wrap("clip.encode_images", lambda: enc.encode_images(images, normalize=bool(normalize), profile=prof), {"n": len(images)})
+        prof.wrap(
+            "clip.encode_images",
+            lambda: _with_clip_slot("image", prof, lambda: enc.encode_images(images, normalize=bool(normalize), profile=prof)),
+            {"n": len(images)},
+        )
         if prof is not None
-        else enc.encode_images(images, normalize=bool(normalize))
+        else _with_clip_slot("image", None, lambda: enc.encode_images(images, normalize=bool(normalize)))
     )
     arr = out.embeddings
     payload_out2: Dict[str, Any] = {

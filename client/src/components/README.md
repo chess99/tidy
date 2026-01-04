@@ -11,7 +11,7 @@
 - `AlbumsView.jsx`：相册视图（列表/选择/导航等）。
 - `AlbumAssetsGrid.jsx`：相册内资产网格视图与虚拟化渲染编排。
 - `FilesGrid.jsx`：文件/资产浏览网格（虚拟化 + 选择）。
-- `FilesFilters.jsx`：文件筛选条件与过滤 UI（含“相似(pHash/CLIP)”与“智能搜索(CLIP)”）。
+- `FilesFilters.jsx`：文件筛选条件与过滤 UI（含“相似(pHash/CLIP)”与“智能搜索(CLIP)”；智能搜索为重操作，采用“输入草稿 + 勾勾/Enter 手动应用”避免 IME 拼写连发请求）。
 - `TrashView.jsx`：回收站视图（`assets.status='trash'` 列表 + 点击查看）。
 - `DuplicatesToolView.jsx`：实用工具：检查重复项（hash/pHash 分组 + 逐组保留/删除副本）。
 - `AssetViewer.jsx`：单资产查看（图片/视频）与操作入口。
