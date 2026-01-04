@@ -2,6 +2,8 @@
 输入：文件系统、SQLite、计算模型/算法、客户端请求；输出：HTTP API、任务队列执行、副作用（缩略图/DB/文件操作）。
 更新规则：路由/DB schema/任务形状变化时，更新本 README + `docs/README.md`。
 
+> 补充：仓库根目录下的 `server/scripts/` 提供运维/性能排查脚本（见 `server/scripts/README.md`）；不属于本目录子树，但属于同一后端工程的调试入口。
+
 ### 子目录
 
 - `routes/`：HTTP 路由层（见 `routes/README.md`）。
