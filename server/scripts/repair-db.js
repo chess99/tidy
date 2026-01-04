@@ -8,6 +8,7 @@
 const path = require('path');
 const fs = require('fs-extra');
 const Database = require('better-sqlite3');
+const { applyMissingPolicyForMissingFileRows } = require('../src/services/missingPolicy');
 
 function getArg(name) {
   const idx = process.argv.indexOf(name);
@@ -215,61 +216,19 @@ async function main() {
     console.log(`Missing rows: ${missingCount}`);
 
     if (missingRows.length) {
-      const tx2 = db.transaction((rowsToDelete) => {
-        const delFile = db.prepare('DELETE FROM files WHERE id = ?');
-        const selectFilesByHash = db.prepare('SELECT id, path FROM files WHERE hash = ?');
-        const delFilesByHash = db.prepare('DELETE FROM files WHERE hash = ?');
-
-        const getAsset = db.prepare('SELECT status FROM assets WHERE hash = ?');
-        const markAssetMissing = db.prepare('UPDATE assets SET missing = 1, updated_at = ? WHERE hash = ?');
-        const clearAssetMissing = db.prepare('UPDATE assets SET missing = 0, updated_at = ? WHERE hash = ?');
-
-        const delAlbumAssets = db.prepare('DELETE FROM album_assets WHERE hash = ?');
-        const delAssetTags = db.prepare('DELETE FROM asset_tags WHERE hash = ?');
-        const delFaces = db.prepare('DELETE FROM faces WHERE hash = ?');
-        const clearClipHash = db.prepare('UPDATE clip_embeddings SET hash = NULL WHERE hash = ?');
-        const delAsset = db.prepare('DELETE FROM assets WHERE hash = ?');
-
-        const affectedHashes = new Set();
-
-        // 1) Delete missing file rows by id.
-        for (const r of rowsToDelete) {
-          if (r?.id == null) continue;
-          delFile.run(r.id);
-          if (r.hash) affectedHashes.add(String(r.hash));
+      try {
+        db.exec('BEGIN');
+        await applyMissingPolicyForMissingFileRows(db, missingRows, { pathExists: fs.pathExists, ts: Date.now });
+        db.exec('COMMIT');
+        console.log('Applied missing policy (deleted missing files rows; updated/deleted assets as needed).');
+      } catch (e) {
+        try {
+          db.exec('ROLLBACK');
+        } catch {
+          // ignore
         }
-
-        // 2) For each affected hash, decide whether asset should be kept (missing=1) or deleted.
-        const now = Date.now();
-        for (const hash of affectedHashes) {
-          const files = selectFilesByHash.all(hash);
-          const anyExists = files.some((f) => f?.path && fs.existsSync(String(f.path)));
-
-          if (anyExists) {
-            clearAssetMissing.run(now, hash);
-            continue;
-          }
-
-          // No instances exist -> delete all remaining file rows for this hash to keep DB consistent.
-          delFilesByHash.run(hash);
-
-          const status = String(getAsset.get(hash)?.status || 'inbox');
-          if (status !== 'inbox') {
-            markAssetMissing.run(now, hash);
-            continue;
-          }
-
-          // Ephemeral (inbox) assets are removed when they disappear.
-          delAlbumAssets.run(hash);
-          delAssetTags.run(hash);
-          delFaces.run(hash);
-          clearClipHash.run(hash);
-          delAsset.run(hash);
-        }
-      });
-
-      tx2(missingRows);
-      console.log('Applied missing policy (deleted missing files rows; updated/deleted assets as needed).');
+        throw e;
+      }
     }
   }
 

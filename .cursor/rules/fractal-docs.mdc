@@ -3,7 +3,7 @@ description: "分形自指文档规范：改代码必须同步更新文件头注
 globs:
   - "client/src/**/*"
   - "server/src/**/*"
-  - "face-service/app/**/*"
+  - "ai-service/app/**/*"
 alwaysApply: true
 ---
 

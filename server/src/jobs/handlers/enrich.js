@@ -16,6 +16,7 @@ const { extractVideoMetadata } = require('../../scanner/videoMetadata');
 const { generateThumbnail, getThumbnailPath, RAW_EXTS } = require('../../scanner/thumbnail');
 const { computePHash } = require('../../scanner/phash');
 const { insertChange, now } = require('./_util');
+const { applyMissingPolicyForMissingFileRows } = require('../../services/missingPolicy');
 
 function safeJsonStringify(v) {
   try {
@@ -234,71 +235,18 @@ async function handleEnrich(ctx) {
     } catch {
       stats.missingFiles++;
       const hash = row.hash ? String(row.hash) : null;
-
-      // Policy: missing paths are removed from `files` (files tab only shows existing instances).
-      // For assets:
-      // - if status != inbox: keep asset as a semantic object and mark assets.missing=1
-      // - if status == inbox: delete asset entirely (and any remaining files rows)
       try {
-        db.prepare('DELETE FROM files WHERE id = ?').run(fileId);
-        insertChange('file', fileId, 'deleted');
+        await applyMissingPolicyForMissingFileRows(
+          db,
+          [{ id: fileId, hash }],
+          {
+            pathExists: fs.pathExists,
+            ts: now,
+            insertChange: (entity, entityId, type) => insertChange(entity, entityId, type),
+          }
+        );
       } catch {
         // ignore
-      }
-
-      if (hash) {
-        try {
-          const stillExisting = await listExistingFileRowsByHash(db, hash);
-          if (stillExisting.length > 0) {
-            // Some physical instance still exists; ensure asset is not marked missing.
-            try {
-              const ts = now();
-              db.prepare(`UPDATE assets SET missing = 0, updated_at = COALESCE(updated_at, ?) WHERE hash = ?`).run(ts, hash);
-              insertChange('asset', hash, 'unmissing_fs');
-            } catch {
-              // ignore
-            }
-            return;
-          }
-
-          // No physical instances exist: clean up remaining file rows and decide asset fate.
-          const fileIds = db.prepare('SELECT id FROM files WHERE hash = ?').all(hash).map((r) => r.id);
-          try {
-            db.prepare('DELETE FROM files WHERE hash = ?').run(hash);
-          } catch {
-            // ignore
-          }
-          for (const id of fileIds) {
-            try {
-              insertChange('file', id, 'deleted');
-            } catch {
-              // ignore
-            }
-          }
-
-          const asset = db.prepare('SELECT status FROM assets WHERE hash = ?').get(hash);
-          const status = String(asset?.status || 'inbox');
-
-          if (status !== 'inbox') {
-            const ts = now();
-            db.prepare(`UPDATE assets SET missing = 1, updated_at = ? WHERE hash = ?`).run(ts, hash);
-            insertChange('asset', hash, 'missing_fs');
-          } else {
-            // Remove ephemeral assets (never user-touched) when they disappear from disk.
-            try {
-              db.prepare('DELETE FROM album_assets WHERE hash = ?').run(hash);
-              db.prepare('DELETE FROM asset_tags WHERE hash = ?').run(hash);
-              db.prepare('DELETE FROM faces WHERE hash = ?').run(hash);
-              db.prepare('UPDATE clip_embeddings SET hash = NULL WHERE hash = ?').run(hash);
-            } catch {
-              // ignore best-effort cleanup
-            }
-            db.prepare('DELETE FROM assets WHERE hash = ?').run(hash);
-            insertChange('asset', hash, 'deleted_fs');
-          }
-        } catch {
-          // ignore cleanup failures
-        }
       }
       return;
     }
