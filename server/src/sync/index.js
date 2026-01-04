@@ -89,7 +89,7 @@ async function applyFileOp(db, op, report) {
         insertChange(db, 'file', op.file_id, 'moved');
       }
       if (op.hash) {
-        db.prepare(`UPDATE assets SET status = 'sorted', target_path = ?, updated_at = ? WHERE hash = ?`).run(toPath, now, op.hash);
+        db.prepare(`UPDATE assets SET status = 'sorted', target_path = ?, missing = 0, updated_at = ? WHERE hash = ?`).run(toPath, now, op.hash);
         insertChange(db, 'asset', op.hash, 'sorted');
       }
       if (op.album_id != null && op.hash) {
@@ -128,7 +128,7 @@ async function applyFileOp(db, op, report) {
       }
 
       if (op.hash) {
-        db.prepare(`UPDATE assets SET status = 'trash', target_path = ?, updated_at = ? WHERE hash = ?`).run(toPath, now, op.hash);
+        db.prepare(`UPDATE assets SET status = 'trash', target_path = ?, missing = 0, updated_at = ? WHERE hash = ?`).run(toPath, now, op.hash);
         db.prepare(`DELETE FROM album_assets WHERE hash = ?`).run(op.hash);
         insertChange(db, 'asset', op.hash, 'trash');
       }

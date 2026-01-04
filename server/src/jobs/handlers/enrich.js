@@ -91,7 +91,9 @@ async function listExistingFileRowsByHash(db, hash) {
     )
     .all(hash);
 
-  const candidates = rows.filter((r) => r?.path && Number(r?.missing || 0) === 0);
+  // Treat DB as an index: we only consider rows that still exist on disk.
+  // Note: legacy DBs may have files.missing=1; we intentionally ignore that flag here.
+  const candidates = rows.filter((r) => r?.path);
   if (!candidates.length) return [];
 
   const existsFlags = await Promise.all(candidates.map((r) => fs.pathExists(String(r.path))));
@@ -124,7 +126,7 @@ async function reconcileAssetByFilesystem(db, hash) {
     const best = pickBestRow(inTrash) || pickBestRow(rows);
     if (!best?.path) return;
 
-    db.prepare(`UPDATE assets SET status = 'trash', target_path = ?, updated_at = ? WHERE hash = ?`).run(best.path, ts, hash);
+    db.prepare(`UPDATE assets SET status = 'trash', target_path = ?, missing = 0, updated_at = ? WHERE hash = ?`).run(best.path, ts, hash);
     db.prepare(`DELETE FROM album_assets WHERE hash = ?`).run(hash);
     insertChange('asset', hash, 'trash_fs');
     return;
@@ -135,7 +137,7 @@ async function reconcileAssetByFilesystem(db, hash) {
     const best = pickBestRow(inManagedNonTrash) || pickBestRow(rows);
     if (!best?.path) return;
 
-    db.prepare(`UPDATE assets SET status = 'sorted', target_path = ?, updated_at = ? WHERE hash = ?`).run(best.path, ts, hash);
+    db.prepare(`UPDATE assets SET status = 'sorted', target_path = ?, missing = 0, updated_at = ? WHERE hash = ?`).run(best.path, ts, hash);
     insertChange('asset', hash, 'sorted_fs');
 
     const albumName = parseAlbumNameFromManagedPath(best.path);
@@ -162,7 +164,7 @@ async function reconcileAssetByFilesystem(db, hash) {
   const current = db.prepare(`SELECT status FROM assets WHERE hash = ?`).get(hash);
   if (String(current?.status || '') === 'ignored') return;
 
-  db.prepare(`UPDATE assets SET status = 'inbox', target_path = NULL, updated_at = ? WHERE hash = ?`).run(ts, hash);
+  db.prepare(`UPDATE assets SET status = 'inbox', target_path = NULL, missing = 0, updated_at = ? WHERE hash = ?`).run(ts, hash);
   db.prepare(`DELETE FROM album_assets WHERE hash = ?`).run(hash);
   insertChange('asset', hash, 'inbox_fs');
 }
@@ -194,9 +196,10 @@ async function handleEnrich(ctx) {
   // Pick candidate files (DB-driven).
   // We do NOT fully re-hash "done + unchanged" rows even in all-mode.
   const where = `
-    missing = 0
-    AND path IS NOT NULL
+    path IS NOT NULL
     AND (
+      missing = 1
+      OR
       scanned_at IS NULL
       OR mtime_ms IS NULL
       OR scanned_at < mtime_ms
@@ -230,11 +233,72 @@ async function handleEnrich(ctx) {
       stat = await fs.stat(filePath);
     } catch {
       stats.missingFiles++;
+      const hash = row.hash ? String(row.hash) : null;
+
+      // Policy: missing paths are removed from `files` (files tab only shows existing instances).
+      // For assets:
+      // - if status != inbox: keep asset as a semantic object and mark assets.missing=1
+      // - if status == inbox: delete asset entirely (and any remaining files rows)
       try {
-        db.prepare('UPDATE files SET missing = 1, updated_at = ? WHERE id = ?').run(now(), fileId);
-        insertChange('file', fileId, 'missing');
+        db.prepare('DELETE FROM files WHERE id = ?').run(fileId);
+        insertChange('file', fileId, 'deleted');
       } catch {
         // ignore
+      }
+
+      if (hash) {
+        try {
+          const stillExisting = await listExistingFileRowsByHash(db, hash);
+          if (stillExisting.length > 0) {
+            // Some physical instance still exists; ensure asset is not marked missing.
+            try {
+              const ts = now();
+              db.prepare(`UPDATE assets SET missing = 0, updated_at = COALESCE(updated_at, ?) WHERE hash = ?`).run(ts, hash);
+              insertChange('asset', hash, 'unmissing_fs');
+            } catch {
+              // ignore
+            }
+            return;
+          }
+
+          // No physical instances exist: clean up remaining file rows and decide asset fate.
+          const fileIds = db.prepare('SELECT id FROM files WHERE hash = ?').all(hash).map((r) => r.id);
+          try {
+            db.prepare('DELETE FROM files WHERE hash = ?').run(hash);
+          } catch {
+            // ignore
+          }
+          for (const id of fileIds) {
+            try {
+              insertChange('file', id, 'deleted');
+            } catch {
+              // ignore
+            }
+          }
+
+          const asset = db.prepare('SELECT status FROM assets WHERE hash = ?').get(hash);
+          const status = String(asset?.status || 'inbox');
+
+          if (status !== 'inbox') {
+            const ts = now();
+            db.prepare(`UPDATE assets SET missing = 1, updated_at = ? WHERE hash = ?`).run(ts, hash);
+            insertChange('asset', hash, 'missing_fs');
+          } else {
+            // Remove ephemeral assets (never user-touched) when they disappear from disk.
+            try {
+              db.prepare('DELETE FROM album_assets WHERE hash = ?').run(hash);
+              db.prepare('DELETE FROM asset_tags WHERE hash = ?').run(hash);
+              db.prepare('DELETE FROM faces WHERE hash = ?').run(hash);
+              db.prepare('UPDATE clip_embeddings SET hash = NULL WHERE hash = ?').run(hash);
+            } catch {
+              // ignore best-effort cleanup
+            }
+            db.prepare('DELETE FROM assets WHERE hash = ?').run(hash);
+            insertChange('asset', hash, 'deleted_fs');
+          }
+        } catch {
+          // ignore cleanup failures
+        }
       }
       return;
     }
@@ -341,6 +405,7 @@ async function handleEnrich(ctx) {
                 WHEN ? = 1 THEN 1
                 ELSE COALESCE(is_camera, 0)
               END,
+              missing = 0,
               updated_at = ?
           WHERE hash = ?
         `).run(
@@ -356,8 +421,8 @@ async function handleEnrich(ctx) {
         );
       } else {
         db.prepare(`
-          INSERT INTO assets (hash, mime_type, size, metadata, taken_at, status, camera_make, camera_model, is_camera, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO assets (hash, mime_type, size, metadata, taken_at, status, missing, camera_make, camera_model, is_camera, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
         `).run(
           hash,
           mimeType,

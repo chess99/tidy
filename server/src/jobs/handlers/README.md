@@ -6,8 +6,8 @@
 
 - `_util.js`：handler 共享工具（进度上报、批处理辅助等）。
 - `index.js`：handler 注册表（任务类型 -> 实现）。
-- `discover.js`：发现/扫描类任务（库遍历、入库触发；包含 `MANAGED_ROOT/TRASH_DIR` 用于恢复）。
-- `enrich.js`：补全/丰富元信息类任务（hash/metadata/thumb/pHash + 基于文件路径重建 `sorted/trash` 与 album 映射）。
+- `discover.js`：发现/扫描类任务（库遍历、入库触发；重新发现已知 hash 时会清理 `assets.missing`）。
+- `enrich.js`：补全/丰富元信息类任务（hash/metadata/thumb/pHash + 基于文件路径重建 `sorted/trash` 与 album 映射；缺失路径会删除 `files` 行，并按 `assets.status` 决定 `assets.missing`/删除 `assets`）。
 - `thumbsRebuild.js`：缩略图重建任务。
 - `facesScan.js`：人脸扫描任务（检测/嵌入/写库）。
 - `facesReset.js`：人脸数据重置任务（清理/回收）。

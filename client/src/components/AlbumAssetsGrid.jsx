@@ -213,7 +213,7 @@ export function AlbumAssetsGrid({ albumId, onAssetClick, viewerOpen, onViewerNav
                     topLabel={preferredTopLabel({ ext: asset.sample_ext, path: asset.sample_path, mime: asset.mime_type })}
                     placeholderBottomText={asset.sample_path || asset.hash}
                     dateText={asset.taken_at ? new Date(asset.taken_at).toLocaleDateString() : null}
-                    dimmed={asset.status === 'trash'}
+                    dimmed={!!asset.missing}
                     cursorFocused={cursorFocused}
                     onClick={() => {
                       setCursorIndex(globalIndex);

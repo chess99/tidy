@@ -4,6 +4,6 @@
 
 ### 文件
 
-- `index.js`：同步/变更流的入口实现（重放 `file_ops(move/trash/delete)`；trash 会保留最后一份副本用于回收站展示）。
+- `index.js`：同步/变更流的入口实现（重放 `file_ops(move/trash/delete)`；成功落盘时会清理 `assets.missing`；trash 会保留最后一份副本用于回收站展示）。
 
 

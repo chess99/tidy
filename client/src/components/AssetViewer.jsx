@@ -16,6 +16,7 @@ function isVideoMime(mime) {
 export function AssetViewer({ open, onOpenChange, asset, defaultMax = 4096, defaultQuality = 85, onPrev, onNext }) {
   const hash = asset?.hash || null;
   const mime = asset?.mime_type || null;
+  const isMissing = !!asset?.missing;
   const isVideo = isVideoMime(mime);
   const canPrev = typeof onPrev === 'function';
   const canNext = typeof onNext === 'function';
@@ -61,7 +62,7 @@ export function AssetViewer({ open, onOpenChange, asset, defaultMax = 4096, defa
     return apiUrl(`/assets/${hash}/preview?max=${defaultMax}&q=${defaultQuality}`);
   }, [hash, defaultMax, defaultQuality]);
 
-  const rawUrl = useMemo(() => (hash ? apiUrl(`/assets/${hash}/raw`) : null), [hash]);
+  const rawUrl = useMemo(() => (hash && !isMissing ? apiUrl(`/assets/${hash}/raw`) : null), [hash, isMissing]);
   const videoUrl = useMemo(() => (hash ? apiUrl(`/assets/${hash}/video`) : null), [hash]);
   const posterUrl = useMemo(() => (hash ? apiUrl(`/assets/${hash}/poster?w=1280&q=4`) : null), [hash]);
 

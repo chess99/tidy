@@ -92,6 +92,17 @@ function upsertFileDiscovered(db, filePath, stat) {
     );
 
     insertChange('file', existing.id, 'upsert');
+
+    // If this path corresponds to a known asset (hash already present), it means we have at least
+    // one physical instance again; clear asset-level missing.
+    if (hashMaybe) {
+      try {
+        db.prepare(`UPDATE assets SET missing = 0, updated_at = COALESCE(updated_at, ?) WHERE hash = ?`).run(ts, String(hashMaybe));
+        insertChange('asset', String(hashMaybe), 'unmissing_discover');
+      } catch {
+        // ignore
+      }
+    }
     return { id: existing.id, changed };
   }
 

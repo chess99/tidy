@@ -104,7 +104,7 @@ export function TrashView({ onAssetClick }) {
                       topLabel="TRASH"
                       placeholderBottomText={hash || '—'}
                       dateText={formatDate(asset?.taken_at)}
-                      dimmed={false}
+                      dimmed={!!asset?.missing}
                       bottomPrimary={hash || '—'}
                       bottomSecondary={asset?.target_path || '—'}
                       bottomSecondaryTitle={asset?.target_path || ''}
@@ -117,7 +117,7 @@ export function TrashView({ onAssetClick }) {
                       ]}
                       bottomContent={
                         <div className="text-[11px] text-gray-600 leading-4">
-                          {asset?.target_path ? (
+                          {!asset?.missing && asset?.target_path ? (
                             <a
                               className="underline underline-offset-2"
                               href={apiUrl(`/assets/${hash}/raw`)}
@@ -126,6 +126,8 @@ export function TrashView({ onAssetClick }) {
                             >
                               打开文件
                             </a>
+                          ) : asset?.missing ? (
+                            <span title="磁盘上找不到该内容的任何物理实例">文件缺失</span>
                           ) : (
                             '—'
                           )}

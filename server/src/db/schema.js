@@ -12,6 +12,7 @@ const dbSchema = `
     metadata TEXT,
     taken_at INTEGER,
     status TEXT CHECK(status IN ('inbox', 'sorted', 'trash', 'ignored')) DEFAULT 'inbox',
+    missing INTEGER DEFAULT 0,
     rating INTEGER DEFAULT 0,
     target_path TEXT,
     camera_make TEXT,

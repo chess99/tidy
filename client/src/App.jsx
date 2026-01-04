@@ -157,6 +157,17 @@ function Main() {
         patchInfinite(['files'], 'id', filesRes.data || []);
         patchInfinite(['assets'], 'hash', assetsRes.data || []);
 
+        // Deletions are represented by "missing from batch response".
+        // Since patchInfinite only merges, we must invalidate to drop deleted items from cached pages.
+        if (fileIds.length) {
+          const got = Array.isArray(filesRes?.data) ? filesRes.data : [];
+          if (got.length < fileIds.length) qc.invalidateQueries({ queryKey: ['files'] });
+        }
+        if (assetHashes.length) {
+          const got = Array.isArray(assetsRes?.data) ? assetsRes.data : [];
+          if (got.length < assetHashes.length) qc.invalidateQueries({ queryKey: ['assets'] });
+        }
+
         const sel = selectedAssetRef.current;
         if (sel && assetsRes.data) {
           const upd = assetsRes.data.find((a) => a.hash === sel.hash);

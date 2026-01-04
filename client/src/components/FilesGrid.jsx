@@ -585,7 +585,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
                     topLabel={isPlaceholder ? 'FILE' : ((file.ext || '').replace('.', '').toUpperCase() || 'FILE')}
                     placeholderBottomText={name}
                     dateText={dateText}
-                    dimmed={!!file?.missing}
+                    dimmed={false}
                     selected={isSelected}
                     cursorFocused={cursorFocused}
                     onClick={() => onFileClick?.(file, globalIndex)}

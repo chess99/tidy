@@ -39,6 +39,7 @@ function migrateDB(dbConn) {
     { name: 'camera_model', type: 'TEXT' },
     { name: 'is_camera', type: 'INTEGER', defaultSql: '0' },
     { name: 'face_scanned_at', type: 'INTEGER' },
+    { name: 'missing', type: 'INTEGER', defaultSql: '0' },
   ]);
 
   ensureColumns(dbConn, 'files', [
@@ -100,6 +101,7 @@ function migrateDB(dbConn) {
     dbConn.exec(`
       CREATE INDEX IF NOT EXISTS idx_assets_updated_at ON assets(updated_at);
       CREATE INDEX IF NOT EXISTS idx_assets_is_camera ON assets(is_camera);
+      CREATE INDEX IF NOT EXISTS idx_assets_missing ON assets(missing);
       CREATE INDEX IF NOT EXISTS idx_files_discovered_at ON files(discovered_at);
       CREATE INDEX IF NOT EXISTS idx_files_updated_at ON files(updated_at);
       CREATE INDEX IF NOT EXISTS idx_files_phash ON files(phash);

@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+/**
+ * input: 本地 DB 路径 + 文件系统（存在性检查）
+ * output: DB 修复/报告（可能会删除/更新 rows）
+ * pos: 运维脚本：DB 修复工具（变更需同步更新本头注释与所属目录 README）
+ */
 const path = require('path');
 const fs = require('fs-extra');
 const Database = require('better-sqlite3');
@@ -28,7 +33,7 @@ What it does:
   - Finds duplicate rows that differ only by path case (group by lower(path)).
   - Optionally deletes extra DB rows (does NOT modify the filesystem).
   - On Windows, can canonicalize paths to lower-case across the DB (after dedupe-case).
-  - Optionally marks or deletes rows whose paths are missing on disk.
+  - Applies missing policy: delete missing files rows; keep or delete assets based on assets.status.
 `);
 }
 
@@ -52,6 +57,16 @@ function chooseKeepPath(paths, preferPrefix) {
   if (photosHit) return photosHit;
   // Otherwise keep the shortest then lexicographically
   return paths.slice().sort((a, b) => (a.length - b.length) || a.localeCompare(b))[0];
+}
+
+function ensureColumn(db, table, name, ddl) {
+  try {
+    const cols = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((r) => r.name));
+    if (cols.has(name)) return;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  } catch {
+    // ignore
+  }
 }
 
 async function main() {
@@ -182,33 +197,79 @@ async function main() {
 
   if (doMarkMissing || doDeleteMissing) {
     console.log(`\nScanning for missing files on disk...`);
-    const rows = db.prepare('SELECT id, path FROM files WHERE missing = 0').all();
+    // Ensure schema exists even when running this script standalone.
+    ensureColumn(db, 'assets', 'missing', 'missing INTEGER DEFAULT 0');
+
+    const rows = db.prepare('SELECT id, path, hash FROM files').all();
     let missingCount = 0;
-    const missingIds = [];
+    const missingRows = [];
     for (const r of rows) {
       if (!r.path) continue;
       // eslint-disable-next-line no-await-in-loop
       const exists = await fs.pathExists(r.path);
       if (!exists) {
         missingCount++;
-        missingIds.push(r.id);
+        missingRows.push({ id: r.id, hash: r.hash ? String(r.hash) : null });
       }
     }
     console.log(`Missing rows: ${missingCount}`);
 
-    if (missingIds.length) {
-      const tx2 = db.transaction((ids) => {
-        if (doDeleteMissing) {
-          const stmt = db.prepare('DELETE FROM files WHERE id = ?');
-          ids.forEach((id) => stmt.run(id));
-        } else {
-          const stmt = db.prepare('UPDATE files SET missing = 1, updated_at = ? WHERE id = ?');
-          const now = Date.now();
-          ids.forEach((id) => stmt.run(now, id));
+    if (missingRows.length) {
+      const tx2 = db.transaction((rowsToDelete) => {
+        const delFile = db.prepare('DELETE FROM files WHERE id = ?');
+        const selectFilesByHash = db.prepare('SELECT id, path FROM files WHERE hash = ?');
+        const delFilesByHash = db.prepare('DELETE FROM files WHERE hash = ?');
+
+        const getAsset = db.prepare('SELECT status FROM assets WHERE hash = ?');
+        const markAssetMissing = db.prepare('UPDATE assets SET missing = 1, updated_at = ? WHERE hash = ?');
+        const clearAssetMissing = db.prepare('UPDATE assets SET missing = 0, updated_at = ? WHERE hash = ?');
+
+        const delAlbumAssets = db.prepare('DELETE FROM album_assets WHERE hash = ?');
+        const delAssetTags = db.prepare('DELETE FROM asset_tags WHERE hash = ?');
+        const delFaces = db.prepare('DELETE FROM faces WHERE hash = ?');
+        const clearClipHash = db.prepare('UPDATE clip_embeddings SET hash = NULL WHERE hash = ?');
+        const delAsset = db.prepare('DELETE FROM assets WHERE hash = ?');
+
+        const affectedHashes = new Set();
+
+        // 1) Delete missing file rows by id.
+        for (const r of rowsToDelete) {
+          if (r?.id == null) continue;
+          delFile.run(r.id);
+          if (r.hash) affectedHashes.add(String(r.hash));
+        }
+
+        // 2) For each affected hash, decide whether asset should be kept (missing=1) or deleted.
+        const now = Date.now();
+        for (const hash of affectedHashes) {
+          const files = selectFilesByHash.all(hash);
+          const anyExists = files.some((f) => f?.path && fs.existsSync(String(f.path)));
+
+          if (anyExists) {
+            clearAssetMissing.run(now, hash);
+            continue;
+          }
+
+          // No instances exist -> delete all remaining file rows for this hash to keep DB consistent.
+          delFilesByHash.run(hash);
+
+          const status = String(getAsset.get(hash)?.status || 'inbox');
+          if (status !== 'inbox') {
+            markAssetMissing.run(now, hash);
+            continue;
+          }
+
+          // Ephemeral (inbox) assets are removed when they disappear.
+          delAlbumAssets.run(hash);
+          delAssetTags.run(hash);
+          delFaces.run(hash);
+          clearClipHash.run(hash);
+          delAsset.run(hash);
         }
       });
-      tx2(missingIds);
-      console.log(doDeleteMissing ? 'Deleted missing rows.' : 'Marked missing=1 for missing rows.');
+
+      tx2(missingRows);
+      console.log('Applied missing policy (deleted missing files rows; updated/deleted assets as needed).');
     }
   }
 

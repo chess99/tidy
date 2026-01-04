@@ -6,6 +6,7 @@
 
 const express = require('express');
 const { getDB } = require('../db');
+const path = require('path');
 
 const router = express.Router();
 
@@ -73,20 +74,7 @@ router.get('/:id/assets', (req, res) => {
   const rows = db.prepare(`
     SELECT
       a.*,
-      (
-        SELECT f.path
-        FROM files f
-        WHERE f.hash = a.hash
-        ORDER BY COALESCE(f.mtime_ms, f.updated_at, f.discovered_at, f.scanned_at, 0) DESC, f.id DESC
-        LIMIT 1
-      ) AS sample_path,
-      (
-        SELECT f.ext
-        FROM files f
-        WHERE f.hash = a.hash
-        ORDER BY COALESCE(f.mtime_ms, f.updated_at, f.discovered_at, f.scanned_at, 0) DESC, f.id DESC
-        LIMIT 1
-      ) AS sample_ext,
+      a.target_path AS sample_path,
       (
         SELECT COUNT(*)
         FROM files f2
@@ -99,7 +87,14 @@ router.get('/:id/assets', (req, res) => {
     LIMIT ? OFFSET ?
   `).all(id, limit, offset);
 
-  res.json({ data: rows, pagination: { page, limit, total } });
+  // Backfill sample_ext for UI labels (avoid dependence on `files` rows).
+  const out = rows.map((r) => {
+    const samplePath = r?.sample_path ? String(r.sample_path) : '';
+    const ext = samplePath ? path.extname(samplePath).toLowerCase() : null;
+    return { ...r, sample_ext: ext || null };
+  });
+
+  res.json({ data: out, pagination: { page, limit, total } });
 });
 
 module.exports = router;

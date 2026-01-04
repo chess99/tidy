@@ -14,6 +14,10 @@
 - `sync/`：同步/变更流相关能力（见 `sync/README.md`）。
 - `utils/`：通用工具（见 `utils/README.md`）。
 
+### 约定（高层语义）
+
+- **缺失语义**：`files` 仅代表**现存物理实例**；当磁盘缺失时会删除对应 `files` 行。若 `assets.status != 'inbox'`（用户显式整理/删除/忽略），则保留 `assets` 并用 `assets.missing=1` 表达“语义保留但无实例”。否则删除 `assets`。
+
 ### 文件
 
 - `config.js`：配置读取与默认值（运行时参数入口）。
