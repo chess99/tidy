@@ -9,6 +9,7 @@
 ## 文件
 
 - `app/`：FastAPI 应用代码（见 `app/README.md`）。
+- `scripts/`：打包脚本入口（生成桌面 sidecar 可执行文件）（见 `scripts/README.md`）。
 - `requirements.txt`：Python 依赖（含 face + CLIP）。
 - `pyrightconfig.json`：编辑器静态分析配置（避免未装 venv 时满屏 missing-import）。
 
@@ -22,6 +23,10 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8002
 ```
+
+### 打包为可执行文件（桌面分发）
+
+见 `scripts/README.md`。
 
 ## 接口
 

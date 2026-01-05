@@ -1,0 +1,19 @@
+{
+  "name": "tidy-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "main": "src/main.cjs",
+  "scripts": {
+    "dev": "electron .",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "electron": "^30.5.1"
+  },
+  "devDependencies": {
+    "electron-builder": "^24.13.3"
+  }
+}
+
+
+

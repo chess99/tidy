@@ -1,8 +1,15 @@
+/**
+ * input: 环境变量（PORT/DATA_DIR/AI_SERVICE_URL 等）+ 文件系统/DB + HTTP 请求
+ * output: 启动本地 HTTP 服务（API + 可选静态 UI 托管）与后台任务 runner
+ * pos: 后端进程入口：被桌面壳/开发脚本拉起（变更需同步更新本头注释与所属目录 README）
+ */
+
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { initDB } = require('./src/db');
 const path = require('path');
+const fs = require('fs');
 const { WORK_ROOT, MANAGED_ROOT, TRASH_DIR, DATA_DIR, DB_PATH, THUMB_DIR, PREVIEW_DIR, POSTER_DIR } = require('./src/config');
 
 const app = express();
@@ -55,6 +62,27 @@ app.use('/api/tags', tagRoutes);
 app.use('/api/faces', faceRoutes);
 app.use('/api/duplicates', duplicatesRoutes);
 app.use('/api/search', searchRoutes);
+
+// Optional: serve built client UI (desktop/distribution mode).
+// - If `TIDY_UI_DIR` is set, use it.
+// - Else, try to locate `client/dist` adjacent to the repo/app bundle.
+try {
+  const uiDir = process.env.TIDY_UI_DIR
+    ? path.resolve(String(process.env.TIDY_UI_DIR))
+    : path.join(__dirname, '..', 'client', 'dist');
+  const uiIndex = path.join(uiDir, 'index.html');
+  if (fs.existsSync(uiIndex)) {
+    // Static assets
+    app.use(express.static(uiDir, { index: false }));
+    // SPA fallback (avoid hijacking API routes)
+    app.get(/^(?!\/api\/).*/, (req, res) => res.sendFile(uiIndex));
+    console.log('[ui] serving client from', uiDir);
+  } else {
+    console.log('[ui] client dist not found; skipping static UI');
+  }
+} catch (e) {
+  console.log('[ui] static UI init failed:', e?.message || e);
+}
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
