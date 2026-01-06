@@ -57,6 +57,12 @@ function startServer({
 } = {}) {
   const serverDir = path.join(repoRoot, 'server');
   const entry = path.join(serverDir, 'index.js');
+  const isWindows = process.platform === 'win32';
+  const bundledNode = path.join(repoRoot, 'node', isWindows ? 'node.exe' : 'node');
+  const nodeBin =
+    (process.env.TIDY_NODE_BIN && exists(process.env.TIDY_NODE_BIN) ? path.resolve(String(process.env.TIDY_NODE_BIN)) : null) ||
+    (exists(bundledNode) ? bundledNode : null) ||
+    process.execPath;
   const env = {
     ...process.env,
     PORT: String(port),
@@ -68,7 +74,7 @@ function startServer({
     // Make the server explicitly talk to local ai-service.
     AI_SERVICE_URL: `http://127.0.0.1:${process.env.TIDY_AI_PORT || 8002}`,
   };
-  return spawnLogged(process.execPath, [entry], { cwd: serverDir, env, label: 'server' });
+  return spawnLogged(nodeBin, [entry], { cwd: serverDir, env, label: 'server' });
 }
 
 function startAiService({

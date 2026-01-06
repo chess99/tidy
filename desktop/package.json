@@ -2,16 +2,44 @@
   "name": "tidy-desktop",
   "private": true,
   "version": "0.1.0",
+  "description": "Tidy desktop app (internal distribution)",
+  "author": "tidy",
   "main": "src/main.cjs",
   "scripts": {
     "dev": "electron .",
-    "dist": "electron-builder"
+    "prepare:resources": "node scripts/prepare-resources.mjs",
+    "dist": "npm run prepare:resources && electron-builder",
+    "dist:mac": "npm run prepare:resources && electron-builder --mac"
   },
   "dependencies": {
-    "electron": "^30.5.1"
+    "fs-extra": "^11.3.3"
   },
   "devDependencies": {
+    "electron": "^30.5.1",
     "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.tidy.app",
+    "productName": "Tidy",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**",
+      "package.json"
+    ],
+    "extraResources": [
+      { "from": "bundle/server", "to": "server" },
+      { "from": "bundle/client", "to": "client" },
+      { "from": "bundle/ai-service", "to": "ai-service" },
+      { "from": "bundle/node", "to": "node" }
+    ],
+    "mac": {
+      "target": ["dmg", "zip"]
+    },
+    "win": {
+      "target": ["nsis", "zip"]
+    }
   }
 }
 

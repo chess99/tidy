@@ -27,3 +27,14 @@ server/models/
 
 # Development PID file
 .dev-pids.json
+
+# Desktop packaging artifacts (Electron / electron-builder)
+desktop/bundle/
+desktop/dist/
+desktop/node_modules/
+desktop/builder-debug.yml
+
+# PyInstaller artifacts (ai-service)
+ai-service/build/
+ai-service/dist/
+ai-service/*.spec
