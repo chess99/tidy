@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Tidy icon">
+  <!--
+    Minimal flat icon for small sizes:
+    - rounded square container
+    - three stacked "items" suggesting sorting/organizing
+    - small sparkle to imply smart/AI assist
+  -->
+  <defs>
+    <style>
+      .bg { fill: #0b0b0f; }
+      .card { fill: #161824; }
+      .accent { fill: #2dd4bf; }
+      .fg { fill: #e6e6ef; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="16" y="16" width="224" height="224" rx="56" />
+
+  <!-- stacked cards -->
+  <rect class="card" x="66" y="78" width="132" height="36" rx="18" />
+  <rect class="card" x="58" y="114" width="148" height="40" rx="20" />
+  <rect class="card" x="50" y="154" width="156" height="44" rx="22" />
+
+  <!-- organizing accent bars -->
+  <rect class="accent" x="72" y="88" width="20" height="16" rx="8" />
+  <rect class="accent" x="68" y="126" width="24" height="16" rx="8" />
+  <rect class="accent" x="66" y="168" width="28" height="18" rx="9" />
+
+  <!-- sparkle (AI hint) -->
+  <path class="fg" d="M196 60l4 14 14 4-14 4-4 14-4-14-14-4 14-4z" />
+</svg>
+
+
