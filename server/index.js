@@ -49,7 +49,9 @@ const libraryRoutes = require('./src/routes/library');
 const faceRoutes = require('./src/routes/faces');
 const duplicatesRoutes = require('./src/routes/duplicates');
 const searchRoutes = require('./src/routes/search');
+const healthRoutes = require('./src/routes/health');
 
+app.use('/api/health', healthRoutes);
 app.use('/api/jobs', jobsRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/library', libraryRoutes);
