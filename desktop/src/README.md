@@ -8,5 +8,6 @@
 - `ports.cjs`：端口选择/探测工具（优先固定端口，冲突则回退）。
 - `sidecars.cjs`：启动/停止 Node server 与 ai-service（dev 模式用本地解释器；分发模式预留二进制路径）。
 - `update.cjs`：提示式更新（manifest 检查 + 弹窗 + 打开下载链接）。
+- `logging.cjs`：日志目录与落盘（desktop/server/ai 的 stdout/stderr）。
 
 

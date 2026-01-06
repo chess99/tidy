@@ -41,8 +41,19 @@ function spawnLogged(cmd, args, opts) {
     detached: false,
   });
   const label = opts?.label || path.basename(cmd);
+  const logDir = process.env.TIDY_LOG_DIR ? path.resolve(String(process.env.TIDY_LOG_DIR)) : null;
+  const logPath = logDir ? path.join(logDir, `${label}.log`) : null;
+  const out = logPath ? fs.createWriteStream(logPath, { flags: 'a' }) : null;
   p.stdout?.on('data', (d) => process.stdout.write(`[${label}] ${String(d)}`));
   p.stderr?.on('data', (d) => process.stderr.write(`[${label}] ${String(d)}`));
+  if (out) {
+    p.stdout?.on('data', (d) => out.write(d));
+    p.stderr?.on('data', (d) => out.write(d));
+    p.once('exit', (code, signal) => {
+      out.write(`\n[exit] code=${code} signal=${signal}\n`);
+      out.end();
+    });
+  }
   return p;
 }
 

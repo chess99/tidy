@@ -4,17 +4,92 @@
  * pos: 桌面应用入口：分发形态的最上层入口（变更需同步更新本头注释与所属目录 README）
  */
 
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, Menu, shell, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
 
 const { pickPort } = require('./ports.cjs');
 const { resolveRepoRoot, startServer, startAiService, stopProcess } = require('./sidecars.cjs');
 const { checkForUpdatesHinted } = require('./update.cjs');
+const { initLogs, openLogStream } = require('./logging.cjs');
 
 let win = null;
 let serverProc = null;
 let aiProc = null;
+let logDir = null;
+let ports = { serverPort: null, aiPort: null };
+
+function installConsoleTee({ dir }) {
+  if (!dir) return;
+  process.env.TIDY_LOG_DIR = String(dir);
+  const stream = openLogStream({ dir, name: 'desktop' });
+  const wrap = (orig) => (...args) => {
+    try {
+      const line = args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+      stream.write(`${line}\n`);
+    } catch {
+      // ignore
+    }
+    return orig(...args);
+  };
+  console.log = wrap(console.log); // eslint-disable-line no-console
+  console.warn = wrap(console.warn); // eslint-disable-line no-console
+  console.error = wrap(console.error); // eslint-disable-line no-console
+  process.on('uncaughtException', (e) => {
+    try {
+      stream.write(`[uncaughtException] ${String(e?.stack || e)}\n`);
+    } catch {
+      // ignore
+    }
+  });
+  process.on('unhandledRejection', (e) => {
+    try {
+      stream.write(`[unhandledRejection] ${String(e?.stack || e)}\n`);
+    } catch {
+      // ignore
+    }
+  });
+}
+
+function installMenu() {
+  const template = [
+    ...(process.platform === 'darwin'
+      ? [
+          {
+            label: app.name,
+            submenu: [{ role: 'quit' }],
+          },
+        ]
+      : []),
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Open Logs Folder',
+          click: async () => {
+            if (logDir) await shell.openPath(logDir);
+          },
+        },
+        {
+          label: 'Copy Diagnostics',
+          click: () => {
+            const diag = {
+              version: app.getVersion(),
+              platform: process.platform,
+              arch: process.arch,
+              serverPort: ports.serverPort,
+              aiPort: ports.aiPort,
+              logsDir: logDir,
+              userData: app.getPath('userData'),
+            };
+            clipboard.writeText(JSON.stringify(diag, null, 2));
+          },
+        },
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
 
 function isDev() {
   return String(process.env.NODE_ENV || '').trim() === 'development' || !!process.env.TIDY_DEV;
@@ -121,12 +196,17 @@ async function main() {
   process.env.TIDY_REPO_ROOT = String(resourcesRoot);
   const uiDir = path.join(resourcesRoot, 'client', 'dist');
   const { dataDir } = await initUserDataLayout();
+  const logs = initLogs({ userDataRoot: app.getPath('userData'), appName: app.getName() });
+  logDir = logs.latestDir;
+  installConsoleTee({ dir: logDir });
+  installMenu();
   if (!app.isPackaged) {
     await bestEffortMigrateRepoData({ repoRoot: devRepoRoot, dataDir });
   }
 
   const serverPort = await pickPort({ preferred: process.env.TIDY_SERVER_PORT || 3001 });
   const aiPort = await pickPort({ preferred: process.env.TIDY_AI_PORT || 8002 });
+  ports = { serverPort, aiPort };
   process.env.TIDY_AI_PORT = String(aiPort);
 
   aiProc = startAiService({
