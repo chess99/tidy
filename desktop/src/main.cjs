@@ -11,22 +11,23 @@ const fs = require('fs-extra');
 const { pickPort } = require('./ports.cjs');
 const { resolveRepoRoot, startServer, startAiService, stopProcess } = require('./sidecars.cjs');
 const { checkForUpdatesHinted } = require('./update.cjs');
-const { initLogs, openLogStream } = require('./logging.cjs');
+const { initLogs, createRotatingLogger } = require('./logging.cjs');
 
 let win = null;
 let serverProc = null;
 let aiProc = null;
 let logDir = null;
 let ports = { serverPort: null, aiPort: null };
+let desktopLogger = null;
 
 function installConsoleTee({ dir }) {
   if (!dir) return;
   process.env.TIDY_LOG_DIR = String(dir);
-  const stream = openLogStream({ dir, name: 'desktop' });
+  desktopLogger = createRotatingLogger({ dir, name: 'desktop' });
   const wrap = (orig) => (...args) => {
     try {
       const line = args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
-      stream.write(`${line}\n`);
+      desktopLogger.write(`${line}\n`);
     } catch {
       // ignore
     }
@@ -37,14 +38,14 @@ function installConsoleTee({ dir }) {
   console.error = wrap(console.error); // eslint-disable-line no-console
   process.on('uncaughtException', (e) => {
     try {
-      stream.write(`[uncaughtException] ${String(e?.stack || e)}\n`);
+      desktopLogger.write(`[uncaughtException] ${String(e?.stack || e)}\n`);
     } catch {
       // ignore
     }
   });
   process.on('unhandledRejection', (e) => {
     try {
-      stream.write(`[unhandledRejection] ${String(e?.stack || e)}\n`);
+      desktopLogger.write(`[unhandledRejection] ${String(e?.stack || e)}\n`);
     } catch {
       // ignore
     }
@@ -197,7 +198,7 @@ async function main() {
   const uiDir = path.join(resourcesRoot, 'client', 'dist');
   const { dataDir } = await initUserDataLayout();
   const logs = initLogs({ userDataRoot: app.getPath('userData'), appName: app.getName() });
-  logDir = logs.latestDir;
+  logDir = logs.logsDir;
   installConsoleTee({ dir: logDir });
   installMenu();
   if (!app.isPackaged) {
