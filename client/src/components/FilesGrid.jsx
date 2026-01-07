@@ -1,7 +1,7 @@
 /**
- * input: props + API 数据 + 本地状态
- * output: 功能/页面组件（React 组件）
- * pos: 客户端视图层：拼装业务交互（变更需同步更新本头注释与所属目录 README）
+ * input: props + React Query（分页/取消）+ 虚拟滚动 viewport 范围
+ * output: 文件网格渲染与交互（按需拉多页；避免重复拉第 1 页）
+ * pos: 客户端视图层：文件列表主视图（变更需同步更新本头注释与所属目录 README）
  */
 
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -302,8 +302,11 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
     return Array.from(new Set(pages));
   }, [total, range, rangeNow, COLUMNS, LIMIT, scrolling]);
 
+  // Page 1 is already fetched via `page1` to learn `total`. Avoid double-fetching it here.
+  const queryPages = useMemo(() => neededPages.filter((p) => p !== 1), [neededPages]);
+
   const pageQueries = useQueries({
-    queries: neededPages.map((p) => ({
+    queries: queryPages.map((p) => ({
       queryKey: ['files', filesQueryOpts, p],
       queryFn: ({ signal }) => getFilesUnified(p, LIMIT, filesQueryOpts, { signal }),
       enabled: !!total && p >= 1,
@@ -315,13 +318,13 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
     const m = new Map();
     // Include page1 even if not in neededPages yet.
     if (page1.data?.data) m.set(1, page1.data.data);
-    for (let i = 0; i < neededPages.length; i++) {
-      const p = neededPages[i];
+    for (let i = 0; i < queryPages.length; i++) {
+      const p = queryPages[i];
       const q = pageQueries[i];
       if (q?.data?.data) m.set(p, q.data.data);
     }
     return m;
-  }, [page1.data, pageQueries, neededPages]);
+  }, [page1.data, pageQueries, queryPages]);
 
   const getItemAt = (globalIndex) => {
     if (!total || globalIndex < 0 || globalIndex >= total) return null;

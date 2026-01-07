@@ -1,7 +1,7 @@
 /**
- * input: 组件参数 + 事件流 + Query/状态
- * output: 可复用 hook（state + handlers）
- * pos: 客户端交互状态层：供组件复用（变更需同步更新本头注释与所属目录 README）
+ * input: 组件参数 + 事件流 + 列表 fetcher（getFiles/getAsset）
+ * output: 网格控制器 hook（cursor/键盘/刷子；筛选变更时尽量保持 cursor 对齐）
+ * pos: 客户端交互状态层：从组件中抽离复杂交互（变更需同步更新本头注释与所属目录 README）
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -40,6 +40,8 @@ export function useFilesGridController({
   const navRequestIdRef = useRef(0);
   const resyncRequestIdRef = useRef(0);
   const lastKnownCursorIndexRef = useRef(null);
+  const cursorIndexRef = useRef(cursorIndex);
+  const cursorFileIdRef = useRef(cursorFileId);
 
   const brushActiveRef = useRef(false);
   const brushTargetSelectedRef = useRef(false);
@@ -155,12 +157,22 @@ export function useFilesGridController({
     }
   };
 
+  useEffect(() => {
+    cursorIndexRef.current = cursorIndex;
+  }, [cursorIndex]);
+
+  useEffect(() => {
+    cursorFileIdRef.current = cursorFileId;
+  }, [cursorFileId]);
+
   // Best-effort resync: when filters change, try to keep cursor index in sync by checking the old page.
   useEffect(() => {
     if (!active) return;
     if (viewerOpen) return;
-    if (!Number.isFinite(cursorFileId)) return;
-    const baseIndex = Number.isFinite(cursorIndex) ? cursorIndex : lastKnownCursorIndexRef.current;
+    const fileId = cursorFileIdRef.current;
+    if (!Number.isFinite(fileId)) return;
+    const curIndex = cursorIndexRef.current;
+    const baseIndex = Number.isFinite(curIndex) ? curIndex : lastKnownCursorIndexRef.current;
     if (!Number.isFinite(baseIndex)) return;
 
     const requestId = ++resyncRequestIdRef.current;
@@ -171,14 +183,14 @@ export function useFilesGridController({
         const res = await getFiles(page, limit, filesQuery);
         if (resyncRequestIdRef.current !== requestId) return;
         const arr = res?.data || [];
-        const found = arr.findIndex((f) => Number(f?.id) === Number(cursorFileId));
+        const found = arr.findIndex((f) => Number(f?.id) === Number(fileId));
         if (found >= 0) setCursorIndex((page - 1) * limit + found);
         else setCursorIndex(null);
       } catch {
         // ignore
       }
     })();
-  }, [active, viewerOpen, filesQuery, cursorFileId, cursorIndex, getFiles, limit]);
+  }, [active, viewerOpen, filesQuery, getFiles, limit]);
 
   // Brush mode: hold B.
   useEffect(() => {
