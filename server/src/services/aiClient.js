@@ -1,6 +1,6 @@
 /**
- * input: AI_SERVICE_URL（环境变量）+ HTTP fetch + 进程内内存缓存
- * output: 调用 ai-service 的推理结果（CLIP 文本/图片 embedding；text 支持缓存/并发去重）
+ * input: AI_SERVICE_URL（环境变量）+ HTTP fetch + SQLite(getDB) + 进程内内存缓存
+ * output: 调用 ai-service 的推理结果（CLIP 文本/图片 embedding；text 支持缓存/并发去重/落盘）
  * pos: 服务端服务层：跨路由/任务复用的 AI 推理客户端（变更需同步更新本头注释与所属目录 README）
  */
 
@@ -11,6 +11,7 @@ const CLIP_TEXT_EMBED_CACHE_TTL_MS = Math.max(
   0,
   Math.trunc(Number(process.env.TIDY_CLIP_TEXT_EMBED_CACHE_TTL_MS) || 5 * 60_000)
 );
+const CLIP_TEXT_EMBED_DB_CACHE_MAX = Math.max(0, Math.trunc(Number(process.env.TIDY_CLIP_TEXT_EMBED_DB_CACHE_MAX) || 20_000));
 
 // LRU-ish cache: Map preserves insertion order; we refresh by delete+set on get.
 const _clipTextCache = new Map(); // key -> { value, expiresAt, cachedAt }
@@ -43,6 +44,90 @@ function _cacheSet(map, key, value, { ttlMs, max } = {}) {
     }
   }
   return e;
+}
+
+function packF32(arr) {
+  const f = Float32Array.from((arr || []).map(Number));
+  return Buffer.from(f.buffer);
+}
+
+function unpackF32(buf) {
+  const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf || []);
+  const view = new Float32Array(b.buffer, b.byteOffset, Math.floor(b.byteLength / 4));
+  return Array.from(view);
+}
+
+function getDBSafe() {
+  try {
+    // eslint-disable-next-line global-require
+    const { getDB } = require('../db');
+    return getDB();
+  } catch {
+    return null;
+  }
+}
+
+function dbGetClipTextEmbedding({ model, normalized, text }) {
+  const db = getDBSafe();
+  if (!db) return null;
+  try {
+    const r = db
+      .prepare(
+        `
+        SELECT dim, embedding
+        FROM clip_text_embeddings
+        WHERE model = ? AND normalized = ? AND text = ?
+        LIMIT 1
+        `
+      )
+      .get(String(model), normalized ? 1 : 0, String(text));
+    if (!r) return null;
+    const emb = unpackF32(r.embedding);
+    if (!emb.length) return null;
+    return { dim: Number(r.dim), embedding: emb };
+  } catch {
+    return null;
+  }
+}
+
+function dbPutClipTextEmbedding({ model, normalized, text, embedding }) {
+  const db = getDBSafe();
+  if (!db) return;
+  try {
+    const emb = Array.isArray(embedding) ? embedding.map(Number) : [];
+    if (!emb.length) return;
+    const dim = emb.length;
+    const ts = Date.now();
+    db.prepare(
+      `
+      INSERT INTO clip_text_embeddings (model, normalized, text, dim, embedding, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(model, normalized, text) DO UPDATE SET
+        dim=excluded.dim,
+        embedding=excluded.embedding,
+        updated_at=excluded.updated_at
+      `
+    ).run(String(model), normalized ? 1 : 0, String(text), dim, packF32(emb), ts);
+
+    if (CLIP_TEXT_EMBED_DB_CACHE_MAX > 0) {
+      // Keep newest N rows per model; delete older ones (best-effort).
+      db.prepare(
+        `
+        DELETE FROM clip_text_embeddings
+        WHERE model = ?
+          AND rowid NOT IN (
+            SELECT rowid
+            FROM clip_text_embeddings
+            WHERE model = ?
+            ORDER BY updated_at DESC
+            LIMIT ?
+          )
+        `
+      ).run(String(model), String(model), CLIP_TEXT_EMBED_DB_CACHE_MAX);
+    }
+  } catch {
+    // ignore cache write failures (should not break requests)
+  }
 }
 
 function ensureUrl(base, p) {
@@ -93,6 +178,22 @@ async function clipTextEmbed({ query, normalize = true, profile = null } = {}) {
   const payload = { text: q, normalize };
 
   const cacheKey = `${normalize ? 1 : 0}:${q}`;
+  const modelKey = String(CLIP_MODEL_ID || '');
+
+  // Persistent DB cache (cross-restart): deterministic per (model, normalize, text).
+  if (modelKey && CLIP_TEXT_EMBED_DB_CACHE_MAX > 0) {
+    const hit = dbGetClipTextEmbedding({ model: modelKey, normalized: normalize, text: q });
+    if (hit?.embedding?.length) {
+      profile?.mark?.('ai.clipTextEmbed.db.hit', { model: modelKey, key: cacheKey, dim: hit.dim });
+      const v = { model: modelKey, dim: hit.dim, normalized: !!normalize, embedding: hit.embedding, profile: null };
+      // Prime in-memory LRU to keep the hot path fast.
+      if (CLIP_TEXT_EMBED_CACHE_MAX > 0 && CLIP_TEXT_EMBED_CACHE_TTL_MS > 0) {
+        _cacheSet(_clipTextCache, cacheKey, { ...v, embedding: hit.embedding.slice() }, { ttlMs: CLIP_TEXT_EMBED_CACHE_TTL_MS, max: CLIP_TEXT_EMBED_CACHE_MAX });
+      }
+      return v;
+    }
+  }
+
   if (CLIP_TEXT_EMBED_CACHE_MAX > 0 && CLIP_TEXT_EMBED_CACHE_TTL_MS > 0) {
     const hit = _cacheGet(_clipTextCache, cacheKey);
     if (hit?.value) {
@@ -120,6 +221,10 @@ async function clipTextEmbed({ query, normalize = true, profile = null } = {}) {
       embedding: emb,
       profile: out?.profile || null,
     };
+    if (modelKey && CLIP_TEXT_EMBED_DB_CACHE_MAX > 0) {
+      dbPutClipTextEmbedding({ model: modelKey, normalized: !!normalize, text: q, embedding: emb });
+      profile?.mark?.('ai.clipTextEmbed.db.store', { model: modelKey, max: CLIP_TEXT_EMBED_DB_CACHE_MAX });
+    }
     if (CLIP_TEXT_EMBED_CACHE_MAX > 0 && CLIP_TEXT_EMBED_CACHE_TTL_MS > 0) {
       _cacheSet(_clipTextCache, cacheKey, { ...v, embedding: emb.slice() }, { ttlMs: CLIP_TEXT_EMBED_CACHE_TTL_MS, max: CLIP_TEXT_EMBED_CACHE_MAX });
       profile?.mark?.('ai.clipTextEmbed.cache.store', { key: cacheKey, max: CLIP_TEXT_EMBED_CACHE_MAX, ttlMs: CLIP_TEXT_EMBED_CACHE_TTL_MS });

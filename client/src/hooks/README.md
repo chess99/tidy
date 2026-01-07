@@ -4,6 +4,6 @@
 
 ### 文件
 
-- `useFilesGridController.js`：文件/资产网格控制器（光标焦点、键盘导航、刷子选择；筛选变更时尽量保持 cursor 对齐，避免点击/选中等纯交互触发多余的列表拉取）。
+- `useFilesGridController.js`：文件/资产网格控制器（光标焦点、键盘导航、刷子选择；优先读 React Query 的列表页缓存，减少光标移动导致的多余 `/files`/`/search` 请求）。
 
 

@@ -17,6 +17,7 @@
 ### 约定（高层语义）
 
 - **缺失语义**：`files` 仅代表**现存物理实例**；当磁盘缺失时会删除对应 `files` 行。若 `assets.status != 'inbox'`（用户显式整理/删除/忽略），则保留 `assets` 并用 `assets.missing=1` 表达“语义保留但无实例”。否则删除 `assets`。
+- **智能搜索（CLIP）**：`/api/search` 会做 text embedding + ANN 检索；text embedding 在服务端有“进程内 LRU + SQLite 持久缓存”（以 `CLIP_MODEL_ID+normalize+text` 作为去重键），避免分页/交互导致重复推理。
 
 ### 文件
 

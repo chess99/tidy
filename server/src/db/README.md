@@ -4,6 +4,6 @@
 
 ### 文件
 
-- `schema.js`：数据库表结构与初始化 DDL（`assets.missing` 表示“语义保留但磁盘无实例”；含 `file_ops(move/trash/delete)`）。
+- `schema.js`：数据库表结构与初始化 DDL（`assets.missing` 表示“语义保留但磁盘无实例”；含 `file_ops(move/trash/delete)`；CLIP 相关含 `clip_embeddings/clip_index_meta/clip_text_embeddings`）。
 - `index.js`：数据库连接与迁移入口（自动补齐新增列与索引，如 `assets.missing`；含不可 ALTER 的 CHECK 约束重建迁移）。
 

@@ -123,6 +123,7 @@ $$
 - `TIDY_CLIP_MODEL_ID`：ai-service 侧 CLIP 模型 id 或本地路径
 - `TIDY_CLIP_TEXT_EMBED_CACHE_MAX`：server 侧 `clipTextEmbed` 进程内缓存条目上限（默认 `200`）
 - `TIDY_CLIP_TEXT_EMBED_CACHE_TTL_MS`：server 侧 `clipTextEmbed` 缓存 TTL（默认 `300000`，即 5 分钟）
+- `TIDY_CLIP_TEXT_EMBED_DB_CACHE_MAX`：server 侧 `clipTextEmbed` SQLite 持久缓存条目上限（默认 `20000`；按 `model+normalize+text` 去重，跨重启生效）
 - `TIDY_CLIP_CONCURRENCY`：ai-service 侧 CLIP 推理并发（默认 `1`；提高并发可能导致 CPU/MPS/CUDA 争用与长尾，调参需结合 profiling 中的 `clip.slot.waitMs` 观察排队）
 
 ---

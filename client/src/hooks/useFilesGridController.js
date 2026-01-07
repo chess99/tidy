@@ -1,10 +1,11 @@
 /**
  * input: 组件参数 + 事件流 + 列表 fetcher（getFiles/getAsset）
  * output: 网格控制器 hook（cursor/键盘/刷子；筛选变更时尽量保持 cursor 对齐）
- * pos: 客户端交互状态层：从组件中抽离复杂交互（变更需同步更新本头注释与所属目录 README）
+ * pos: 客户端交互状态层：从组件中抽离复杂交互（优先读 Query cache，减少多余网络）（变更需同步更新本头注释与所属目录 README）
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 function isEditableTarget(el) {
   if (!el) return false;
@@ -33,6 +34,7 @@ export function useFilesGridController({
   getAsset,
   setSelectedAsset,
 }) {
+  const qc = useQueryClient();
   const [cursorIndex, setCursorIndex] = useState(null);
   const [cursorFileId, setCursorFileId] = useState(null);
   const [cursorTotal, setCursorTotal] = useState(null);
@@ -49,6 +51,19 @@ export function useFilesGridController({
   const brushHintTimerRef = useRef(null);
   const [brushHint, setBrushHint] = useState(null); // { targetSelected: boolean } | null
 
+  const filesQueryKey = useMemo(() => {
+    const o = { ...(filesQuery || {}) };
+    if (!o.filter) o.filter = 'all';
+    return o;
+  }, [filesQuery]);
+
+  const getFilesCached = useCallback(async (page, pageSize) => {
+    const key = ['files', filesQueryKey, page];
+    const cached = qc.getQueryData(key);
+    if (cached?.data) return cached;
+    return await getFiles(page, pageSize, filesQueryKey);
+  }, [filesQueryKey, getFiles, qc]);
+
   const reset = () => {
     setCursorIndex(null);
     setCursorFileId(null);
@@ -64,7 +79,7 @@ export function useFilesGridController({
     }
   };
 
-  const applyBrushToFileId = (fileId) => {
+  const applyBrushToFileId = useCallback((fileId) => {
     if (!brushActiveRef.current) return;
     const id = Number(fileId);
     if (!Number.isFinite(id)) return;
@@ -75,9 +90,9 @@ export function useFilesGridController({
       // ignore
     }
     brushAppliedIdsRef.current.add(id);
-  };
+  }, [filesGridRef]);
 
-  const applyBrushToIndexPath = async (fromIndex, toIndex, requestId, pageCache) => {
+  const applyBrushToIndexPath = useCallback(async (fromIndex, toIndex, requestId, pageCache) => {
     if (!brushActiveRef.current) return;
     if (!Number.isFinite(fromIndex) || !Number.isFinite(toIndex)) return;
     if (navRequestIdRef.current !== requestId) return;
@@ -100,8 +115,7 @@ export function useFilesGridController({
     for (const p of pagesNeeded) {
       if (navRequestIdRef.current !== requestId) return;
       if (!pageCache.has(p)) {
-        // eslint-disable-next-line no-await-in-loop
-        const res = await getFiles(p, limit, filesQuery);
+        const res = await getFilesCached(p, limit);
         pageCache.set(p, res);
       }
     }
@@ -114,9 +128,9 @@ export function useFilesGridController({
       const file = res?.data?.[idx];
       if (file?.id != null) applyBrushToFileId(file.id);
     }
-  };
+  }, [applyBrushToFileId, cursorTotal, getFilesCached, limit]);
 
-  const navigateToIndex = async (nextIndex, { scroll = true, brushFromIndex = null } = {}) => {
+  const navigateToIndex = useCallback(async (nextIndex, { scroll = true, brushFromIndex = null } = {}) => {
     if (!Number.isFinite(nextIndex)) return;
     if (nextIndex < 0) return;
     if (Number.isFinite(cursorTotal) && cursorTotal != null && nextIndex >= cursorTotal) return;
@@ -126,7 +140,7 @@ export function useFilesGridController({
     const idx = nextIndex % limit;
 
     try {
-      const res = await getFiles(page, limit, filesQuery);
+      const res = await getFilesCached(page, limit);
       const file = res?.data?.[idx];
       if (!file?.hash) return;
 
@@ -155,7 +169,7 @@ export function useFilesGridController({
     } catch {
       // ignore
     }
-  };
+  }, [applyBrushToFileId, applyBrushToIndexPath, cursorTotal, filesGridRef, getAsset, getFilesCached, limit, setSelectedAsset]);
 
   useEffect(() => {
     cursorIndexRef.current = cursorIndex;
@@ -180,7 +194,7 @@ export function useFilesGridController({
 
     (async () => {
       try {
-        const res = await getFiles(page, limit, filesQuery);
+        const res = await getFilesCached(page, limit);
         if (resyncRequestIdRef.current !== requestId) return;
         const arr = res?.data || [];
         const found = arr.findIndex((f) => Number(f?.id) === Number(fileId));
@@ -190,7 +204,7 @@ export function useFilesGridController({
         // ignore
       }
     })();
-  }, [active, viewerOpen, filesQuery, getFiles, limit]);
+  }, [active, viewerOpen, filesQueryKey, getFilesCached, limit]);
 
   // Brush mode: hold B.
   useEffect(() => {
@@ -305,13 +319,13 @@ export function useFilesGridController({
     if (!active) return undefined;
     if (!Number.isFinite(cursorIndex)) return undefined;
     return () => navigateToIndex(cursorIndex - 1);
-  }, [active, cursorIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active, cursorIndex, navigateToIndex]);
 
   const viewerNext = useMemo(() => {
     if (!active) return undefined;
     if (!Number.isFinite(cursorIndex)) return undefined;
     return () => navigateToIndex(cursorIndex + 1);
-  }, [active, cursorIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active, cursorIndex, navigateToIndex]);
 
   return {
     cursorIndex,

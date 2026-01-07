@@ -133,6 +133,17 @@ const dbSchema = `
     FOREIGN KEY(hash) REFERENCES assets(hash) ON DELETE SET NULL
   );
 
+  -- CLIP text embeddings cache (deterministic per model+normalize+text; used by /api/search)
+  CREATE TABLE IF NOT EXISTS clip_text_embeddings (
+    model TEXT NOT NULL,
+    normalized INTEGER NOT NULL DEFAULT 1,
+    text TEXT NOT NULL,
+    dim INTEGER NOT NULL,
+    embedding BLOB NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (model, normalized, text)
+  );
+
   -- Index metadata for ANN (the actual index is stored as a file under data/)
   CREATE TABLE IF NOT EXISTS clip_index_meta (
     name TEXT PRIMARY KEY,
@@ -156,6 +167,7 @@ const dbSchema = `
   CREATE INDEX IF NOT EXISTS idx_faces_person_id ON faces(person_id);
   CREATE INDEX IF NOT EXISTS idx_clip_embeddings_hash ON clip_embeddings(hash);
   CREATE INDEX IF NOT EXISTS idx_clip_embeddings_updated_at ON clip_embeddings(updated_at);
+  CREATE INDEX IF NOT EXISTS idx_clip_text_embeddings_updated_at ON clip_text_embeddings(updated_at);
 
   -- Jobs (task queue / execution log)
   CREATE TABLE IF NOT EXISTS jobs (
