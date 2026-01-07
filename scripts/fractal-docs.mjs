@@ -1,3 +1,9 @@
+/**
+ * input: 仓库源码目录树（client/src、server/src、ai-service/app）
+ * output: 文档一致性校验/自动补齐（README 与文件头注释）
+ * pos: 工具脚本：保障分形自指文档约束（变更需同步更新本头注释与所属目录 README）
+ */
+
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -10,6 +16,17 @@ const SOURCE_ROOTS = [
 ];
 
 const CODE_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx', '.py']);
+
+const IGNORE_DIR_NAMES = new Set([
+  '__pycache__',
+  'node_modules',
+  '.venv',
+  'dist',
+  'build',
+  '.next',
+  '.turbo',
+  '.vite',
+]);
 
 function posixJoin(...parts) {
   return parts.join('/').replace(/\/+/g, '/');
@@ -115,6 +132,7 @@ async function walkDir(absDir, relDir, out) {
     const abs = path.join(absDir, e.name);
     const rel = posixJoin(relDir, e.name);
     if (e.isDirectory()) {
+      if (IGNORE_DIR_NAMES.has(e.name)) continue;
       await walkDir(abs, rel, out);
     } else {
       out.push({ abs, rel });
@@ -159,7 +177,10 @@ async function cmdCheck() {
       const dAbs = dirs.pop();
       const entries = await fs.readdir(dAbs, { withFileTypes: true });
       for (const e of entries) {
-        if (e.isDirectory()) dirs.push(path.join(dAbs, e.name));
+        if (e.isDirectory()) {
+          if (IGNORE_DIR_NAMES.has(e.name)) continue;
+          dirs.push(path.join(dAbs, e.name));
+        }
       }
       const readme = path.join(dAbs, 'README.md');
       try {

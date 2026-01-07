@@ -353,8 +353,9 @@ function Main() {
   return (
     <div className="flex h-screen flex-col">
       <header className="bg-white border-b p-4 flex items-center justify-between shadow-sm z-10">
-        <h1 className="text-xl font-bold flex items-center gap-2">
-          📸 Tidy <span className="text-xs font-normal text-gray-500">v0.1</span>
+        <h1 className="text-xl font-bold flex items-center gap-3">
+          <img src="/icon.png" className="w-8 h-8 rounded-md shadow-sm" alt="Tidy" />
+          Tidy
         </h1>
         <div className="flex items-center gap-2">
           {activeTab !== 'admin' && activeTab !== 'duplicates' ? (
