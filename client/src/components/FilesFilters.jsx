@@ -13,6 +13,7 @@ import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { DateRangePicker } from './ui/date-range-picker';
 import { Input } from './ui/input';
+import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Separator } from './ui/separator';
 
@@ -163,8 +164,8 @@ export function FilesFilters({ value, onChange }) {
             </Button>
       </div>
 
-          <div className="flex items-center gap-2">
-            <Input
+          <div className="space-y-1">
+            <Textarea
               value={smartDraft}
               onChange={(e) => setSmartDraft(e.target.value)}
               onCompositionStart={() => setSmartComposing(true)}
@@ -173,7 +174,10 @@ export function FilesFilters({ value, onChange }) {
                 setSmartDraft(e.target.value);
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !smartComposing) {
+                // Multiline UX:
+                // - Enter: newline
+                // - Ctrl/Cmd+Enter: apply smart search
+                if (e.key === 'Enter' && !smartComposing && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
                   onChange({ ...v, smartQuery: smartDraft });
                 }
@@ -182,20 +186,27 @@ export function FilesFilters({ value, onChange }) {
                   setSmartDraft(smartQueryAppliedRaw);
                 }
               }}
-              placeholder="输入文字：例如『海边 日落 狗』"
+              placeholder="输入文字（支持长文本）：例如『海边 日落 狗』"
+              rows={2}
+              className="w-full min-h-[64px] resize-y leading-5"
             />
-            <Button
-              type="button"
-              variant={smartDirty ? 'default' : 'ghost'}
-              size="icon"
-              title={smartDirty ? '应用智能搜索（Enter）' : '已应用'}
-              className={smartDirty ? undefined : 'opacity-0 pointer-events-none'}
-              aria-hidden={!smartDirty}
-              tabIndex={smartDirty ? 0 : -1}
-              onClick={() => onChange({ ...v, smartQuery: smartDraft })}
-            >
-              <Check className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center justify-between pl-1">
+              <div className="text-[10px] text-muted-foreground">
+                <span className="font-mono">⌘/Ctrl + Enter</span> 应用
+              </div>
+              <Button
+                type="button"
+                variant={smartDirty ? 'default' : 'secondary'}
+                size="sm"
+                disabled={!smartDirty}
+                title={smartDirty ? '应用智能搜索（⌘/Ctrl + Enter）' : '已应用'}
+                className="h-7 px-3 gap-1.5 text-xs"
+                onClick={() => onChange({ ...v, smartQuery: smartDraft })}
+              >
+                <Check className="h-3.5 w-3.5" />
+                应用
+              </Button>
+            </div>
           </div>
 
           {smartActive ? (

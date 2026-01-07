@@ -2,10 +2,13 @@
 输入：组件 props、样式类名；输出：一致的交互与视觉组件。
 更新规则：新增/修改 UI 原语或依赖形状变化时，更新本 README + `client/src/components/README.md`。
 
+> **注意**：本目录下的组件应优先遵循 [shadcn-ui](https://ui.shadcn.com/) 标准流程创建/拷贝，保持结构与 API 风格一致（forwardRef + cn + variants），避免手写非标准组件。
+
 ### 文件
 
 - `button.jsx`：按钮组件与变体样式。
 - `input.jsx`：输入框组件。
+- `textarea.jsx`：多行文本输入组件（用于长文本/备注等）。
 - `select.jsx`：选择器组件。
 - `checkbox.jsx`：复选框组件。
 - `switch.jsx`：开关组件。
@@ -18,5 +21,3 @@
 - `date-range-picker.jsx`：日期范围选择组合组件。
 - `separator.jsx`：分隔线组件。
 - `badge.jsx`：徽标/标签组件。
-
-

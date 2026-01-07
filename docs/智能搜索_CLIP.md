@@ -103,7 +103,7 @@ $$
   - 返回：按相似度排序的 files 列表（每条带 `score`）
   - 失败：索引未就绪时返回 **409**（需要先跑 `clip_index`）
   - 调试：加请求头 `x-tidy-profile: 1` 或 query `?profile=1`，响应会附带 `profile`（分段耗时 + CPU/内存增量 + event loop 延迟），用于定位慢点；ai-service 的 `/clip/*` 同样支持该 profiling
-  - 交互：前端对智能搜索采用“输入草稿 + 勾勾/Enter 手动应用”，避免 IME 拼写阶段连发多个重请求（否则会导致 ai-service 推理并发争用与排队长尾）；同时前端 viewport 虚拟化可能并行拉多页，服务端对 `clipTextEmbed` 做缓存/并发去重以避免同 query 重复推理
+  - 交互：前端对智能搜索采用“输入草稿 + 应用按钮/⌘(Ctrl)+Enter 手动应用”（输入框支持多行长文本），避免 IME 拼写阶段连发多个重请求（否则会导致 ai-service 推理并发争用与排队长尾）；同时前端 viewport 虚拟化可能并行拉多页，服务端对 `clipTextEmbed` 做缓存/并发去重/落盘以避免同 query 重复推理
 
 ### 4.2 相似检索（image→image）
 - `GET /api/files?similarKind=clip&similarToFileId=...&similarTopK=...&similarMinScore=...`
