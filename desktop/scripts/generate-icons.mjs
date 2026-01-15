@@ -1,5 +1,5 @@
 /**
- * input: client/public/icon.svg（源图标）+ 系统工具（macOS: iconutil）+ Node 依赖（sharp/png-to-ico）
+ * input: client/public/icon.png（源图标）+ 系统工具（macOS: iconutil）+ Node 依赖（sharp/png-to-ico）
  * output: desktop/assets 下生成 icon.png/icon.icns/icon.ico（供 electron-builder 使用）
  * pos: 桌面打包脚本：被 desktop/package.json 的 dist 前置调用（变更需同步更新本头注释与所属目录 README）
  */

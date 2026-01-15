@@ -14,7 +14,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "SEE LICENSE IN LICENSE",
   "description": "",
   "dependencies": {
     "@tensorflow/tfjs": "^4.22.0",

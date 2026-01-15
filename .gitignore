@@ -39,7 +39,7 @@ ai-service/build/
 ai-service/dist/
 ai-service/*.spec
 
-# Desktop icon build outputs (generated from client/public/icon.svg)
+# Desktop icon build outputs (generated from client/public/icon.png)
 desktop/assets/icon.png
 desktop/assets/icon.icns
 desktop/assets/icon.ico

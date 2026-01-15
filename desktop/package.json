@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Tidy desktop app (internal distribution)",
   "author": "tidy",
+  "license": "SEE LICENSE IN LICENSE",
   "main": "src/main.cjs",
   "scripts": {
     "dev": "electron .",
