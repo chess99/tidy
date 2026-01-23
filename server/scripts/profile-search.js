@@ -1,6 +1,6 @@
 /**
- * input: 本地 server（/api/search）+ Node fetch + CLI 参数
- * output: 打印 /api/search 的 server/ai-service profiling 关键步骤摘要
+ * input: 本地 server（/api/files）+ Node fetch + CLI 参数
+ * output: 打印 /api/files 智能搜索的 server/ai-service profiling 关键步骤摘要
  * pos: 运维/调试脚本：性能排查入口（变更需同步更新本头注释与所属目录 README）
  */
 /* eslint-disable no-console */
@@ -35,8 +35,8 @@ async function main() {
   const topK = Number(args.topK || 1000);
   const minScore = args.minScore != null ? Number(args.minScore) : 0.51;
 
-  const url = `${base}/api/search?profile=1`;
-  const body = { query, page, limit, topK, minScore };
+  const url = `${base}/api/files?profile=1`;
+  const body = { smartQuery: query, page, limit, smartTopK: topK, smartMinScore: minScore };
 
   const res = await fetch(url, {
     method: 'POST',
@@ -50,7 +50,7 @@ async function main() {
   const j = await res.json();
 
   const prof = j?.profile || null;
-  console.log('[search]', { total: j?.pagination?.total, returned: Array.isArray(j?.data) ? j.data.length : null });
+  console.log('[smart-search]', { total: j?.pagination?.total, returned: Array.isArray(j?.data) ? j.data.length : null });
   if (!prof) {
     console.log('No profile in response. Add ?profile=1 or header x-tidy-profile: 1.');
     return;

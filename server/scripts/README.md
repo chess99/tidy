@@ -4,7 +4,7 @@
 
 ### 脚本
 
-- `profile-search.js`：请求 `/api/search?profile=1` 并打印 server/ai-service profiling 关键步骤摘要（定位排队/推理长尾）。
+- `profile-search.js`：请求 `/api/files?profile=1` 并打印 server/ai-service profiling 关键步骤摘要（定位排队/推理长尾）。
 - `profile-clip-text-embed.js`：并发请求 `/clip/text-embed?profile=1` 并汇总 `totalMs/waitMs`（验证 ai-service 并发/排队）。
 - `debug-perf.js`：DB 查询/执行计划的性能诊断样例（用于定位 files 列表查询慢点）。
 - `repair-db.js`：修复/校验 DB 的结构与一致性（含缺失策略：删除缺失 `files` 行，并按 `assets.status` 决定 `assets.missing`/删除 `assets`）。

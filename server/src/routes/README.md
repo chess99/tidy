@@ -6,8 +6,7 @@
 
 - `health.js`：健康检查（桌面壳启动等待后端 ready 用）。
 - `assets.js`：资产相关 API（查询、预览、标记；回收站语义：仅保留最后一份副本到 `TRASH_DIR`）。
-- `files.js`：文件路径/文件实体相关 API（“全部文件”仅代表**现存物理实例**；缺失实例会从 `files` 删除；并排除 `assets.status='trash'`；支持相似(pHash)筛选）。
-- `search.js`：智能搜索 API（CLIP 文本→图片，按相似度排序返回；索引未就绪会返回 409，提示先跑 `clip_index`；调试：`x-tidy-profile: 1` 或 `?profile=1` 会在响应里附带分段耗时/资源占用 + in-flight 指标，用于定位“并发→排队”的长尾）。
+- `files.js`：文件路径/文件实体相关 API（“全部文件”仅代表**现存物理实例**；缺失实例会从 `files` 删除；并排除 `assets.status='trash'`；支持相似(pHash/CLIP)与智能搜索（text→image，按相似度排序））。
 - `albums.js`：相册相关 API（相册内展示字段优先使用 `assets.target_path`，避免依赖 `files` 行）。
 - `faces.js`：人脸检测/聚类/人物相关 API。
 - `tags.js`：标签相关 API。

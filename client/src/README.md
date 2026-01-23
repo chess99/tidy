@@ -15,7 +15,7 @@
 - `App.css`：App 层级样式（仅用于 App 级别的少量补充）。
 - `assets/`：前端静态资源（示例/图标等）。
 
-> 说明：Files 页的“智能搜索（CLIP）”与“相似(pHash/CLIP)”属于同一套列表展示链路（`FilesFilters` 先维护输入草稿，勾勾/Enter 应用后写入 query 状态 → `FilesGrid` 拉取并渲染），避免输入过程中频繁触发重的推理请求。
+> 说明：Files 页的“智能搜索（CLIP）”与“相似(pHash/CLIP)”属于同一套列表展示链路（`FilesFilters` 先维护输入草稿，勾勾/Enter 应用后写入 query 状态 → `FilesGrid` 通过 `POST /api/files` 拉取并渲染），避免输入过程中频繁触发重的推理请求。
 
 > 说明：缺失内容不会出现在 Files（全部文件）里；相册/回收站等资产视图会通过 `assets.missing` 置灰提示“语义保留但无实例”。
 

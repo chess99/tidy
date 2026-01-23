@@ -26,34 +26,7 @@ const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
-// Smart search (CLIP): text -> images (ranked)
-export const smartSearch = ({ query, page = 1, limit = 50, topK = 1000, minScore } = {}, { signal } = {}) => {
-  const q = String(query || '').trim();
-  if (!q) return Promise.resolve({ data: [], pagination: { page, limit, total: 0 }, applied: { query: '' } });
-  const body = { query: q, page, limit, topK };
-  if (minScore != null && Number.isFinite(Number(minScore))) body.minScore = Number(minScore);
-  return api.post('/search', body, { signal }).then((res) => res.data);
-};
-
-// Jobs (task queue)
-export const listJobs = ({ limit = 50, offset = 0, status, type } = {}) =>
-  api.get('/jobs', { params: { limit, offset, status, type } }).then((res) => res.data);
-export const getJob = (id) => api.get(`/jobs/${id}`).then((res) => res.data);
-export const createJob = ({ type, mode = 'missing', params = {} } = {}) =>
-  api.post('/jobs', { type, mode, params }).then((res) => res.data);
-export const cancelJob = (id) => api.post(`/jobs/${id}/cancel`).then((res) => res.data);
-export const retryJob = (id) => api.post(`/jobs/${id}/retry`).then((res) => res.data);
-export const getAssets = (page = 1, limit = 50, opts = {}) => {
-  const status = opts?.status != null ? String(opts.status) : null;
-  const params = { page, limit };
-  if (status) params.status = status;
-  return api.get('/assets', { params }).then((res) => res.data);
-};
-export const getAsset = (hash) => api.get(`/assets/${hash}`).then(res => res.data);
-export const getAssetsBatch = (hashes = []) =>
-  api.get('/assets/batch', { params: { hashes: hashes.join(',') } }).then(res => res.data);
-
-export const getFiles = (page = 1, limit = 50, opts = {}, { signal } = {}) => {
+function buildFilesParams(opts = {}) {
   const {
     filter = 'all',
     organized,
@@ -72,8 +45,11 @@ export const getFiles = (page = 1, limit = 50, opts = {}, { signal } = {}) => {
     similarThreshold,
     similarTopK,
     similarMinScore,
+    smartQuery,
+    smartTopK,
+    smartMinScore,
   } = opts || {};
-  const params = { page, limit, filter };
+  const params = { filter };
   if (organized != null) params.organized = organized;
   if (hasDup) params.hasDup = hasDup;
   if (hasPeople) params.hasPeople = 1;
@@ -105,17 +81,48 @@ export const getFiles = (page = 1, limit = 50, opts = {}, { signal } = {}) => {
       if (Number.isFinite(ms)) params.similarMinScore = ms;
     }
   }
+  if (smartQuery != null) {
+    const q = String(smartQuery || '').trim();
+    if (q) params.smartQuery = q;
+  }
+  if (smartTopK != null && Number.isFinite(Number(smartTopK))) {
+    params.smartTopK = Math.max(1, Math.min(5000, Math.trunc(Number(smartTopK))));
+  }
+  if (smartMinScore != null && Number.isFinite(Number(smartMinScore))) params.smartMinScore = Number(smartMinScore);
+  return params;
+}
+
+// Jobs (task queue)
+export const listJobs = ({ limit = 50, offset = 0, status, type } = {}) =>
+  api.get('/jobs', { params: { limit, offset, status, type } }).then((res) => res.data);
+export const getJob = (id) => api.get(`/jobs/${id}`).then((res) => res.data);
+export const createJob = ({ type, mode = 'missing', params = {} } = {}) =>
+  api.post('/jobs', { type, mode, params }).then((res) => res.data);
+export const cancelJob = (id) => api.post(`/jobs/${id}/cancel`).then((res) => res.data);
+export const retryJob = (id) => api.post(`/jobs/${id}/retry`).then((res) => res.data);
+export const getAssets = (page = 1, limit = 50, opts = {}) => {
+  const status = opts?.status != null ? String(opts.status) : null;
+  const params = { page, limit };
+  if (status) params.status = status;
+  return api.get('/assets', { params }).then((res) => res.data);
+};
+export const getAsset = (hash) => api.get(`/assets/${hash}`).then(res => res.data);
+export const getAssetsBatch = (hashes = []) =>
+  api.get('/assets/batch', { params: { hashes: hashes.join(',') } }).then(res => res.data);
+
+export const getFiles = (page = 1, limit = 50, opts = {}, { signal } = {}) => {
+  const params = { page, limit, ...buildFilesParams(opts) };
   return api.get('/files', { params, signal }).then(res => res.data);
 };
 
 // Unified files fetcher:
 // - normal browse/filters: GET /files
-// - smart search: POST /search (ranked)
+// - smart search: POST /files (ranked)
 export const getFilesUnified = (page = 1, limit = 50, opts = {}, { signal } = {}) => {
   const q = String(opts?.smartQuery || '').trim();
   if (q) {
-    const topK = Number.isFinite(Number(opts?.smartTopK)) ? Number(opts.smartTopK) : 1000;
-    return smartSearch({ query: q, page, limit, topK, minScore: opts?.smartMinScore }, { signal });
+    const body = { page, limit, ...buildFilesParams(opts) };
+    return api.post('/files', body, { signal }).then((res) => res.data);
   }
   return getFiles(page, limit, opts, { signal });
 };

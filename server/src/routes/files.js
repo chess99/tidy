@@ -1,16 +1,19 @@
 /**
- * input: Express req/res + DB + 服务层
+ * input: Express req/res + DB + CLIP/相似检索服务
  * output: Express Router（HTTP API）
- * pos: 服务端路由层：把请求映射为领域动作（变更需同步更新本头注释与所属目录 README）
+ * pos: 服务端路由层：列表/筛选/CLIP 智能检索入口（变更需同步更新本头注释与所属目录 README）
  */
 
 const express = require('express');
 const path = require('path');
 const { getDB } = require('../db');
 const { hamming64 } = require('../scanner/phash');
-const { queryTopKByFileId } = require('../services/clipIndex');
+const { clipTextEmbed } = require('../services/aiClient');
+const { queryTopKByFileId, queryTopKByVector } = require('../services/clipIndex');
+const { createProfiler } = require('../utils/profiler');
 
 const router = express.Router();
+let smartSearchInflight = 0;
 
 function makeWhere(filter) {
   let where = '';
@@ -412,30 +415,38 @@ router.get('/date-index', async (req, res) => {
 });
 
 // List files (Tab1)
-router.get('/', async (req, res) => {
+async function handleFilesList(req, res) {
   const db = getDB();
-  const page = parseInt(req.query.page) || 1;
-  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  const source = req.method === 'POST' ? { ...(req.query || {}), ...(req.body || {}) } : (req.query || {});
+  const page = parseInt(source.page) || 1;
+  const limit = Math.min(parseInt(source.limit) || 50, 200);
   const offset = (page - 1) * limit;
-  const filter = String(req.query.filter || 'all');
-  const organized = parseBool01(req.query.organized);
-  const hasDup = parseBool01(req.query.hasDup);
-  const hasPeople = parseBool01(req.query.hasPeople);
-  const personCountMin = parseIntParam(req.query.personCountMin);
-  const personCountMax = parseIntParam(req.query.personCountMax);
-  const exts = parseExtsParam(req.query.exts);
-  const hash = req.query.hash != null ? String(req.query.hash) : null;
-  const pathContains = req.query.pathContains != null ? String(req.query.pathContains) : null;
-  const fromMs = req.query.from != null ? Number(req.query.from) : null;
-  const toMs = req.query.to != null ? Number(req.query.to) : null;
-  const people = parseCsvParam(req.query.people).map(n => parseInt(n)).filter(n => Number.isFinite(n));
-  const similarKind = req.query.similarKind != null ? String(req.query.similarKind) : null;
-  const similarToFileId = parseIntParam(req.query.similarToFileId);
-  const similarThreshold = clampIntParam(req.query.similarThreshold, { min: 0, max: 32, fallback: 10 });
-  const similarTopK = clampIntParam(req.query.similarTopK, { min: 1, max: 5000, fallback: 500 });
-  const similarMinScore = req.query.similarMinScore != null && req.query.similarMinScore !== '' ? Number(req.query.similarMinScore) : null;
+  const filter = String(source.filter || 'all');
+  const organized = parseBool01(source.organized);
+  const hasDup = parseBool01(source.hasDup);
+  const hasPeople = parseBool01(source.hasPeople);
+  const personCountMin = parseIntParam(source.personCountMin);
+  const personCountMax = parseIntParam(source.personCountMax);
+  const exts = parseExtsParam(source.exts);
+  const hash = source.hash != null ? String(source.hash) : null;
+  const pathContains = source.pathContains != null ? String(source.pathContains) : null;
+  const fromMs = source.from != null ? Number(source.from) : null;
+  const toMs = source.to != null ? Number(source.to) : null;
+  const people = parseCsvParam(source.people).map(n => parseInt(n)).filter(n => Number.isFinite(n));
+  const similarKind = source.similarKind != null ? String(source.similarKind) : null;
+  const similarToFileId = parseIntParam(source.similarToFileId);
+  const similarThreshold = clampIntParam(source.similarThreshold, { min: 0, max: 32, fallback: 10 });
+  const similarTopK = clampIntParam(source.similarTopK, { min: 1, max: 5000, fallback: 500 });
+  const similarMinScore = source.similarMinScore != null && source.similarMinScore !== '' ? Number(source.similarMinScore) : null;
+  const smartQueryRaw = source.smartQuery != null ? String(source.smartQuery) : '';
+  const smartQuery = smartQueryRaw.trim();
+  const smartTopK = clampIntParam(source.smartTopK, { min: 1, max: 5000, fallback: 1000 });
+  const smartMinScore = source.smartMinScore != null && source.smartMinScore !== '' ? Number(source.smartMinScore) : null;
   if (similarKind && similarKind !== 'phash' && similarKind !== 'clip') {
     return res.status(400).json({ error: 'Invalid similarKind' });
+  }
+  if (smartQuery && similarKind) {
+    return res.status(400).json({ error: 'smartQuery cannot be combined with similarKind' });
   }
   if ((similarKind === 'phash' || similarKind === 'clip') && !Number.isFinite(similarToFileId)) {
     return res.status(400).json({ error: 'similarToFileId is required for similarKind' });
@@ -541,6 +552,111 @@ router.get('/', async (req, res) => {
     whereParams.push(pid);
   }
 
+  if (smartQuery) {
+    const wantProfile =
+      String(req.query?.profile || '').trim() === '1' ||
+      String(req.headers['x-tidy-profile'] || '').trim() === '1';
+    const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const profiler = createProfiler({ enabled: wantProfile, name: `${req.method} /api/files`, requestId, eventLoop: true });
+    profiler.mark('start');
+
+    const minScore = smartMinScore != null && Number.isFinite(Number(smartMinScore)) ? Number(smartMinScore) : null;
+    const maxTopK = 5000;
+    let topK = Math.max(1, Math.min(maxTopK, Math.max(smartTopK, offset + limit)));
+
+    smartSearchInflight += 1;
+    const inflightAtStart = smartSearchInflight;
+    profiler.mark('inflight', { smartSearchInflight: inflightAtStart });
+
+    try {
+      const embedOut = await clipTextEmbed({ query: smartQuery, normalize: true, profile: profiler });
+      const embedding = embedOut?.embedding;
+      const aiServiceProfile = embedOut?.profile || null;
+      profiler.mark('clip.text.embed.done', { queryLen: smartQuery.length, minScore, topK });
+
+      while (true) {
+        const r = await queryTopKByVector(embedding, { topK, minScore, profile: profiler });
+        const matches = Array.isArray(r.matches) ? r.matches : [];
+        profiler.mark('clip.ann.done', { model: r.model, got: matches.length });
+
+        const orderedIds = matches.map((m) => Number(m.file_id)).filter(Number.isFinite);
+        if (!orderedIds.length) {
+          const profile = profiler.end({ empty: true, total: 0, aiService: aiServiceProfile || undefined, smartSearchInflight: inflightAtStart });
+          return res.json({
+            data: [],
+            pagination: { page, limit, total: 0 },
+            applied: { filter, smartQuery, minScore, model: r.model },
+            ...(profile ? { profile } : {}),
+          });
+        }
+
+        const scoreById = new Map(matches.map((m) => [Number(m.file_id), Number(m.score)]));
+        const { clause, params: idParams } = makeInClause(orderedIds);
+        const whereWithIds = `${where} AND f.id IN ${clause}`;
+
+        const totalQuery = `
+          SELECT COUNT(*) as count
+          FROM files f
+          LEFT JOIN assets a ON a.hash = f.hash
+          ${whereWithIds}
+        `;
+        const total = db.prepare(totalQuery).get(...whereParams, ...idParams).count;
+        const needsMore = total < offset + limit && topK < maxTopK && matches.length >= topK;
+        if (needsMore) {
+          const nextTopK = Math.min(maxTopK, Math.max(topK * 2, offset + limit));
+          if (nextTopK > topK) {
+            topK = nextTopK;
+            profiler.mark('clip.topk.expand', { topK });
+            continue;
+          }
+        }
+
+        const order = orderByCaseIds(orderedIds);
+        const query = `
+          SELECT
+            f.*,
+            a.status AS asset_status,
+            a.taken_at AS asset_taken_at,
+            a.mime_type AS asset_mime_type,
+            a.updated_at AS asset_updated_at,
+            a.thumb_updated_at AS asset_thumb_updated_at,
+            CASE WHEN f.hash IS NULL THEN 0 ELSE ${dupCountExpr} END AS dup_count,
+            (
+              SELECT al.name
+              FROM album_assets aa2
+              JOIN albums al ON al.id = aa2.album_id
+              WHERE aa2.hash = f.hash
+              ORDER BY COALESCE(aa2.added_at, 0) DESC, aa2.album_id DESC
+              LIMIT 1
+            ) AS organized_to
+          FROM files f
+          LEFT JOIN assets a ON a.hash = f.hash
+          ${whereWithIds}
+          ORDER BY ${order.sql}
+          LIMIT ? OFFSET ?
+        `;
+
+        const rows = db.prepare(query).all(...whereParams, ...idParams, ...order.params, limit, offset);
+        rows.forEach((row) => {
+          row.score = scoreById.get(Number(row.id)) ?? null;
+        });
+
+        const profile = profiler.end({ total, returned: rows.length, aiService: aiServiceProfile || undefined, smartSearchInflight: inflightAtStart });
+        return res.json({
+          data: rows.map(toFileRow),
+          pagination: { page, limit, total },
+          applied: { filter, smartQuery, minScore, model: r.model },
+          ...(profile ? { profile } : {}),
+        });
+      }
+    } catch (e) {
+      const profile = profiler.end({ error: String(e?.message || e), smartSearchInflight: inflightAtStart });
+      return res.status(e?.statusCode || 500).json({ error: String(e?.message || e), ...(profile ? { profile } : {}) });
+    } finally {
+      smartSearchInflight = Math.max(0, smartSearchInflight - 1);
+    }
+  }
+
   if (similarKind === 'phash') {
     const ids = computeSimilarFileIdsByPhash(db, {
       seedFileId: similarToFileId,
@@ -641,7 +757,10 @@ router.get('/', async (req, res) => {
     pagination: { page, limit, total },
     applied: { filter },
   });
-});
+}
+
+router.get('/', handleFilesList);
+router.post('/', handleFilesList);
 
 // Batch fetch files by ids
 router.get('/batch', (req, res) => {

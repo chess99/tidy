@@ -4,7 +4,7 @@
 
 ### 文件与子目录
 
-- `index.js`：后端进程入口（Express app、路由挂载、任务 runner、可选托管 `client/dist`）。
+- `index.js`：后端进程入口（Express app、路由挂载、任务 runner、可选托管 `client/dist`；启动时做 CLIP 索引/智能搜索 warmup）。
 - `src/`：后端核心源码（见 `src/README.md`）。
 - `scripts/`：运维/性能排查脚本（见 `scripts/README.md`）。
 - `package.json`：后端依赖与脚本。

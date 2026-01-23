@@ -133,7 +133,7 @@ const dbSchema = `
     FOREIGN KEY(hash) REFERENCES assets(hash) ON DELETE SET NULL
   );
 
-  -- CLIP text embeddings cache (deterministic per model+normalize+text; used by /api/search)
+  -- CLIP text embeddings cache (deterministic per model+normalize+text; used by POST /api/files smartQuery)
   CREATE TABLE IF NOT EXISTS clip_text_embeddings (
     model TEXT NOT NULL,
     normalized INTEGER NOT NULL DEFAULT 1,

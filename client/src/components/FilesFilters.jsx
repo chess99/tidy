@@ -225,7 +225,7 @@ export function FilesFilters({ value, onChange }) {
                 <div className="text-xs font-semibold tabular-nums w-12 text-right">{Math.max(0, Math.min(1, smartMinScore)).toFixed(2)}</div>
               </div>
               <div className="text-[11px] text-muted-foreground leading-4">
-                提示：当前智能搜索结果按相似度排序展示；其它筛选条件暂不参与检索（如需叠加筛选，我们再把 filters 带到后端）。
+                提示：结果按相似度排序展示；可与其它筛选条件叠加（日期/后缀/人物等）。
               </div>
             </div>
           ) : (

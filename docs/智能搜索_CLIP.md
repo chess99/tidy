@@ -93,14 +93,14 @@ $$
 2. 跑 `clip_index`（rebuild）
 3. 前端可用智能搜索与 CLIP 相似
 
-> 重要：`/api/search` 与 `similarKind=clip` 不会在请求路径自动重建索引；如果索引未就绪，会返回 **409** 并提示先跑 `clip_index`。
+> 重要：`POST /api/files`（`smartQuery`）与 `similarKind=clip` 不会在请求路径自动重建索引；如果索引未就绪，会返回 **409** 并提示先跑 `clip_index`。
 
 ## 4. API 形态
 
 ### 4.1 智能搜索（text→image）
-- `POST /api/search`
-  - body：`{ query, page, limit, topK, minScore }`
-  - 返回：按相似度排序的 files 列表（每条带 `score`）
+- `POST /api/files`
+  - body：`{ smartQuery, page, limit, smartTopK, smartMinScore, ...filters }`
+  - 返回：按相似度排序的 files 列表（每条带 `score`），支持与其它筛选条件叠加
   - 失败：索引未就绪时返回 **409**（需要先跑 `clip_index`）
   - 调试：加请求头 `x-tidy-profile: 1` 或 query `?profile=1`，响应会附带 `profile`（分段耗时 + CPU/内存增量 + event loop 延迟），用于定位慢点；ai-service 的 `/clip/*` 同样支持该 profiling
   - 交互：前端对智能搜索采用“输入草稿 + 应用按钮/⌘(Ctrl)+Enter 手动应用”（输入框支持多行长文本），避免 IME 拼写阶段连发多个重请求（否则会导致 ai-service 推理并发争用与排队长尾）；同时前端 viewport 虚拟化可能并行拉多页，服务端对 `clipTextEmbed` 做缓存/并发去重/落盘以避免同 query 重复推理
@@ -128,6 +128,6 @@ $$
 
 ---
 
-如需把智能搜索“叠加其它筛选”（日期/目录/人物等），下一步是在 `POST /api/search` 增加 `filters` 并在服务端合并 `/api/files` 的 where 语义。
+智能搜索已与 `/api/files` 的筛选语义合并；过滤条件会在相似度排序结果上继续生效。
 
 

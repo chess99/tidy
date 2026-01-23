@@ -48,7 +48,6 @@ const configRoutes = require('./src/routes/config');
 const libraryRoutes = require('./src/routes/library');
 const faceRoutes = require('./src/routes/faces');
 const duplicatesRoutes = require('./src/routes/duplicates');
-const searchRoutes = require('./src/routes/search');
 const healthRoutes = require('./src/routes/health');
 
 app.use('/api/health', healthRoutes);
@@ -63,7 +62,6 @@ app.use('/api/organize', organizeRoutes);
 app.use('/api/tags', tagRoutes);
 app.use('/api/faces', faceRoutes);
 app.use('/api/duplicates', duplicatesRoutes);
-app.use('/api/search', searchRoutes);
 
 // Optional: serve built client UI (desktop/distribution mode).
 // - If `TIDY_UI_DIR` is set, use it.
@@ -92,7 +90,7 @@ app.listen(PORT, () => {
 
 // Best-effort warmup:
 // - CLIP index loading can take ~1s+ on first query (disk read). Preload it in background to avoid
-//   the first `/api/search` feeling "stuck".
+//   the first smart-search `/api/files` feeling "stuck".
 try {
   const { ensureIndexLoaded } = require('./src/services/clipIndex');
   const { clipTextEmbed } = require('./src/services/aiClient');
