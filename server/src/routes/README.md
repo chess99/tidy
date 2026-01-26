@@ -5,7 +5,7 @@
 ### 文件
 
 - `health.js`：健康检查（桌面壳启动等待后端 ready 用）。
-- `assets.js`：资产相关 API（查询、预览、标记；回收站语义：仅保留最后一份副本到 `TRASH_DIR`）。
+- `assets.js`：资产相关 API（查询、预览、标记；回收站语义：仅保留最后一份副本到配置的回收站目录）。
 - `files.js`：文件路径/文件实体相关 API（“全部文件”仅代表**现存物理实例**；缺失实例会从 `files` 删除；并排除 `assets.status='trash'`；支持相似(pHash/CLIP)与智能搜索（text→image，按相似度排序））。
 - `albums.js`：相册相关 API（相册内展示字段优先使用 `assets.target_path`，避免依赖 `files` 行）。
 - `faces.js`：人脸检测/聚类/人物相关 API。
@@ -15,5 +15,5 @@
 - `jobs.js`：后台任务控制与状态查询 API。
 - `changes.js`：变更流/增量更新相关 API。
 - `library.js`：库级信息（根目录、统计等）API。
-- `config.js`：配置读取/写入 API。
+- `config.js`：配置读取/写入 API（扫描根、类型、任务、**工作区路径**）。`PUT /config/workspace` 更新托管目录与回收站目录（界面可配置）。
 

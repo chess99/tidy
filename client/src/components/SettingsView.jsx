@@ -6,7 +6,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   addScanRoot,
   clearLibraryByRoot,
@@ -17,6 +17,7 @@ import {
   setScanRootEnabled,
   setScanType,
   setTaskSettings,
+  setWorkspacePaths,
 } from '../api/client';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
@@ -397,6 +398,33 @@ export function SettingsView({ anchor, embedded = false }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['config'] }),
   });
 
+  // ---- Workspace paths (user-configurable) ----
+  const workspaceFromConfig = cfgQuery.data?.workspace;
+  const [managedRootInput, setManagedRootInput] = useState(() => workspaceFromConfig?.MANAGED_ROOT ?? '');
+  const [trashDirInput, setTrashDirInput] = useState(() => workspaceFromConfig?.TRASH_DIR ?? '');
+  const wsInitialized = useRef(false);
+  useEffect(() => {
+    const ws = cfgQuery.data?.workspace;
+    if (!ws || wsInitialized.current) return;
+    wsInitialized.current = true;
+    // Initialize workspace inputs from config (only once on first load)
+    // Note: This intentionally calls setState in effect to sync from async query result.
+    // The ref guard ensures this only runs once, so performance impact is minimal.
+    if (ws.MANAGED_ROOT) setManagedRootInput(ws.MANAGED_ROOT);
+    if (ws.TRASH_DIR) setTrashDirInput(ws.TRASH_DIR);
+  }, [cfgQuery.data?.workspace]);
+
+  const wsMutation = useMutation({
+    mutationFn: ({ managedRoot, trashDir }) => setWorkspacePaths({ managedRoot, trashDir }),
+    onSuccess: (data) => {
+      if (data?.workspace) {
+        setManagedRootInput(data.workspace.MANAGED_ROOT ?? '');
+        setTrashDirInput(data.workspace.TRASH_DIR ?? '');
+      }
+      qc.invalidateQueries({ queryKey: ['config'] });
+    },
+  });
+
   // ---- Maintenance: face reset job ----
   const faceResetMutation = useMutation({
     mutationFn: ({ clearFaces, clearPeople }) => createJob({ type: 'faces_reset', mode: 'missing', params: { clearFaces, clearPeople } }),
@@ -477,11 +505,64 @@ export function SettingsView({ anchor, embedded = false }) {
                   </div>
                 </div>
               );
-            }) : (
+            }            ) : (
               <div className="text-sm text-gray-600">
-                还没有扫描目录。默认会从 <span className="font-mono text-xs">{String(workspace.WORK_ROOT || '').trim() || 'WORK_ROOT'}</span> 扫描（首次启动会自动写入到 config.json）。
+                还没有扫描目录，请添加扫描根目录（首次写入 config.json 后即可开始扫描）。
               </div>
             )}
+          </div>
+        </Card>
+
+        <Card
+          id="workspace"
+          title="整理与回收站目录"
+          desc="整理目标目录（添加到相册时文件移动到这里）、回收站目录（删除保留的最后一份副本）。请填写本机绝对路径。"
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">整理目标目录</label>
+              <Input
+                value={managedRootInput}
+                onChange={(e) => setManagedRootInput(e.target.value)}
+                placeholder={win ? '例如 D:\\Photos\\_Tidy' : '例如 /Users/你的用户名/Pictures/_Tidy'}
+                className="font-mono text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">回收站目录</label>
+              <Input
+                value={trashDirInput}
+                onChange={(e) => setTrashDirInput(e.target.value)}
+                placeholder="留空则使用默认（应用数据目录 / trash）"
+                className="font-mono text-sm"
+              />
+            </div>
+            <Button
+              disabled={wsMutation.isPending}
+              onClick={() =>
+                wsMutation.mutate({
+                  managedRoot: managedRootInput.trim(),
+                  trashDir: trashDirInput.trim(),
+                })
+              }
+            >
+              {wsMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              保存
+            </Button>
+            {wsMutation.isError ? (
+              <div className="text-sm text-red-600">{String(wsMutation.error?.response?.data?.error ?? wsMutation.error?.message ?? '保存失败')}</div>
+            ) : null}
+          </div>
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <div className="text-xs text-gray-500 mb-2">仅查看：数据与缓存目录</div>
+            <div className="text-xs text-gray-700 space-y-1">
+              {['DATA_DIR', 'DB_PATH', 'THUMB_DIR'].map((k) => (
+                <div key={k} className="grid grid-cols-3 gap-3">
+                  <div className="text-gray-500">{k}</div>
+                  <div className="col-span-2 font-mono break-all">{workspace?.[k] || '—'}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </Card>
 
@@ -572,17 +653,6 @@ export function SettingsView({ anchor, embedded = false }) {
 
         <Card id="ai" title="AI（预留）" desc="未来接入 CLIP/OCR 时使用，当前仅保留开关与扩展位。">
           <div className="text-sm text-gray-500">暂无更多设置</div>
-        </Card>
-
-        <Card id="workspace" title="工具工作区（只读）" desc="工具用于存放 _Tidy/_Trash 与本地数据（DB/缩略图）的目录。">
-          <div className="text-xs text-gray-700 space-y-2">
-            {['WORK_ROOT', 'MANAGED_ROOT', 'TRASH_DIR', 'DATA_DIR', 'DB_PATH', 'THUMB_DIR'].map((k) => (
-              <div key={k} className="grid grid-cols-3 gap-3">
-                <div className="text-gray-500">{k}</div>
-                <div className="col-span-2 font-mono break-all">{workspace?.[k] || '—'}</div>
-              </div>
-            ))}
-          </div>
         </Card>
       </div>
     </div>

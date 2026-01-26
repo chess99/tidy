@@ -5,8 +5,12 @@
  */
 
 const fs = require('fs-extra');
+const os = require('os');
 const path = require('path');
-const { DATA_DIR, WORK_ROOT, MANAGED_ROOT, TRASH_DIR } = require('./config');
+const { DATA_DIR } = require('./config');
+
+const DEFAULT_MANAGED_ROOT = path.join(os.homedir(), 'Pictures', '_Tidy');
+const DEFAULT_TRASH_DIR = path.join(DATA_DIR, 'trash');
 
 // Demo-stage “optimal design”: single schema, no legacy compatibility.
 // server/data/config.json:
@@ -15,12 +19,13 @@ const { DATA_DIR, WORK_ROOT, MANAGED_ROOT, TRASH_DIR } = require('./config');
 //   scanType: { exts: string[], includeNoExt: boolean },
 //   scan: { excludeGlobs: string[], minFileSizeBytes: number },
 //   tasks: { concurrency: { enrich?: number, faces?: number, thumbs?: number, clip?: number }, autoTrigger: { afterDiscover: string[] } }
+//   workspace: { managedRoot: string, trashDir: string }  // user-configurable via UI
 // }
 
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 
-// Defaults: scan WORK_ROOT, and include common image/video extensions.
-const DEFAULT_SCAN_ROOTS = [{ root: WORK_ROOT, enabled: true }];
+// No default scan root; user adds roots explicitly.
+const DEFAULT_SCAN_ROOTS = [];
 const DEFAULT_SCAN_EXTS = [
   // images
   'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'tif', 'tiff',
@@ -58,6 +63,10 @@ const DEFAULT_CONFIG = {
     autoTrigger: {
       afterDiscover: ['enrich'],
     },
+  },
+  workspace: {
+    managedRoot: DEFAULT_MANAGED_ROOT,
+    trashDir: DEFAULT_TRASH_DIR,
   },
 };
 
@@ -105,6 +114,26 @@ function validateRootOrThrow(root) {
     throw e;
   }
   return r;
+}
+
+function normalizeWorkspacePath(raw, defaultVal) {
+  const s = typeof raw === 'string' ? raw.trim() : '';
+  if (!s) return defaultVal;
+  try {
+    const r = stripTrailingSep(abs(s));
+    if (!r || !path.isAbsolute(r)) return defaultVal;
+    return r;
+  } catch {
+    return defaultVal;
+  }
+}
+
+function normalizeWorkspace(workspace) {
+  const w = workspace && typeof workspace === 'object' ? workspace : {};
+  return {
+    managedRoot: normalizeWorkspacePath(w.managedRoot, DEFAULT_MANAGED_ROOT),
+    trashDir: normalizeWorkspacePath(w.trashDir, DEFAULT_TRASH_DIR),
+  };
 }
 
 function normalizeExt(raw) {
@@ -221,7 +250,8 @@ async function loadConfig() {
     const scanType = normalizeScanType(json?.scanType);
     const scan = normalizeScanOptions(json?.scan || DEFAULT_CONFIG.scan);
     const tasks = normalizeTasks(json?.tasks || DEFAULT_CONFIG.tasks);
-    const normalized = { scanRoots, scanType, scan, tasks };
+    const workspace = normalizeWorkspace(json?.workspace);
+    const normalized = { scanRoots, scanType, scan, tasks, workspace };
 
     // One-time auto-fix: when schema evolves (e.g. removing non-configurable concurrency keys),
     // persist the normalized config to strip unknown fields.
@@ -246,11 +276,12 @@ async function saveConfig(cfg) {
   const scanType = normalizeScanType(cfg?.scanType);
   const scan = normalizeScanOptions(cfg?.scan || DEFAULT_CONFIG.scan);
   const tasks = normalizeTasks(cfg?.tasks || DEFAULT_CONFIG.tasks);
+  const workspace = normalizeWorkspace(cfg?.workspace);
   await fs.ensureDir(path.dirname(CONFIG_FILE));
   const tmp = CONFIG_FILE + '.tmp';
-  await fs.writeFile(tmp, JSON.stringify({ scanRoots, scanType, scan, tasks }, null, 2), 'utf8');
+  await fs.writeFile(tmp, JSON.stringify({ scanRoots, scanType, scan, tasks, workspace }, null, 2), 'utf8');
   await fs.move(tmp, CONFIG_FILE, { overwrite: true });
-  return { scanRoots, scanType, scan, tasks };
+  return { scanRoots, scanType, scan, tasks, workspace };
 }
 
 async function setScanRoots(scanRoots) {
@@ -316,6 +347,16 @@ async function setTaskSettings(tasks) {
   return await saveConfig({ ...cfg, tasks: next });
 }
 
+async function setWorkspacePaths({ managedRoot, trashDir } = {}) {
+  const cfg = await loadConfig();
+  const prev = cfg.workspace || normalizeWorkspace();
+  const next = {
+    managedRoot: managedRoot !== undefined ? (managedRoot === '' ? DEFAULT_MANAGED_ROOT : validateRootOrThrow(managedRoot)) : prev.managedRoot,
+    trashDir: trashDir !== undefined ? (trashDir === '' ? DEFAULT_TRASH_DIR : validateRootOrThrow(trashDir)) : prev.trashDir,
+  };
+  return await saveConfig({ ...cfg, workspace: next });
+}
+
 function getEnabledRoots(cfg) {
   const list = Array.isArray(cfg?.scanRoots) ? cfg.scanRoots : [];
   return list.filter((r) => r && r.enabled).map((r) => r.root);
@@ -332,6 +373,7 @@ module.exports = {
   setScanType,
   setScanOptions,
   setTaskSettings,
+  setWorkspacePaths,
   getEnabledRoots,
   validateRootOrThrow,
   normalizeExt,

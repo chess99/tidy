@@ -19,7 +19,8 @@ try {
 } catch {
   ffmpegPath = null;
 }
-const { TRASH_DIR, PREVIEW_DIR, POSTER_DIR } = require('../config');
+const { PREVIEW_DIR, POSTER_DIR } = require('../config');
+const { loadConfig } = require('../configStore');
 
 const router = express.Router();
 
@@ -209,6 +210,10 @@ router.patch('/:hash', (req, res) => {
 // Batch update asset status (used by multi-select operations)
 router.post('/batch-status', async (req, res) => {
   const db = getDB();
+  const cfg = await loadConfig();
+  const trashDir = cfg.workspace?.trashDir;
+  if (!trashDir) return res.status(500).json({ error: 'workspace.trashDir not configured' });
+
   const hashes = Array.isArray(req.body?.hashes) ? req.body.hashes.map(String).filter(Boolean) : [];
   const status = String(req.body?.status || '').trim();
 
@@ -219,7 +224,7 @@ router.post('/batch-status', async (req, res) => {
   if (limited.length === 0) return res.status(400).json({ error: 'hashes is required' });
 
   const report = { updated: 0, deleted: 0, errors: 0, messages: [] };
-  await fs.ensureDir(TRASH_DIR);
+  await fs.ensureDir(trashDir);
 
   for (const hash of limited) {
     try {
@@ -260,15 +265,15 @@ router.post('/batch-status', async (req, res) => {
         }
       }
 
-      const alreadyInTrash = existing.find((f) => isUnder(TRASH_DIR, f.path)) || null;
+      const alreadyInTrash = existing.find((f) => isUnder(trashDir, f.path)) || null;
       const keep = alreadyInTrash || existing[0] || null;
 
       let keepPath = keep?.path || null;
 
-      if (keep && keepPath && !isUnder(TRASH_DIR, keepPath)) {
-        // Move the kept copy into TRASH_DIR.
+      if (keep && keepPath && !isUnder(trashDir, keepPath)) {
+        // Move the kept copy into trashDir.
         const fileName = path.basename(keepPath);
-        const trashRaw = path.join(TRASH_DIR, `${hash}_${fileName}`);
+        const trashRaw = path.join(trashDir, `${hash}_${fileName}`);
         // eslint-disable-next-line no-await-in-loop
         const trashPath = await uniquePath(trashRaw);
         // eslint-disable-next-line no-await-in-loop

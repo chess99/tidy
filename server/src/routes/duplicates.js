@@ -9,9 +9,21 @@ const path = require('path');
 const fs = require('fs-extra');
 const { getDB } = require('../db');
 const { hamming64 } = require('../scanner/phash');
-const { TRASH_DIR } = require('../config');
+const { loadConfig } = require('../configStore');
 
 const router = express.Router();
+
+function isUnderDir(parent, child) {
+  try {
+    const p = path.resolve(String(parent)).replace(/[/\\]+$/, '');
+    const c = path.resolve(String(child));
+    const pN = process.platform === 'win32' ? p.toLowerCase() : p;
+    const cN = process.platform === 'win32' ? c.toLowerCase() : c;
+    return cN === pN || cN.startsWith(pN + path.sep);
+  } catch {
+    return false;
+  }
+}
 
 function safeJsonParse(v) {
   if (v == null) return null;
@@ -176,8 +188,8 @@ async function deleteFileInstance(db, { hash, fileId, filePath }) {
   }
 }
 
-async function trashAssetKeepOne(db, { hash }) {
-  // Keep exactly one existing file copy under TRASH_DIR.
+async function trashAssetKeepOne(db, { hash, trashDir }) {
+  // Keep exactly one existing file copy under trashDir.
   const rows = db
     .prepare(
       `
@@ -209,14 +221,14 @@ async function trashAssetKeepOne(db, { hash }) {
     return { ok: false, error: 'no_existing_files' };
   }
 
-  await fs.ensureDir(TRASH_DIR);
+  await fs.ensureDir(trashDir);
 
-  const keep = existing.find((f) => String(f.path).startsWith(TRASH_DIR)) || existing[0];
+  const keep = existing.find((f) => isUnderDir(trashDir, f.path)) || existing[0];
   let keepPath = keep.path;
 
-  if (!String(keepPath).startsWith(TRASH_DIR)) {
+  if (!isUnderDir(trashDir, keepPath)) {
     const fileName = path.basename(keepPath);
-    const trashRaw = path.join(TRASH_DIR, `${hash}_${fileName}`);
+    const trashRaw = path.join(trashDir, `${hash}_${fileName}`);
     // eslint-disable-next-line no-await-in-loop
     const trashPath = await uniquePath(trashRaw);
     // eslint-disable-next-line no-await-in-loop
@@ -456,6 +468,10 @@ router.get('/groups', (req, res) => {
 // { keepFileIds: number[], deleteFileIds: number[] }
 router.post('/apply', async (req, res) => {
   const db = getDB();
+  const cfg = await loadConfig();
+  const trashDir = cfg.workspace?.trashDir;
+  if (!trashDir) return res.status(500).json({ error: 'workspace.trashDir not configured' });
+
   const keepFileIds = Array.isArray(req.body?.keepFileIds) ? req.body.keepFileIds.map((n) => Number(n)).filter(Number.isFinite) : [];
   const deleteFileIds = Array.isArray(req.body?.deleteFileIds) ? req.body.deleteFileIds.map((n) => Number(n)).filter(Number.isFinite) : [];
 
@@ -530,7 +546,7 @@ router.post('/apply', async (req, res) => {
       // Escalate to asset delete only if ALL existing instances are selected for delete.
       if (selectedDeleteIds.length && selectedDeleteIds.length === existing.length) {
         // eslint-disable-next-line no-await-in-loop
-        const r = await trashAssetKeepOne(db, { hash });
+        const r = await trashAssetKeepOne(db, { hash, trashDir });
         if (r.ok) report.trashedAssets++;
         else {
           report.errors++;

@@ -10,7 +10,7 @@ const cors = require('cors');
 const { initDB } = require('./src/db');
 const path = require('path');
 const fs = require('fs');
-const { WORK_ROOT, MANAGED_ROOT, TRASH_DIR, DATA_DIR, DB_PATH, THUMB_DIR, PREVIEW_DIR, POSTER_DIR } = require('./src/config');
+const { DATA_DIR, DB_PATH, THUMB_DIR, PREVIEW_DIR, POSTER_DIR } = require('./src/config');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -26,10 +26,7 @@ initDB();
 const { startJobRunner } = require('./src/jobs/runner');
 startJobRunner({ pollIntervalMs: 500 });
 
-// Log effective config (helps cross-platform setup).
-console.log('[config] WORK_ROOT  =', WORK_ROOT);
-console.log('[config] MANAGED_ROOT=', MANAGED_ROOT);
-console.log('[config] TRASH_DIR  =', TRASH_DIR);
+// Log effective config (helps cross-platform setup). MANAGED_ROOT/TRASH_DIR come from config.json (UI-configurable).
 console.log('[config] DATA_DIR   =', DATA_DIR);
 console.log('[config] DB_PATH    =', DB_PATH);
 console.log('[config] THUMB_DIR  =', THUMB_DIR);

@@ -350,13 +350,23 @@ function Main() {
   const canFindSimilarClip =
     String(selectedAsset?.mime_type || '').toLowerCase().startsWith('image/') && Number.isFinite(pickClipSeedFileId(selectedAsset));
 
+  const goHome = () => {
+    setActiveTabSafe('files');
+    setSelectedAsset(null);
+  };
+
   return (
     <div className="flex h-screen flex-col">
       <header className="bg-white border-b p-4 flex items-center justify-between shadow-sm z-10">
-        <h1 className="text-xl font-bold flex items-center gap-3">
+        <button
+          type="button"
+          onClick={goHome}
+          className="text-xl font-bold flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer"
+          title="回到首页"
+        >
           <img src="/icon.png" className="w-8 h-8 rounded-md shadow-sm" alt="Tidy" />
-          Tidy
-        </h1>
+          <span>Tidy</span>
+        </button>
         <div className="flex items-center gap-2">
           {activeTab !== 'admin' && activeTab !== 'duplicates' ? (
             <>

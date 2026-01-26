@@ -9,7 +9,6 @@ const path = require('path');
 const mime = require('mime-types');
 const picomatch = require('picomatch');
 const { getDB } = require('../../db');
-const { MANAGED_ROOT, TRASH_DIR } = require('../../config');
 const { normalizePathForDb } = require('../../utils/normalizePath');
 const { insertChange, now } = require('./_util');
 

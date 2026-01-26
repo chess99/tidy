@@ -186,6 +186,8 @@ export const setScanOptions = ({ excludeGlobs = [], minFileSizeBytes = 0 } = {})
   api.put('/config/scan-options', { excludeGlobs, minFileSizeBytes }).then((res) => res.data);
 export const setTaskSettings = ({ concurrency = {}, autoTrigger = {} } = {}) =>
   api.put('/config/tasks', { concurrency, autoTrigger }).then((res) => res.data);
+export const setWorkspacePaths = ({ managedRoot, trashDir } = {}) =>
+  api.put('/config/workspace', { managedRoot, trashDir }).then((res) => res.data);
 
 export const clearLibraryByRoot = ({ root, dryRun = false }) => api.post('/library/clear', { root, dryRun }).then((res) => res.data);
 

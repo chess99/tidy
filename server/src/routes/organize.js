@@ -8,7 +8,7 @@ const express = require('express');
 const fs = require('fs-extra');
 const path = require('path');
 const { getDB } = require('../db');
-const { MANAGED_ROOT } = require('../config');
+const { loadConfig } = require('../configStore');
 
 const router = express.Router();
 
@@ -56,16 +56,20 @@ function insertChange(db, entity, entityId, type) {
   }
 }
 
-function pickPrimaryFile(files) {
+function pickPrimaryFile(files, managedRoot) {
   // Prefer existing, non-missing file outside managed root (so we move from source),
   // otherwise any existing one.
   const existing = files.filter((f) => f.path && fs.existsSync(f.path));
-  const outside = existing.filter((f) => !isUnderDir(f.path, MANAGED_ROOT));
+  const outside = existing.filter((f) => !isUnderDir(f.path, managedRoot));
   return (outside[0] || existing[0] || null);
 }
 
 router.post('/', async (req, res) => {
   const db = getDB();
+  const cfg = await loadConfig();
+  const managedRoot = cfg.workspace?.managedRoot;
+  if (!managedRoot) return res.status(500).json({ error: 'workspace.managedRoot not configured' });
+
   const hashes = Array.isArray(req.body?.hashes) ? req.body.hashes.map(String) : [];
   const albumNameRaw = req.body?.albumName;
   const albumIdRaw = req.body?.albumId;
@@ -92,7 +96,7 @@ router.post('/', async (req, res) => {
     albumId = db.prepare('SELECT id FROM albums WHERE name = ?').get(name).id;
   }
 
-  const albumDir = path.join(MANAGED_ROOT, sanitizeSegment(albumName));
+  const albumDir = path.join(managedRoot, sanitizeSegment(albumName));
   await fs.ensureDir(albumDir);
 
   const report = { album: { id: albumId, name: albumName }, moved: 0, deleted: 0, errors: 0, messages: [] };
@@ -107,7 +111,7 @@ router.post('/', async (req, res) => {
           return;
         }
 
-        const primary = pickPrimaryFile(files);
+        const primary = pickPrimaryFile(files, managedRoot);
         if (!primary) {
           report.messages.push(`No existing file on disk for hash: ${hash}`);
           return;

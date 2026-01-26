@@ -7,7 +7,7 @@
 const fs = require('fs-extra');
 const path = require('path');
 const { getDB } = require('../db');
-const { TRASH_DIR } = require('../config');
+const { loadConfig } = require('../configStore');
 
 function stripTrailingSep(p) {
   if (!p) return p;
@@ -174,9 +174,13 @@ async function applyFileOp(db, op, report) {
 
 async function syncChanges() {
   const db = getDB();
+  const cfg = await loadConfig();
+  const trashDir = cfg.workspace?.trashDir;
+  if (!trashDir) throw new Error('workspace.trashDir not configured');
+
   const report = { moved: 0, deleted: 0, errors: 0, messages: [] };
 
-  await fs.ensureDir(TRASH_DIR);
+  await fs.ensureDir(trashDir);
 
   // 1) Replay pending file ops (crash recovery / reconciliation)
   try {
@@ -212,14 +216,14 @@ async function syncChanges() {
 
     if (!existing.length) continue;
 
-    const alreadyInTrash = existing.filter((f) => isUnder(TRASH_DIR, f.path));
+    const alreadyInTrash = existing.filter((f) => isUnder(trashDir, f.path));
     const keep = alreadyInTrash[0] || existing[0];
 
-    // Ensure keep is under TRASH_DIR.
-    if (!isUnder(TRASH_DIR, keep.path)) {
+    // Ensure keep is under trashDir.
+    if (!isUnder(trashDir, keep.path)) {
       try {
         const fileName = path.basename(keep.path);
-        const trashRaw = path.join(TRASH_DIR, `${hash}_${fileName}`);
+        const trashRaw = path.join(trashDir, `${hash}_${fileName}`);
         // eslint-disable-next-line no-await-in-loop
         const trashPath = await uniquePath(trashRaw);
         await ensureDirForFile(trashPath);

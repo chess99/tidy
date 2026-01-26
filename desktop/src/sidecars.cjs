@@ -60,7 +60,6 @@ function spawnLogged(cmd, args, opts) {
 function startServer({
   port,
   dataDir,
-  workRoot,
   managedRoot,
   trashDir,
   uiDir,
@@ -78,7 +77,6 @@ function startServer({
     ...process.env,
     PORT: String(port),
     ...(dataDir ? { DATA_DIR: String(dataDir) } : {}),
-    ...(workRoot ? { WORK_ROOT: String(workRoot) } : {}),
     ...(managedRoot ? { MANAGED_ROOT: String(managedRoot) } : {}),
     ...(trashDir ? { TRASH_DIR: String(trashDir) } : {}),
     ...(uiDir ? { TIDY_UI_DIR: String(uiDir) } : {}),

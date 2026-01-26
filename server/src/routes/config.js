@@ -5,7 +5,7 @@
  */
 
 const express = require('express');
-const { WORK_ROOT, MANAGED_ROOT, TRASH_DIR, DATA_DIR, DB_PATH, THUMB_DIR } = require('../config');
+const { DATA_DIR, DB_PATH, THUMB_DIR } = require('../config');
 const { getDB } = require('../db');
 const {
   loadConfig,
@@ -16,6 +16,7 @@ const {
   setScanType,
   setScanOptions,
   setTaskSettings,
+  setWorkspacePaths,
   validateRootOrThrow,
 } = require('../configStore');
 
@@ -27,12 +28,19 @@ const router = express.Router();
 router.get('/', async (req, res) => {
   try {
     const cfg = await loadConfig();
+    const ws = cfg.workspace || {};
     res.json({
       scan: cfg.scan,
       scanRoots: cfg.scanRoots,
       scanType: cfg.scanType,
       tasks: cfg.tasks,
-      workspace: { WORK_ROOT, MANAGED_ROOT, TRASH_DIR, DATA_DIR, DB_PATH, THUMB_DIR },
+      workspace: {
+        MANAGED_ROOT: ws.managedRoot,
+        TRASH_DIR: ws.trashDir,
+        DATA_DIR,
+        DB_PATH,
+        THUMB_DIR,
+      },
     });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
@@ -120,6 +128,26 @@ router.put('/tasks', async (req, res) => {
     const tasks = req.body || {};
     const cfg = await setTaskSettings(tasks);
     res.json({ tasks: cfg.tasks });
+  } catch (e) {
+    res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
+  }
+});
+
+// Update workspace paths (managedRoot, trashDir); user-configurable via UI.
+router.put('/workspace', async (req, res) => {
+  try {
+    const { managedRoot, trashDir } = req.body || {};
+    const cfg = await setWorkspacePaths({ managedRoot, trashDir });
+    const ws = cfg.workspace || {};
+    res.json({
+      workspace: {
+        MANAGED_ROOT: ws.managedRoot,
+        TRASH_DIR: ws.trashDir,
+        DATA_DIR,
+        DB_PATH,
+        THUMB_DIR,
+      },
+    });
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
   }

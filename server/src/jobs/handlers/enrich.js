@@ -9,7 +9,6 @@ const path = require('path');
 const fastq = require('fastq');
 const mime = require('mime-types');
 const { getDB } = require('../../db');
-const { MANAGED_ROOT, TRASH_DIR } = require('../../config');
 const { computeHash } = require('../../scanner/hasher');
 const { extractMetadata } = require('../../scanner/metadata');
 const { extractVideoMetadata } = require('../../scanner/videoMetadata');
@@ -52,8 +51,8 @@ function isUnder(parent, child) {
   }
 }
 
-function shouldReconcileForPath(filePath) {
-  return isUnder(TRASH_DIR, filePath) || isUnder(MANAGED_ROOT, filePath);
+function shouldReconcileForPath(filePath, { managedRoot, trashDir }) {
+  return isUnder(trashDir, filePath) || isUnder(managedRoot, filePath);
 }
 
 function scoreFileRow(r) {
@@ -101,9 +100,9 @@ async function listExistingFileRowsByHash(db, hash) {
   return candidates.filter((_, idx) => existsFlags[idx]);
 }
 
-function parseAlbumNameFromManagedPath(filePath) {
+function parseAlbumNameFromManagedPath(filePath, managedRoot) {
   try {
-    const rel = path.relative(String(MANAGED_ROOT), String(filePath));
+    const rel = path.relative(String(managedRoot), String(filePath));
     const parts = rel.split(path.sep).filter(Boolean);
     const first = parts.length ? String(parts[0]) : null;
     if (!first) return null;
@@ -114,13 +113,13 @@ function parseAlbumNameFromManagedPath(filePath) {
   }
 }
 
-async function reconcileAssetByFilesystem(db, hash) {
+async function reconcileAssetByFilesystem(db, hash, { managedRoot, trashDir }) {
   const ts = now();
   const rows = await listExistingFileRowsByHash(db, hash);
   if (!rows.length) return;
 
-  const inTrash = rows.filter((r) => isUnder(TRASH_DIR, r.path));
-  const inManagedNonTrash = rows.filter((r) => isUnder(MANAGED_ROOT, r.path) && !isUnder(TRASH_DIR, r.path));
+  const inTrash = rows.filter((r) => isUnder(trashDir, r.path));
+  const inManagedNonTrash = rows.filter((r) => isUnder(managedRoot, r.path) && !isUnder(trashDir, r.path));
 
   // TRASH_DIR means the asset has been deleted and we're keeping the last copy for restore.
   if (inTrash.length > 0 && inTrash.length === rows.length) {
@@ -141,7 +140,7 @@ async function reconcileAssetByFilesystem(db, hash) {
     db.prepare(`UPDATE assets SET status = 'sorted', target_path = ?, missing = 0, updated_at = ? WHERE hash = ?`).run(best.path, ts, hash);
     insertChange('asset', hash, 'sorted_fs');
 
-    const albumName = parseAlbumNameFromManagedPath(best.path);
+    const albumName = parseAlbumNameFromManagedPath(best.path, managedRoot);
     if (albumName) {
       db.prepare(`INSERT OR IGNORE INTO albums (name, created_at, updated_at) VALUES (?, ?, ?)`).run(albumName, ts, ts);
       db.prepare(`UPDATE albums SET updated_at = ? WHERE name = ?`).run(ts, albumName);
@@ -172,10 +171,15 @@ async function reconcileAssetByFilesystem(db, hash) {
 
 async function handleEnrich(ctx) {
   const cfg = await ctx.loadConfig();
+  const managedRoot = cfg.workspace?.managedRoot;
+  const trashDir = cfg.workspace?.trashDir;
+  if (!managedRoot || !trashDir) throw new Error('workspace.managedRoot and workspace.trashDir must be configured');
+
   const mode = String(ctx.job?.mode || 'missing');
   const concurrency = Math.max(1, Math.min(64, Number(cfg?.tasks?.concurrency?.enrich || 4)));
   const db = getDB();
   const reconciledHashes = new Set();
+  const workspace = { managedRoot, trashDir };
 
   const stats = {
     mode,
@@ -257,9 +261,9 @@ async function handleEnrich(ctx) {
 
     // For missing-mode, if unchanged and already hashed, only backfill thumb if needed.
     if (mode === 'missing' && unchanged && row.hash && String(row.hash_status) === 'done') {
+      const hash = String(row.hash);
       // thumb backfill
       try {
-        const hash = String(row.hash);
         if (row.thumb_status !== 'ready') {
           const thumbPath = getThumbnailPath(hash);
           const exists = await fs.pathExists(thumbPath);
@@ -287,9 +291,9 @@ async function handleEnrich(ctx) {
       }
 
       // Filesystem-truth reconciliation: if we are scanning managed/trash, rebuild status even if unchanged.
-      if (shouldReconcileForPath(filePath)) {
+      if (shouldReconcileForPath(filePath, workspace)) {
         try {
-          await reconcileAssetByFilesystem(db, hash);
+          await reconcileAssetByFilesystem(db, hash, workspace);
           reconciledHashes.add(hash);
         } catch {
           // ignore reconcile errors (keep enrich robust)
@@ -405,10 +409,10 @@ async function handleEnrich(ctx) {
 
       // Filesystem-truth reconciliation (rebuild sorted/trash + album mapping).
       // - Always reconcile the first time we see a hash in this run (to fix stale DB).
-      // - Always reconcile when scanning a file under MANAGED_ROOT/TRASH_DIR (to rebuild from filesystem).
-      if (!reconciledHashes.has(hash) || shouldReconcileForPath(filePath)) {
+      // - Always reconcile when scanning a file under managed root/trash (to rebuild from filesystem).
+      if (!reconciledHashes.has(hash) || shouldReconcileForPath(filePath, workspace)) {
         try {
-          await reconcileAssetByFilesystem(db, hash);
+          await reconcileAssetByFilesystem(db, hash, workspace);
           reconciledHashes.add(hash);
         } catch {
           // ignore reconcile errors (keep enrich robust)
