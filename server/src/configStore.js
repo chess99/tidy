@@ -9,7 +9,7 @@ const os = require('os');
 const path = require('path');
 const { DATA_DIR } = require('./config');
 
-const DEFAULT_MANAGED_ROOT = path.join(os.homedir(), 'Pictures', '_Tidy');
+const DEFAULT_MANAGED_ROOT = path.join(os.homedir(), 'Pictures', 'Tidy');
 const DEFAULT_TRASH_DIR = path.join(DATA_DIR, 'trash');
 
 // Demo-stage “optimal design”: single schema, no legacy compatibility.

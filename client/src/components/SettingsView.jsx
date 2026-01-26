@@ -524,7 +524,7 @@ export function SettingsView({ anchor, embedded = false }) {
               <Input
                 value={managedRootInput}
                 onChange={(e) => setManagedRootInput(e.target.value)}
-                placeholder={win ? '例如 D:\\Photos\\_Tidy' : '例如 /Users/你的用户名/Pictures/_Tidy'}
+                placeholder={win ? '例如 D:\\Photos\\Tidy' : '例如 /Users/你的用户名/Pictures/Tidy'}
                 className="font-mono text-sm"
               />
             </div>

@@ -32,7 +32,7 @@ async function walkFindByExt(root, wantExts, perExt, includeManaged) {
     const dir = stack.pop();
     if (!includeManaged) {
       const base = path.basename(dir).toLowerCase();
-      if (base === '_tidy') continue;
+      if (base === 'Tidy') continue;
     }
     let entries;
     try {
@@ -93,7 +93,7 @@ async function main() {
   console.log(`Searching for RAW samples under: ${root}`);
   console.log(`Extensions: ${wantExts.join(', ')}`);
   console.log(`Max candidates per ext: ${perExt}`);
-  console.log(`Include managed _Tidy: ${args.includeManaged ? 'yes' : 'no'}`);
+  console.log(`Include managed Tidy: ${args.includeManaged ? 'yes' : 'no'}`);
 
   const found = await walkFindByExt(root, wantExts, perExt, args.includeManaged);
 

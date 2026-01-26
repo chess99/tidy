@@ -100,13 +100,18 @@ async function listExistingFileRowsByHash(db, hash) {
   return candidates.filter((_, idx) => existsFlags[idx]);
 }
 
-function parseAlbumNameFromManagedPath(filePath, managedRoot) {
+function parseAlbumNameFromManagedPath(filePath, managedRoot, trashDir) {
   try {
     const rel = path.relative(String(managedRoot), String(filePath));
+    // If file is outside managedRoot, path.relative returns a path starting with '..'
+    if (rel.startsWith('..')) return null;
     const parts = rel.split(path.sep).filter(Boolean);
     const first = parts.length ? String(parts[0]) : null;
     if (!first) return null;
-    if (first === '_Trash') return null;
+    // Exclude trashDir if it's under managedRoot (to avoid treating it as an album).
+    if (trashDir && isUnder(managedRoot, trashDir) && isUnder(trashDir, filePath)) {
+      return null;
+    }
     return first;
   } catch {
     return null;
@@ -132,7 +137,7 @@ async function reconcileAssetByFilesystem(db, hash, { managedRoot, trashDir }) {
     return;
   }
 
-  // Any file under managed root (but not _Trash) means "sorted".
+  // Any file under managed root (but not in trashDir) means "sorted".
   if (inManagedNonTrash.length > 0) {
     const best = pickBestRow(inManagedNonTrash) || pickBestRow(rows);
     if (!best?.path) return;
@@ -140,7 +145,7 @@ async function reconcileAssetByFilesystem(db, hash, { managedRoot, trashDir }) {
     db.prepare(`UPDATE assets SET status = 'sorted', target_path = ?, missing = 0, updated_at = ? WHERE hash = ?`).run(best.path, ts, hash);
     insertChange('asset', hash, 'sorted_fs');
 
-    const albumName = parseAlbumNameFromManagedPath(best.path, managedRoot);
+    const albumName = parseAlbumNameFromManagedPath(best.path, managedRoot, trashDir);
     if (albumName) {
       db.prepare(`INSERT OR IGNORE INTO albums (name, created_at, updated_at) VALUES (?, ?, ?)`).run(albumName, ts, ts);
       db.prepare(`UPDATE albums SET updated_at = ? WHERE name = ?`).run(ts, albumName);

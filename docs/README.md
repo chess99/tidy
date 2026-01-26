@@ -47,8 +47,8 @@ Tidy 是一个**本地文件系统整理工具**，不是相册 App：以 `hash`
 - **asset（内容资产）**：以 `hash` 为主键的一份“内容”，去重后的实体（所有整理/删除/标注都应该绑在 asset 上）。
 - **file（物理文件）**：磁盘上的一个路径实例 `path`，它可能与其它路径指向同一份 asset（重复副本）。
 - **missing（缺失标记）**：当某 asset 属于“已手动操作”（如 `sorted/trash/ignored`）但磁盘上找不到任何物理实例时，用 `assets.missing=1` 保留其语义并在资产视图置灰；“全部文件”不展示缺失项。
-- **album（文件夹/归档）**：托管目录 `_Tidy/<name>` 下的一个真实文件夹；成员关系用 `album_assets(album_id, hash)` 记录。
-- **managed root（托管目录）**：用户选择的归档根目录（默认 `~/Pictures/_Tidy`）；若在扫描根内则**会被扫描**，其中文件视为“已整理（sorted）”的事实来源（用于 DB 丢失/损坏时重建状态）。
+- **album（文件夹/归档）**：托管目录 `<MANAGED_ROOT>/<name>` 下的一个真实文件夹；成员关系用 `album_assets(album_id, hash)` 记录。
+- **managed root（托管目录）**：用户选择的归档根目录（默认 `~/Pictures/Tidy`）；若在扫描根内则**会被扫描**，其中文件视为“已整理（sorted）”的事实来源（用于 DB 丢失/损坏时重建状态）。
 - **trash（工具回收站）**：默认 `DATA_DIR/trash`；若在扫描根内则**会被扫描**，其中文件代表“已删除（trash）”内容的**最后留底**（用于恢复/对账）。
 - **file_ops（操作日志）**：落盘 `move/trash/delete` 的操作记录（`pending/done/error`），用于崩溃恢复与对账。
 - **sync（对账/恢复）**：通过创建 `type=sync` 的后台任务触发（`POST /api/jobs`），用于重放 pending ops、处理遗留 trash 标记，确保 DB 与文件系统一致。

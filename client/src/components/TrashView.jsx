@@ -62,7 +62,7 @@ export function TrashView({ onAssetClick }) {
   return (
     <div ref={parentRef} className="h-full w-full overflow-auto bg-gray-100 p-4">
       <div className="text-sm text-gray-600 mb-3">
-        回收站（仅展示被标记为 trash 的内容；磁盘留底在工具目录 <span className="font-mono text-xs">_Tidy/_Trash</span>）
+        回收站（仅展示被标记为 trash 的内容；磁盘留底在配置的回收站目录）
       </div>
 
       {query.isLoading ? (
