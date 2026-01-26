@@ -6,7 +6,7 @@
     <title>Tidy 下载</title>
     <meta
       name="description"
-      content="Tidy 下载入口：社区版免费下载，支持者版获取官方发行包，商业版提供团队/公司许可。"
+      content="下载 Tidy - 本地文件整理与去重工具，支持 Windows、macOS 和 Linux。"
     />
     <link rel="stylesheet" href="./assets/bootstrap-icons.css" />
     <link rel="stylesheet" href="./styles.css" />
@@ -15,10 +15,10 @@
   <body>
     <nav class="nav">
       <div class="container nav-inner">
-        <div class="logo">
+        <a href="./index.html" class="logo">
           <img src="./assets/logo.png" alt="Tidy" class="logo-img" width="36" height="36" />
           <span>Tidy</span>
-        </div>
+        </a>
         <div class="nav-links">
           <a href="./index.html">主页</a>
           <a href="https://github.com/chess99/tidy" target="_blank" rel="noopener noreferrer">源码</a>
@@ -28,128 +28,157 @@
 
     <section class="section">
       <div class="container">
-        <div class="section-title">下载与获取</div>
-        <div class="section-subtitle">
-          社区版免费可用；支持者版提供更顺滑体验；商业版用于团队与公司环境。
+        <div class="download-hero fade-in">
+          <h1>下载 Tidy</h1>
+          <p>获取 Tidy 适用于你的操作系统。免费且开源。</p>
         </div>
 
-        <div class="hero-card" style="margin-top: 20px;">
-          <div class="section-title" style="margin-bottom: 8px;">
-            支持项目
+        <div class="download-card fade-in">
+          <div class="download-header">
+            <span class="version-badge">v0.9.2</span>
+            <h2>Tidy Desktop</h2>
           </div>
-          <div class="section-subtitle">
-            如果 Tidy 对你有帮助，欢迎支持项目持续维护与迭代。
-          </div>
-          <div class="cta-row" style="margin-top: 12px;">
-            <a class="btn btn-primary" href="https://your-support-page.example">
-              <i class="bi bi-heart" aria-hidden="true"></i>
-              支持者入口
-            </a>
-            <a class="btn btn-ghost" href="#versions">
-              <i class="bi bi-table" aria-hidden="true"></i>
-              查看版本差异
-            </a>
-          </div>
-        </div>
-
-        <div class="pricing" style="margin-top: 24px;">
-          <div class="card">
-            <h3>社区版（免费）</h3>
-            <p class="section-subtitle">完整核心整理闭环，适合个人用户。</p>
-            <div class="cta-row">
-              <a class="btn btn-ghost" href="https://your-community-download.example">
+          <div class="download-list">
+            <div class="download-item">
+              <div class="download-item-icon">
+                <i class="bi bi-apple" aria-hidden="true"></i>
+              </div>
+              <div class="download-item-info">
+                <div class="download-item-title">macOS (Apple Silicon)</div>
+                <div class="download-item-desc">适用于 M1/M2/M3/M4 芯片的 Mac</div>
+              </div>
+              <a class="btn btn-download" href="#">
                 <i class="bi bi-download" aria-hidden="true"></i>
-                下载社区版
+                下载
               </a>
             </div>
-            <div class="section-subtitle" style="margin-top: 12px;">
-              如需自行构建，请访问源码仓库。
-            </div>
-          </div>
 
-          <div class="card">
-            <h3>支持者版（官方发行）</h3>
-            <p class="section-subtitle">自动更新、模型一键下载、更高并发。</p>
-            <div class="cta-row">
-              <a class="btn btn-primary" href="https://your-supporter-download.example">
+            <div class="download-item">
+              <div class="download-item-icon">
+                <i class="bi bi-apple" aria-hidden="true"></i>
+              </div>
+              <div class="download-item-info">
+                <div class="download-item-title">macOS (Intel)</div>
+                <div class="download-item-desc">适用于 Intel 处理器的 Mac</div>
+              </div>
+              <a class="btn btn-download" href="#">
                 <i class="bi bi-download" aria-hidden="true"></i>
-                获取支持者版
+                下载
               </a>
             </div>
-            <div class="section-subtitle" style="margin-top: 12px;">
-              <!-- 需要一张“支持者权益”小图，建议尺寸 1200x520 -->
-              <div class="media-placeholder">支持者权益示意图占位</div>
-            </div>
-          </div>
 
-          <div class="card">
-            <h3>商业版（团队/公司）</h3>
-            <p class="section-subtitle">商业使用许可与部署支持。</p>
-            <div class="cta-row">
-              <a class="btn btn-ghost" href="https://your-commercial-page.example">
-                <i class="bi bi-briefcase" aria-hidden="true"></i>
-                联系商业许可
+            <div class="download-item">
+              <div class="download-item-icon">
+                <i class="bi bi-windows" aria-hidden="true"></i>
+              </div>
+              <div class="download-item-info">
+                <div class="download-item-title">Windows (x64 Installer)</div>
+                <div class="download-item-desc">适用于 Windows 10 及更高版本 (.exe)</div>
+              </div>
+              <a class="btn btn-download" href="#">
+                <i class="bi bi-download" aria-hidden="true"></i>
+                下载
+              </a>
+            </div>
+
+            <div class="download-item">
+              <div class="download-item-icon">
+                <i class="bi bi-windows" aria-hidden="true"></i>
+              </div>
+              <div class="download-item-info">
+                <div class="download-item-title">Windows (x64 MSI)</div>
+                <div class="download-item-desc">适用于 Windows 10 及更高版本 (.msi)</div>
+              </div>
+              <a class="btn btn-download" href="#">
+                <i class="bi bi-download" aria-hidden="true"></i>
+                下载
+              </a>
+            </div>
+
+            <div class="download-item">
+              <div class="download-item-icon">
+                <i class="bi bi-ubuntu" aria-hidden="true"></i>
+              </div>
+              <div class="download-item-info">
+                <div class="download-item-title">Linux (.deb)</div>
+                <div class="download-item-desc">适用于 Ubuntu、Debian 及其衍生版本</div>
+              </div>
+              <a class="btn btn-download" href="#">
+                <i class="bi bi-download" aria-hidden="true"></i>
+                下载
+              </a>
+            </div>
+
+            <div class="download-item">
+              <div class="download-item-icon">
+                <i class="bi bi-ubuntu" aria-hidden="true"></i>
+              </div>
+              <div class="download-item-info">
+                <div class="download-item-title">Linux (.rpm)</div>
+                <div class="download-item-desc">适用于 Fedora、RHEL 及其衍生版本</div>
+              </div>
+              <a class="btn btn-download" href="#">
+                <i class="bi bi-download" aria-hidden="true"></i>
+                下载
               </a>
             </div>
           </div>
         </div>
-        <div class="section-title" id="versions" style="margin-top: 36px;">版本说明与对照表</div>
-        <div class="section-subtitle">
-          核心整理能力在社区版即可完整使用；支持者版与商业版提供更省心的体验与部署选择。
-          个人非商业使用免费，商业使用需许可。
-        </div>
-        <table class="table">
-          <thead>
-            <tr>
-              <th>能力</th>
-              <th>社区版（开源）</th>
-              <th>支持者版（官方发行）</th>
-              <th>商业版（团队/公司）</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>核心整理闭环</td>
-              <td>完整可用</td>
-              <td>完整可用</td>
-              <td>完整可用</td>
-            </tr>
-            <tr>
-              <td>安装与更新</td>
-              <td>手动构建/更新</td>
-              <td>预打包 + 自动更新</td>
-              <td>预打包 + 自动更新</td>
-            </tr>
-            <tr>
-              <td>模型管理</td>
-              <td>手动下载/配置</td>
-              <td>一键下载与校验</td>
-              <td>一键下载与校验</td>
-            </tr>
-            <tr>
-              <td>并发与性能上限</td>
-              <td>基础并发</td>
-              <td>更高并发与更快索引</td>
-              <td>更高并发与更快索引</td>
-            </tr>
-            <tr>
-              <td>团队/商业使用</td>
-              <td>不推荐</td>
-              <td>不推荐</td>
-              <td>许可支持</td>
-            </tr>
-            <tr>
-              <td>技术支持</td>
-              <td>社区自助</td>
-              <td>优先响应</td>
-              <td>优先响应</td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="section-subtitle" style="margin-top: 20px;">
-          说明：版本差异主要体现在“省心体验”与“部署支持”，免费版仍可完成核心整理闭环。
+
+        <div class="download-note fade-in">
+          <p>
+            如需自行构建，请访问
+            <a href="https://github.com/chess99/tidy" target="_blank" rel="noopener noreferrer">源码仓库</a>。
+          </p>
         </div>
       </div>
     </section>
+
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-brand">
+            <a href="./index.html" class="logo">
+              <img src="./assets/logo.png" alt="Tidy" class="logo-img" width="36" height="36" />
+              <span>Tidy</span>
+            </a>
+            <p>本地文件系统整理工具。通过内容哈希识别重复项，直接操作文件系统进行整理与归档。你的数据始终在你的电脑上。</p>
+          </div>
+          <div class="footer-links">
+            <div class="footer-column">
+              <h4>产品</h4>
+              <a href="https://github.com/chess99/tidy" target="_blank" rel="noopener noreferrer">开源代码</a>
+            </div>
+            <div class="footer-column">
+              <h4>关于</h4>
+              <a href="https://github.com/chess99/tidy/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">许可协议</a>
+            </div>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <div>© 2026 Tidy. All rights reserved.</div>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      // 轻量渐入效果
+      const observerOptions = {
+        threshold: 0.1,
+        rootMargin: '0px 0px -50px 0px'
+      };
+
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('fade-in-visible');
+          }
+        });
+      }, observerOptions);
+
+      document.querySelectorAll('.fade-in').forEach(el => {
+        observer.observe(el);
+      });
+    </script>
   </body>
 </html>
