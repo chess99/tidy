@@ -5,7 +5,9 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "echo \"No automated test suite. Try: npm run test:rawthumbs\"",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "test:rawthumbs": "node scripts/test-raw-thumbs.js",
     "faces:clear": "node scripts/clear-faces.js",
     "faces:scan": "node scripts/scan-faces.js",
@@ -29,12 +31,13 @@
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0",
     "fs-extra": "^11.3.3",
+    "hnswlib-node": "^3.0.0",
     "mime-types": "^3.0.2",
     "picomatch": "^4.0.3",
-    "sharp": "^0.34.5",
-    "hnswlib-node": "^3.0.0"
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
+    "jest": "^29.7.0",
     "nodemon": "^3.1.11"
   }
 }

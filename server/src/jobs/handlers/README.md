@@ -6,6 +6,7 @@
 
 - `_util.js`：handler 共享工具（进度上报、批处理辅助等）。
 - `index.js`：handler 注册表（任务类型 -> 实现）。
+- `__tests__/`：单元测试（如 `enrich.test.js` 测试路径解析逻辑）。
 - `discover.js`：发现/扫描类任务（库遍历、入库触发；重新发现已知 hash 时会清理 `assets.missing`）。
 - `enrich.js`：补全/丰富元信息类任务（hash/metadata/thumb/pHash + 基于文件路径重建 `sorted/trash` 与 album 映射；缺失路径会删除 `files` 行，并按 `assets.status` 决定 `assets.missing`/删除 `assets`）。
 - `thumbsRebuild.js`：缩略图重建任务。

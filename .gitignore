@@ -44,3 +44,6 @@ desktop/assets/icon.png
 desktop/assets/icon.icns
 desktop/assets/icon.ico
 desktop/assets/icon.iconset/
+
+# Test coverage
+server/coverage/

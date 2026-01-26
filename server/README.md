@@ -8,6 +8,8 @@
 - `src/`：后端核心源码（见 `src/README.md`）。
 - `scripts/`：运维/性能排查脚本（见 `scripts/README.md`）。
 - `package.json`：后端依赖与脚本。
+- `jest.config.js`：Jest 测试配置。
+- `src/**/__tests__/`：单元测试（运行 `npm test`）。
 
 
 
