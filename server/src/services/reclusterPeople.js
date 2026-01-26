@@ -27,11 +27,35 @@ function reclusterPeople(db, opts = {}) {
   const preserveNamed = opts.preserveNamed !== false;
   const anchorMaxDist = Number(opts.anchorMaxDist ?? eps);
 
+  // Clean up orphaned faces (hash references non-existent assets) before clustering
+  // This ensures data consistency and avoids foreign key constraint failures
+  const cleanupResult = db.transaction(() => {
+    // Count orphaned faces before cleanup
+    const orphanedCount = db.prepare(`
+      SELECT COUNT(*) AS c
+      FROM faces f
+      WHERE NOT EXISTS (SELECT 1 FROM assets a WHERE a.hash = f.hash)
+    `).get().c;
+
+    // Delete orphaned faces
+    const deleted = db.prepare(`
+      DELETE FROM faces
+      WHERE NOT EXISTS (SELECT 1 FROM assets a WHERE a.hash = faces.hash)
+    `).run();
+
+    return {
+      orphanedFaces: orphanedCount,
+      deletedFaces: deleted.changes,
+    };
+  })();
+
+  // Only process faces that have valid assets (to avoid foreign key constraint failures)
   const faceRows = db.prepare(`
-    SELECT id, hash, descriptor, score
-    FROM faces
-    WHERE descriptor IS NOT NULL
-    ORDER BY id ASC
+    SELECT f.id, f.hash, f.descriptor, f.score
+    FROM faces f
+    WHERE f.descriptor IS NOT NULL
+      AND EXISTS (SELECT 1 FROM assets a WHERE a.hash = f.hash)
+    ORDER BY f.id ASC
   `).all();
 
   const points = [];
@@ -62,11 +86,13 @@ function reclusterPeople(db, opts = {}) {
     }
 
     // Build embedding for each anchor (best-score face assigned to that person)
+    // Note: Query before resetting person_id to NULL, and ensure people records still exist
     const anchorVec = new Map(); // person_id -> { vec, norm }
     if (anchors.length) {
       const rows = db.prepare(`
         SELECT f.person_id, f.descriptor
         FROM faces f
+        JOIN people p ON p.id = f.person_id
         JOIN (
           SELECT person_id, MAX(COALESCE(score, 0)) AS best
           FROM faces
@@ -100,6 +126,7 @@ function reclusterPeople(db, opts = {}) {
     );
     const updateFace = db.prepare('UPDATE faces SET person_id = ? WHERE id = ?');
     const setAvatar = db.prepare('UPDATE people SET avatar_face_id = ?, updated_at = ? WHERE id = ?');
+    const verifyPersonExists = db.prepare('SELECT 1 FROM people WHERE id = ? LIMIT 1');
 
     // 3) Compute cluster centroids
     const clusterMembers = new Map(); // clusterId -> idx[]
@@ -127,6 +154,9 @@ function reclusterPeople(db, opts = {}) {
         let bestPid = null;
         let bestDist = Infinity;
         for (const [pid, av] of anchorVec.entries()) {
+          // Verify person still exists after deletion step (defensive check)
+          const personExists = verifyPersonExists.get(pid);
+          if (!personExists) continue;
           const d = cosineDistance(cent.vec, av.vec, 1, 1);
           if (d < bestDist) {
             bestDist = d;
@@ -144,6 +174,9 @@ function reclusterPeople(db, opts = {}) {
     for (const c of clusterMembers.keys()) {
       if (clusterToPersonId.has(c)) continue;
       const info = insertPerson.run(now, now);
+      if (!info?.lastInsertRowid) {
+        throw new Error(`Failed to create person for cluster ${c}`);
+      }
       clusterToPersonId.set(c, info.lastInsertRowid);
     }
 
@@ -154,6 +187,17 @@ function reclusterPeople(db, opts = {}) {
       const faceId = idxToFaceId[i];
       if (c === -1) continue; // keep noise unassigned
       const personId = clusterToPersonId.get(c);
+      if (personId == null) {
+        // This should not happen, but guard against it
+        console.warn(`[recluster] cluster ${c} has no personId, skipping face ${faceId}`);
+        continue;
+      }
+      // Verify person exists before updating (defensive check)
+      const personExists = verifyPersonExists.get(personId);
+      if (!personExists) {
+        console.warn(`[recluster] person ${personId} does not exist, skipping face ${faceId}`);
+        continue;
+      }
       updateFace.run(personId, faceId);
 
       const s = scores[i];
@@ -182,10 +226,12 @@ function reclusterPeople(db, opts = {}) {
       preserveNamed,
       anchorMaxDist,
       mappedNamedPeople: mappedToNamed.size,
+      cleanup: cleanupResult,
     };
   });
 
-  return tx();
+  const result = tx();
+  return result;
 }
 
 module.exports = { reclusterPeople };

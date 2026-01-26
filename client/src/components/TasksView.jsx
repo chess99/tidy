@@ -55,7 +55,9 @@ function TaskStatusBar({ statusLabel, accentClass, runningCount, queuedCount, pr
   );
 }
 
+// 任务定义：按逻辑流程顺序排列（主要流程 → AI 特征提取 → 索引与维护）
 const TASK_DEFS = [
+  // === 主要流程：文件发现与入库 ===
   {
     type: 'discover',
     title: '扫描文件（Discover）',
@@ -86,6 +88,7 @@ const TASK_DEFS = [
     ],
     settingsAnchor: 'concurrency',
   },
+  // === AI 特征提取（可并行，但通常先做基础处理） ===
   {
     type: 'faces_scan',
     title: '人脸检测（入库）',
@@ -106,6 +109,7 @@ const TASK_DEFS = [
     ],
     settingsAnchor: 'concurrency',
   },
+  // === 索引与维护（依赖前面的任务） ===
   {
     type: 'clip_index',
     title: 'CLIP 索引（HNSW）',
