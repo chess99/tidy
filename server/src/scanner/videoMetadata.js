@@ -5,7 +5,7 @@
  */
 
 const { execFile } = require('child_process');
-const ffprobePath = require('ffprobe-static').path;
+const { findSystemCommand } = require('../utils/findSystemCommand');
 
 function execFileAsync(cmd, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -37,7 +37,12 @@ function parseTimeMs(v) {
 
 async function extractVideoMetadata(filePath) {
   try {
-    const out = await execFileAsync(ffprobePath, [
+    const ffprobe = await findSystemCommand('ffprobe');
+    if (!ffprobe) {
+      // ffprobe not available, skip video metadata extraction
+      return null;
+    }
+    const out = await execFileAsync(ffprobe, [
       '-v', 'quiet',
       '-print_format', 'json',
       '-show_format',

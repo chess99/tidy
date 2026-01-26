@@ -6,5 +6,6 @@
 
 - `normalizePath.js`：路径规范化（跨平台/大小写/分隔符等统一处理）。
 - `profiler.js`：轻量 profiling（分段耗时 + CPU/内存增量 + event loop 延迟），用于慢接口定位。
+- `findSystemCommand.js`：查找系统 PATH 中的命令（用于 ffmpeg/ffprobe 等外部依赖）。
 
 

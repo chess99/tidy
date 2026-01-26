@@ -65,6 +65,7 @@ export function AssetViewer({ open, onOpenChange, asset, defaultMax = 4096, defa
   const rawUrl = useMemo(() => (hash && !isMissing ? apiUrl(`/assets/${hash}/raw`) : null), [hash, isMissing]);
   const videoUrl = useMemo(() => (hash ? apiUrl(`/assets/${hash}/video`) : null), [hash]);
   const posterUrl = useMemo(() => (hash ? apiUrl(`/assets/${hash}/poster?w=1280&q=4`) : null), [hash]);
+  const [posterError, setPosterError] = useState(false);
 
   const [imgUrl, setImgUrl] = useState(null);
   useEffect(() => {
@@ -221,12 +222,36 @@ export function AssetViewer({ open, onOpenChange, asset, defaultMax = 4096, defa
 
             {isVideo ? (
               videoUrl ? (
-                <video
-                  controls
-                  className="w-full h-full"
-                  src={videoUrl}
-                  poster={posterUrl || undefined}
-                />
+                <>
+                  {posterError ? (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-sm text-white/70 bg-black/30">
+                      <div className="text-center px-4">
+                        <div className="mb-2">无法生成视频缩略图</div>
+                        <div className="text-xs text-white/60">
+                          需要安装 ffmpeg
+                        </div>
+                        <div className="text-xs text-white/50 mt-1 font-mono">
+                          macOS: brew install ffmpeg
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                  <video
+                    controls
+                    className="w-full h-full"
+                    src={videoUrl}
+                    poster={posterError ? undefined : (posterUrl || undefined)}
+                    onLoadedMetadata={() => setPosterError(false)}
+                  />
+                  {posterUrl && !posterError ? (
+                    <img
+                      src={posterUrl}
+                      alt="poster"
+                      className="hidden"
+                      onError={() => setPosterError(true)}
+                    />
+                  ) : null}
+                </>
               ) : (
                 <div className="text-sm text-white/70">无视频资源</div>
               )

@@ -12,15 +12,17 @@ const { getThumbnailPath, RAW_EXTS, extractEmbeddedPreview } = require('../scann
 const fs = require('fs-extra');
 const mime = require('mime-types');
 const { execFile } = require('child_process');
-let ffmpegPath = null;
-try {
-  // Optional dependency, installed for video poster extraction.
-  ffmpegPath = require('ffmpeg-static');
-} catch {
-  ffmpegPath = null;
-}
+const { findSystemCommand } = require('../utils/findSystemCommand');
 const { PREVIEW_DIR, POSTER_DIR } = require('../config');
 const { loadConfig } = require('../configStore');
+
+// Lazy load ffmpeg path (system-installed)
+let ffmpegPath = null;
+async function getFfmpegPath() {
+  if (ffmpegPath !== null) return ffmpegPath;
+  ffmpegPath = await findSystemCommand('ffmpeg');
+  return ffmpegPath;
+}
 
 const router = express.Router();
 
@@ -598,8 +600,19 @@ router.get('/:hash/poster', async (req, res) => {
     // ignore
   }
 
-  if (!ffmpegPath) {
-    return res.status(501).send('ffmpeg not available');
+  const ffmpeg = await getFfmpegPath();
+  if (!ffmpeg) {
+    const installHint = process.platform === 'darwin' 
+      ? 'brew install ffmpeg'
+      : process.platform === 'win32'
+      ? 'choco install ffmpeg（或从 https://ffmpeg.org/download.html 下载）'
+      : 'sudo apt-get install ffmpeg（或使用对应发行版的包管理器）';
+    return res.status(501).json({
+      error: 'ffmpeg_not_installed',
+      message: '需要安装 ffmpeg 才能生成视频缩略图。请安装 ffmpeg：https://ffmpeg.org/download.html',
+      messageEn: 'ffmpeg is required for video poster generation. Please install ffmpeg: https://ffmpeg.org/download.html',
+      installHint,
+    });
   }
 
   const file = await pickFirstExistingVideoFileByHash(db, hash);
@@ -613,7 +626,7 @@ router.get('/:hash/poster', async (req, res) => {
   );
   try {
     // -ss before -i is faster for many formats.
-    await execFileAsync(ffmpegPath, [
+    await execFileAsync(ffmpeg, [
       '-hide_banner',
       '-loglevel', 'error',
       '-ss', '1',
