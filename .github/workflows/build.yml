@@ -1,0 +1,223 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            os: ubuntu-22.04
+            name: linux-x64
+            electron_target: linux
+
+          - platform: windows
+            os: windows-latest
+            name: windows-x64
+            electron_target: win
+
+          - platform: macos-intel
+            os: macos-14
+            name: macos-intel
+            electron_target: mac
+
+          - platform: macos-arm64
+            os: macos-14
+            name: macos-arm64
+            electron_target: mac
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Python (for ai-service)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3-dev \
+            libatk-bridge2.0-dev \
+            libdrm2 \
+            libxkbcommon-dev \
+            libxcomposite-dev \
+            libxdamage-dev \
+            libxrandr-dev \
+            libgbm-dev \
+            libasound2-dev \
+            libpango1.0-dev \
+            libcairo2-dev
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Install client dependencies
+        run: |
+          cd client
+          npm install
+
+      - name: Install server dependencies
+        run: |
+          cd server
+          npm install
+
+      - name: Install desktop dependencies
+        run: |
+          cd desktop
+          npm install
+
+      - name: Build client
+        run: |
+          cd client
+          npm run build
+
+      - name: Build ai-service (Unix)
+        if: matrix.platform != 'windows'
+        run: |
+          cd ai-service
+          chmod +x scripts/build-ai-service.sh
+          ./scripts/build-ai-service.sh
+
+      - name: Build ai-service (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          cd ai-service
+          scripts\build-ai-service.bat
+
+      - name: Build desktop app (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          cd desktop
+          npm run generate:icons
+          npm run prepare:resources
+          npx electron-builder --linux --x64
+
+      - name: Build desktop app (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          cd desktop
+          npm run generate:icons
+          npm run prepare:resources
+          npx electron-builder --win --x64
+
+      - name: Build desktop app (macOS Intel)
+        if: matrix.platform == 'macos-intel'
+        env:
+          ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: true
+        run: |
+          cd desktop
+          npm run generate:icons
+          npm run prepare:resources
+          npx electron-builder --mac --x64
+
+      - name: Build desktop app (macOS ARM64)
+        if: matrix.platform == 'macos-arm64'
+        env:
+          ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: true
+        run: |
+          cd desktop
+          npm run generate:icons
+          npm run prepare:resources
+          npx electron-builder --mac --arm64
+
+      - name: Upload artifacts (Linux)
+        if: matrix.platform == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tidy-${{ matrix.name }}
+          path: |
+            desktop/dist/*.AppImage
+            desktop/dist/*.deb
+            desktop/dist/*.rpm
+            desktop/dist/*.tar.gz
+            desktop/dist/*.zip
+          if-no-files-found: ignore
+
+      - name: Upload artifacts (Windows)
+        if: matrix.platform == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tidy-${{ matrix.name }}
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.zip
+          if-no-files-found: ignore
+
+      - name: Upload artifacts (macOS)
+        if: startsWith(matrix.platform, 'macos')
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tidy-${{ matrix.name }}
+          path: |
+            desktop/dist/*.dmg
+            desktop/dist/*.zip
+            desktop/dist/*.app
+          if-no-files-found: ignore
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout for version
+        uses: actions/checkout@v4
+        with:
+          path: repo
+
+      - name: Get version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./repo/desktop/package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: |
+          ls -R artifacts
+          echo "---"
+          find artifacts -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.exe" -o -name "*.dmg" -o -name "*.zip" -o -name "*.tar.gz" \) | head -20
+
+      - name: Flatten artifacts for release
+        run: |
+          mkdir -p release-files
+          find artifacts -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.exe" -o -name "*.dmg" -o -name "*.zip" -o -name "*.tar.gz" \) -exec cp {} release-files/ \;
+          ls -la release-files/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Tidy v${{ steps.version.outputs.version }}
+          files: release-files/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

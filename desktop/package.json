@@ -45,6 +45,10 @@
     "win": {
       "icon": "assets/icon.ico",
       "target": ["nsis", "zip"]
+    },
+    "linux": {
+      "icon": "assets/icon.png",
+      "target": ["AppImage", "deb", "rpm", "tar.gz"]
     }
   }
 }
