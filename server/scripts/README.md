@@ -11,7 +11,6 @@
 - `report-db-exts.js`：统计 DB 中的扩展名分布，辅助配置扫描类型与过滤。
 - `verify-path-case.js`：检查路径大小写一致性，避免跨平台/大小写敏感文件系统问题。
 - `analyze-ignored.js`：分析扫描忽略规则命中情况，辅助排查“为何没入库”。
-- `setup-models.js`：初始化/准备 server 侧模型资源（如需要）。
 - `scan-faces.js`：批量扫描人脸（写入 faces 相关表/输出诊断）。
 - `scan-one-face.js`：对单个目标做 face 扫描定位问题。
 - `clear-faces.js`：清理 faces 数据（用于重跑/重建）。

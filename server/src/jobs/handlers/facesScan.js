@@ -7,7 +7,7 @@
 const fs = require('fs-extra');
 const fastq = require('fastq');
 const { getDB } = require('../../db');
-const { loadModels, processImageFaces } = require('../../scanner/face');
+const { processImageFaces } = require('../../scanner/face');
 const { now } = require('./_util');
 
 async function handleFacesScan(ctx) {
@@ -15,8 +15,6 @@ async function handleFacesScan(ctx) {
   const mode = String(ctx.job?.mode || 'missing');
   const cfg = await ctx.loadConfig();
   const concurrency = Math.max(1, Math.min(16, Number(cfg?.tasks?.concurrency?.faces || 1)));
-
-  await loadModels();
 
   // Select assets to scan
   // - missing: face_scanned_at IS NULL

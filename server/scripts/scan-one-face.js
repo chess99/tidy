@@ -15,7 +15,7 @@ const path = require('path');
 const { initDB, getDB } = require('../src/db');
 const { computeHash } = require('../src/scanner/hasher');
 const { extractMetadata } = require('../src/scanner/metadata');
-const { loadModels, detectFaces, processImageFaces } = require('../src/scanner/face');
+const { detectFaces, processImageFaces } = require('../src/scanner/face');
 
 function hasFlag(name) {
   return process.argv.includes(name);
@@ -41,8 +41,6 @@ async function main() {
 
   console.log('[one] file=', abs);
   console.log('[one] mime=', mimeType, 'size=', stat.size);
-
-  await loadModels();
 
   if (hasFlag('--no-db')) {
     const dets = await detectFaces(abs);

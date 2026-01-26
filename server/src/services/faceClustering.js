@@ -45,7 +45,7 @@ function cosineDistance(a, b, na, nb) {
  *  labels: -1 = noise, else clusterId 0..k-1
  */
 function dbscan(points, opts) {
-  // NOTE: face-api descriptors in this pipeline tend to have small cosine distances.
+  // NOTE: InsightFace descriptors tend to have small cosine distances.
   // A practical starting point is ~0.04 (tune with scripts/cluster-calibrate.js).
   const eps = Number(opts?.eps ?? 0.04);
   const minSamples = Number(opts?.minSamples ?? 2);

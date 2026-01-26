@@ -9,7 +9,7 @@
 const fs = require('fs-extra');
 const { initDB, getDB } = require('../src/db');
 const scanner = require('../src/scanner');
-const { processImageFaces, loadModels } = require('../src/scanner/face');
+const { processImageFaces } = require('../src/scanner/face');
 
 function hasFlag(name) {
   return process.argv.includes(name);
@@ -18,7 +18,6 @@ function hasFlag(name) {
 async function scanAllImages() {
   initDB();
   const db = getDB();
-  await loadModels();
 
   const rows = db.prepare(`
     SELECT a.hash, MIN(f.path) AS path

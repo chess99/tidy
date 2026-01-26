@@ -1,9 +1,10 @@
 /**
- * input: AI_SERVICE_URL（环境变量）+ HTTP fetch + SQLite(getDB) + 进程内内存缓存
- * output: 调用 ai-service 的推理结果（CLIP 文本/图片 embedding；text 支持缓存/并发去重/落盘）
+ * input: AI_SERVICE_URL（环境变量）+ HTTP fetch + SQLite(getDB) + 进程内内存缓存 + 文件系统
+ * output: 调用 ai-service 的推理结果（人脸检测/embedding、CLIP 文本/图片 embedding；text 支持缓存/并发去重/落盘）
  * pos: 服务端服务层：跨路由/任务复用的 AI 推理客户端（变更需同步更新本头注释与所属目录 README）
  */
 
+const fs = require('fs');
 const { AI_SERVICE_URL, CLIP_MODEL_ID } = require('../config');
 
 const CLIP_TEXT_EMBED_CACHE_MAX = Math.max(0, Math.trunc(Number(process.env.TIDY_CLIP_TEXT_EMBED_CACHE_MAX) || 200));
@@ -259,6 +260,40 @@ async function clipImageEmbed({ imagePath, normalize = true, profile = null } = 
   };
 }
 
-module.exports = { clipTextEmbed, clipImageEmbed };
+async function detectFaces({ imagePath, profile = null } = {}) {
+  const p = String(imagePath || '').trim();
+  if (!p) throw new Error('imagePath required');
+  if (!fs.existsSync(p)) throw new Error(`imagePath not found: ${p}`);
+
+  // Read image file and convert to base64
+  const imageBuffer = fs.readFileSync(p);
+  const imageBase64 = imageBuffer.toString('base64');
+
+  const url = ensureUrl(AI_SERVICE_URL, '/detect+embed');
+  const out = await postJson(url, { image_base64: imageBase64 }, { profile });
+
+  // Convert InsightFace format to internal format
+  // InsightFace: {faces: [{box: [x1,y1,x2,y2], embedding: [...], score: number, kps?: [...]}]}
+  // Internal: {detection: {box: {x,y,width,height}, score}, descriptor: [...]}
+  const faces = Array.isArray(out?.faces) ? out.faces : [];
+  return faces.map((f) => {
+    const box = Array.isArray(f.box) && f.box.length === 4 ? f.box : [0, 0, 0, 0];
+    const [x1, y1, x2, y2] = box.map(Number);
+    return {
+      detection: {
+        box: {
+          x: x1,
+          y: y1,
+          width: x2 - x1,
+          height: y2 - y1,
+        },
+        score: Number(f.score || 0),
+      },
+      descriptor: Array.isArray(f.embedding) ? f.embedding : [],
+    };
+  });
+}
+
+module.exports = { clipTextEmbed, clipImageEmbed, detectFaces };
 
 
