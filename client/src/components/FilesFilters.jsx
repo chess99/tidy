@@ -28,6 +28,9 @@ export function FilesFilters({ value, onChange }) {
   const v = value || {};
   const [smartInput, setSmartInput] = useState(() => String(v.smartQuery || ''));
 
+  // 语义相似和智能搜索冲突：当有语义相似筛选时，禁用智能搜索
+  const isClipSimilarActive = v.similarKind === 'clip' && v.similarToFileId;
+
   const peopleQuery = useQuery({
     queryKey: ['people'],
     queryFn: getPeople,
@@ -121,18 +124,21 @@ export function FilesFilters({ value, onChange }) {
               value={smartInput}
               onChange={(e) => setSmartInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && applySmartSearch()}
-              placeholder="智能搜索..."
-              className="w-full pl-9 pr-16 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder={isClipSimilarActive ? '语义相似筛选中...' : '智能搜索...'}
+              disabled={isClipSimilarActive}
+              className={`w-full pl-9 pr-16 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${isClipSimilarActive ? 'bg-gray-100 text-gray-500' : ''}`}
             />
             <Button
               size="sm"
               className="absolute right-1 top-1/2 -translate-y-1/2 h-7 text-xs"
-              disabled={!smartInput.trim() || smartInput.trim() === v.smartQuery}
+              disabled={!smartInput.trim() || smartInput.trim() === v.smartQuery || isClipSimilarActive}
               onClick={applySmartSearch}
             >
               搜索
             </Button>
           </div>
+
+          {/* Smart Query Tag */}
           {v.smartQuery && (
             <div className="flex items-center gap-2 mt-2">
               <Badge className="bg-blue-100 text-blue-700 text-xs">
@@ -140,7 +146,23 @@ export function FilesFilters({ value, onChange }) {
               </Badge>
               <button
                 onClick={() => { setSmartInput(''); onChange({ ...v, smartQuery: '' }); }}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 cursor-pointer"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )}
+
+          {/* Similar Filter Indicator - moved here */}
+          {(v.similarKind === 'phash' || v.similarKind === 'clip') && v.similarToFileId && (
+            <div className="flex items-center gap-2 mt-2">
+              <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium bg-purple-100 text-purple-700 border border-purple-200">
+                <Sparkles className="h-3 w-3" />
+                {v.similarKind === 'phash' ? '相似图' : '语义相似'}
+              </div>
+              <button
+                onClick={() => onChange({ ...v, similarKind: null, similarToFileId: null })}
+                className="text-gray-400 hover:text-gray-600 cursor-pointer"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -163,7 +185,7 @@ export function FilesFilters({ value, onChange }) {
                   key={group.key}
                   onClick={() => toggleExtGroup(group)}
                   className={`
-                    inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all
+                    inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer
                     ${active
                       ? 'bg-blue-100 text-blue-700 border border-blue-200'
                       : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
@@ -212,7 +234,7 @@ export function FilesFilters({ value, onChange }) {
                   key={opt.key}
                   onClick={() => onChange({ ...v, status: v.status === opt.key ? undefined : opt.key })}
                   className={`
-                    px-2.5 py-1 rounded-md text-xs font-medium transition-colors
+                    px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer
                     ${v.status === opt.key
                       ? 'bg-blue-100 text-blue-700 border border-blue-200'
                       : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
@@ -326,9 +348,9 @@ export function FilesFilters({ value, onChange }) {
                       onChange({ ...v, people: next.length ? next : undefined });
                     }}
                     className={`
-                      px-2.5 py-1 rounded-full text-xs transition-colors
+                      px-2.5 py-1 rounded-full text-xs transition-colors cursor-pointer
                       ${active
-                        ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                        ? 'bg-blue-100 text-blue-700 border border-blue-200'
                         : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
                       }
                     `}
@@ -358,35 +380,13 @@ export function FilesFilters({ value, onChange }) {
             {v.hash && (
               <button
                 onClick={() => onChange({ ...v, hash: '' })}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
               >
                 <X className="h-3 w-3" />
               </button>
             )}
           </div>
         </div>
-
-        {/* Similar filter indicator - 直接显示 */}
-        {(v.similarKind === 'phash' || v.similarKind === 'clip') && v.similarToFileId && (
-          <div className="p-4 border-b">
-            <div className="bg-blue-50 rounded-lg p-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-3.5 w-3.5 text-blue-600" />
-                  <span className="text-xs text-blue-700">
-                    {v.similarKind === 'phash' ? '相似图' : '语义相似'}
-                  </span>
-                </div>
-                <button
-                  onClick={() => onChange({ ...v, similarKind: null, similarToFileId: null })}
-                  className="text-blue-600 hover:text-blue-800"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Footer hint */}

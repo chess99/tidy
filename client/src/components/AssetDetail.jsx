@@ -267,13 +267,13 @@ export function AssetDetail({
             {asset.taken_at && (
               <div className="flex gap-2 mt-2">
                 <button
-                  className="inline-flex items-center px-2 py-1 rounded text-[11px] bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 hover:border-gray-300 transition-colors cursor-pointer"
                   onClick={() => handleDateFilter('from')}
                 >
                   筛选从此日期
                 </button>
                 <button
-                  className="inline-flex items-center px-2 py-1 rounded text-[11px] bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 hover:border-gray-300 transition-colors cursor-pointer"
                   onClick={() => handleDateFilter('to')}
                 >
                   筛选至此日期
@@ -332,7 +332,7 @@ export function AssetDetail({
                       )}
                     </div>
                     <button
-                      className="inline-flex items-center px-2 py-1 rounded text-[10px] bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 hover:border-gray-300 transition-colors cursor-pointer"
                       onClick={() => onApplyFilter?.({ pathContains: dirPrefixOf(f.path) })}
                     >
                       同目录
