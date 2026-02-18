@@ -221,13 +221,6 @@ export function AssetDetail({
           {/* Quick filter buttons */}
           <div className="flex flex-wrap gap-1.5">
             <button
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 hover:border-gray-300 transition-colors cursor-pointer"
-              onClick={() => onApplyFilter?.({ hash: asset.hash })}
-            >
-              <Hash className="h-3 w-3" />
-              同Hash
-            </button>
-            <button
               className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium border transition-colors ${
                 canFindSimilar
                   ? 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200 hover:border-gray-300 cursor-pointer'
@@ -289,9 +282,17 @@ export function AssetDetail({
           />
 
           <InfoRow icon={Hash} label="文件哈希">
-            <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono text-gray-600 break-all">
-              {asset.hash}
-            </code>
+            <div className="flex items-center gap-2">
+              <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono text-gray-600 break-all">
+                {asset.hash}
+              </code>
+              <button
+                className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200 hover:border-gray-300 transition-colors cursor-pointer shrink-0"
+                onClick={() => onApplyFilter?.({ hash: asset.hash })}
+              >
+                同Hash
+              </button>
+            </div>
           </InfoRow>
         </div>
 

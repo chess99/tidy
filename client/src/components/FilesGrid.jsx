@@ -669,7 +669,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
             {/* Selection ops */}
             <button
               type="button"
-              className="px-3 py-2 rounded-lg bg-white text-gray-800 border border-gray-200 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+              className="px-3 py-2 rounded-lg bg-white text-gray-800 border border-gray-200 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
               onClick={onSelectAll}
               disabled={!total}
               title={canSelectAll ? '全选当前筛选结果' : `结果过多（>${SELECT_ALL_LIMIT}）请进一步筛选`}
@@ -678,7 +678,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
             </button>
             <button
               type="button"
-              className="px-3 py-2 rounded-lg bg-white text-gray-800 border border-gray-200 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+              className="px-3 py-2 rounded-lg bg-white text-gray-800 border border-gray-200 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
               onClick={onInvertAll}
               disabled={!total}
               title={canSelectAll ? '反选当前筛选结果' : `结果过多（>${SELECT_ALL_LIMIT}）请进一步筛选`}
@@ -687,7 +687,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
             </button>
             <button
               type="button"
-              className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 disabled:opacity-50"
+              className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 disabled:opacity-50 cursor-pointer"
               onClick={onClearSelection}
               disabled={!selectedCount}
               title={!selectedCount ? '暂无选中' : '清空所有选中'}
@@ -700,7 +700,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
             {/* Review */}
             <button
               type="button"
-              className="px-3 py-2 rounded-lg bg-gray-100 text-gray-800 text-sm font-medium hover:bg-gray-200 disabled:opacity-50"
+              className="px-3 py-2 rounded-lg bg-gray-100 text-gray-800 text-sm font-medium hover:bg-gray-200 disabled:opacity-50 cursor-pointer"
               onClick={() => setShowSelected(true)}
               disabled={!selectedCount}
               title={!selectedCount ? '暂无选中' : '查看已选中项'}
@@ -712,7 +712,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
 
             <button
               type="button"
-              className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+              className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
               onClick={() => setShowAdd(true)}
               disabled={!selectedHashes.length}
               title={!selectedHashes.length ? '所选文件尚未完成哈希，暂不可整理' : '添加到文件夹'}
@@ -721,7 +721,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
             </button>
             <button
               type="button"
-              className="px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+              className="px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 cursor-pointer"
               disabled={!selectedHashes.length || batchTrashMutation.isPending}
               onClick={() => {
                 if (!selectedHashes.length) return;
@@ -781,7 +781,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
               <div className="font-semibold text-gray-900">添加到文件夹</div>
               <button
                 type="button"
-                className="text-sm text-gray-500 hover:text-gray-900"
+                className="text-sm text-gray-500 hover:text-gray-900 cursor-pointer"
                 onClick={() => setShowAdd(false)}
               >
                 关闭
@@ -798,7 +798,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
                   <PopoverTrigger asChild>
                     <button
                       type="button"
-                      className="w-full flex items-center justify-between border rounded px-3 py-2 text-sm bg-white hover:bg-gray-50"
+                      className="w-full flex items-center justify-between border rounded px-3 py-2 text-sm bg-white hover:bg-gray-50 cursor-pointer"
                       title="输入关键词过滤并选择"
                     >
                       <span className="truncate">
@@ -860,7 +860,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
                   />
                   <button
                     type="button"
-                    className="px-3 py-2 rounded bg-gray-100 text-gray-700 text-sm hover:bg-gray-200 disabled:opacity-50"
+                    className="px-3 py-2 rounded bg-gray-100 text-gray-700 text-sm hover:bg-gray-200 disabled:opacity-50 cursor-pointer"
                     disabled={!newAlbumName.trim() || createAlbumMutation.isPending}
                     onClick={() => createAlbumMutation.mutate(newAlbumName.trim())}
                     title="先创建，方便选择"
@@ -880,14 +880,14 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
               <div className="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  className="px-3 py-2 rounded bg-gray-100 text-gray-700 text-sm hover:bg-gray-200"
+                  className="px-3 py-2 rounded bg-gray-100 text-gray-700 text-sm hover:bg-gray-200 cursor-pointer"
                   onClick={() => setShowAdd(false)}
                 >
                   取消
                 </button>
                 <button
                   type="button"
-                  className="px-4 py-2 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                  className="px-4 py-2 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
                   disabled={!canOrganize || (!addAlbumId && !newAlbumName.trim())}
                   onClick={submitOrganize}
                 >

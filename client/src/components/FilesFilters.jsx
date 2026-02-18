@@ -56,6 +56,7 @@ export function FilesFilters({ value, onChange }) {
     v.status,
     v.hasDup,
     v.pathContains,
+    v.hash,
   ].filter(Boolean).length;
 
   const clearAll = () => {
@@ -70,6 +71,7 @@ export function FilesFilters({ value, onChange }) {
       status: undefined,
       hasDup: false,
       pathContains: '',
+      hash: '',
     });
   };
 
