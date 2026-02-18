@@ -15,11 +15,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: linux
-            os: ubuntu-22.04
-            name: linux-x64
-            electron_target: linux
-
           - platform: windows
             os: windows-latest
             name: windows-x64
@@ -50,23 +45,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: Install Linux dependencies
-        if: matrix.platform == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libnss3-dev \
-            libatk-bridge2.0-dev \
-            libdrm2 \
-            libxkbcommon-dev \
-            libxcomposite-dev \
-            libxdamage-dev \
-            libxrandr-dev \
-            libgbm-dev \
-            libasound2-dev \
-            libpango1.0-dev \
-            libcairo2-dev
 
       - name: Install root dependencies
         run: npm install
@@ -104,14 +82,6 @@ jobs:
           cd ai-service
           scripts\build-ai-service.bat
 
-      - name: Build desktop app (Linux)
-        if: matrix.platform == 'linux'
-        run: |
-          cd desktop
-          npm run generate:icons
-          npm run prepare:resources
-          npx electron-builder --linux --x64
-
       - name: Build desktop app (Windows)
         if: matrix.platform == 'windows'
         run: |
@@ -139,19 +109,6 @@ jobs:
           npm run generate:icons
           npm run prepare:resources
           npx electron-builder --mac --arm64
-
-      - name: Upload artifacts (Linux)
-        if: matrix.platform == 'linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: Tidy-${{ matrix.name }}
-          path: |
-            desktop/dist/*.AppImage
-            desktop/dist/*.deb
-            desktop/dist/*.rpm
-            desktop/dist/*.tar.gz
-            desktop/dist/*.zip
-          if-no-files-found: ignore
 
       - name: Upload artifacts (Windows)
         if: matrix.platform == 'windows'
@@ -203,12 +160,12 @@ jobs:
         run: |
           ls -R artifacts
           echo "---"
-          find artifacts -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.exe" -o -name "*.dmg" -o -name "*.zip" -o -name "*.tar.gz" \) | head -20
+          find artifacts -type f \( -name "*.exe" -o -name "*.dmg" -o -name "*.zip" \) | head -20
 
       - name: Flatten artifacts for release
         run: |
           mkdir -p release-files
-          find artifacts -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.exe" -o -name "*.dmg" -o -name "*.zip" -o -name "*.tar.gz" \) -exec cp {} release-files/ \;
+          find artifacts -type f \( -name "*.exe" -o -name "*.dmg" -o -name "*.zip" \) -exec cp {} release-files/ \;
           ls -la release-files/
 
       - name: Create Release
