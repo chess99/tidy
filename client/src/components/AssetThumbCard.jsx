@@ -115,32 +115,13 @@ export function AssetThumbCard({
           : null}
       </div>
 
-      <div className="h-16 p-2 text-xs flex flex-col justify-between">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="text-[11px] text-gray-900 truncate" title={safeBottomPrimary || ''}>
-              {safeBottomPrimary || '—'}
-            </div>
+      <div className="h-9 p-2 text-xs flex items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] text-gray-900 truncate" title={safeBottomPrimary || ''}>
+            {safeBottomPrimary || '—'}
           </div>
-          <div className="shrink-0 tabular-nums text-[11px] text-gray-700">{dateText || '—'}</div>
         </div>
-
-        {!isPlaceholder && bottomContent != null ? (
-          bottomContent
-        ) : !isPlaceholder && safeBottomSecondary ? (
-          <div
-            className="text-[11px] text-gray-600 leading-4"
-            title={bottomSecondaryTitle || safeBottomSecondary}
-            style={{
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-            }}
-          >
-            {safeBottomSecondary}
-          </div>
-        ) : null}
+        <div className="shrink-0 tabular-nums text-[11px] text-gray-500">{dateText || '—'}</div>
       </div>
     </div>
   );

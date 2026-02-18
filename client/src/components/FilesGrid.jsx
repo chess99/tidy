@@ -624,29 +624,6 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
                         : null,
                     ]}
                     bottomPrimary={file?.file_name || '—'}
-                    bottomContent={
-                      !isPlaceholder ? (
-                        organizedTo ? (
-                          <div className="text-[11px] leading-4">
-                            <div className="text-green-700 truncate" title={organizedTo}>→ {organizedTo}</div>
-                            <div className="text-gray-600 truncate" title={file.path}>{file.path}</div>
-                          </div>
-                        ) : (
-                          <div
-                            className="text-[11px] text-gray-600 leading-4"
-                            title={file.path}
-                            style={{
-                              display: '-webkit-box',
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: 'vertical',
-                              overflow: 'hidden',
-                            }}
-                          >
-                            {file.path}
-                          </div>
-                        )
-                      ) : null
-                    }
                   />
                 );
               })}
