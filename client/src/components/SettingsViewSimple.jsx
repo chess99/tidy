@@ -5,7 +5,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FolderPlus, Loader2, Trash2, RefreshCw, Image, FileImage, Video, Settings2 } from 'lucide-react';
+import { FolderPlus, Loader2, Trash2, RefreshCw, Image, FileImage, Video, Settings2, FolderCheck } from 'lucide-react';
 import { useState } from 'react';
 import {
   addScanRoot,
@@ -14,6 +14,7 @@ import {
   setScanRootEnabled,
   setScanOptions,
   setScanType,
+  setWorkspacePaths,
 } from '../api/client';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
@@ -173,6 +174,69 @@ function FileTypesSection({ config }) {
   );
 }
 
+function WorkspaceSection({ config }) {
+  const queryClient = useQueryClient();
+  const [newManagedRoot, setNewManagedRoot] = useState('');
+  const [showInput, setShowInput] = useState(false);
+
+  const workspace = config?.workspace || {};
+  const managedRoot = workspace?.managedRoot || '';
+
+  const mutation = useMutation({
+    mutationFn: setWorkspacePaths,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config'] });
+      setNewManagedRoot('');
+      setShowInput(false);
+    },
+  });
+
+  return (
+    <Card title="整理目标目录" icon={FolderCheck} desc="设置整理后的文件存放位置">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg border bg-white">
+          <div className="min-w-0 flex-1">
+            <div className="text-sm text-gray-900 truncate" title={managedRoot}>
+              {managedRoot || '未设置'}
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setShowInput(!showInput);
+              setNewManagedRoot('');
+            }}
+          >
+            更改
+          </Button>
+        </div>
+
+        {showInput && (
+          <div className="flex gap-2">
+            <Input
+              value={newManagedRoot}
+              onChange={(e) => setNewManagedRoot(e.target.value)}
+              placeholder="例如: /Users/xxx/Pictures/Tidy"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newManagedRoot.trim()) {
+                  mutation.mutate({ managedRoot: newManagedRoot.trim() });
+                }
+              }}
+            />
+            <Button
+              disabled={!newManagedRoot.trim() || mutation.isPending}
+              onClick={() => mutation.mutate({ managedRoot: newManagedRoot.trim() })}
+            >
+              {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : '保存'}
+            </Button>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function ExcludeRulesSection({ config }) {
   const queryClient = useQueryClient();
   const scan = config?.scan || {};
@@ -249,6 +313,7 @@ export function SettingsViewSimple() {
       </div>
 
       <ScanRootsSection config={config} />
+      <WorkspaceSection config={config} />
       <FileTypesSection config={config} />
       <ExcludeRulesSection config={config} />
 
