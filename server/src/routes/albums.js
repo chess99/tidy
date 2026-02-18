@@ -8,6 +8,16 @@ const express = require('express');
 const { getDB } = require('../db');
 const path = require('path');
 
+function safeJsonParse(v) {
+  if (v == null) return null;
+  if (typeof v === 'object') return v;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return null;
+  }
+}
+
 const router = express.Router();
 
 function toAlbumRow(r) {
@@ -87,11 +97,27 @@ router.get('/:id/assets', (req, res) => {
     LIMIT ? OFFSET ?
   `).all(id, limit, offset);
 
-  // Backfill sample_ext for UI labels (avoid dependence on `files` rows).
+  // Enrich with files, parsed metadata, and ext for UI labels
   const out = rows.map((r) => {
     const samplePath = r?.sample_path ? String(r.sample_path) : '';
     const ext = samplePath ? path.extname(samplePath).toLowerCase() : null;
-    return { ...r, sample_ext: ext || null };
+
+    // Get files for this asset
+    const files = db
+      .prepare(`
+        SELECT *
+        FROM files
+        WHERE hash = ?
+        ORDER BY COALESCE(mtime_ms, updated_at, discovered_at, scanned_at, 0) DESC, id DESC
+      `)
+      .all(r.hash);
+
+    return {
+      ...r,
+      sample_ext: ext || null,
+      metadata: safeJsonParse(r.metadata),
+      files: files || [],
+    };
   });
 
   res.json({ data: out, pagination: { page, limit, total } });
