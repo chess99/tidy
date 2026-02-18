@@ -36,10 +36,10 @@ export function DateRangePicker({ value, onChange, className }) {
                 {from ? (
                   to ? (
                     <>
-                      {format(from, "yyyy-MM-dd")} – {format(to, "yyyy-MM-dd")}
+                      {format(from, "yy/MM/dd")}-{format(to, "yy/MM/dd")}
                     </>
                   ) : (
-                    format(from, "yyyy-MM-dd")
+                    format(from, "yy/MM/dd")
                   )
                 ) : (
                   <span>选择日期范围</span>

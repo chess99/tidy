@@ -6,7 +6,7 @@
 
 import {
   X, FolderOpen, Maximize2, Calendar, Camera, Hash, FileType, HardDrive, Users, Sparkles,
-  Image as ImageIcon, Trash2, FolderCheck, FolderSearch, ChevronDown, ChevronUp
+  Image as ImageIcon, Trash2, FolderCheck, FolderSearch
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -68,7 +68,6 @@ export function AssetDetail({
 }) {
   const [thumbError, setThumbError] = useState(false);
   const [showMetadata, setShowMetadata] = useState(false);
-  const [showFiles, setShowFiles] = useState(false);
 
   if (!asset) return null;
 
@@ -105,100 +104,101 @@ export function AssetDetail({
   return (
     <aside className="w-96 bg-white border-l shadow-xl z-20 flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 py-3 border-b flex items-center justify-between bg-gray-50">
+      <div className="px-4 py-3 border-b flex items-center justify-between bg-gray-50 shrink-0">
         <h2 className="font-semibold text-gray-900">详情</h2>
         <button
           onClick={onClose}
-          className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
+          className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors cursor-pointer"
         >
           <X className="h-4 w-4 text-gray-500" />
         </button>
       </div>
 
-      {/* Preview */}
-      <div className="p-4 border-b">
-        <div
-          className="aspect-square bg-gray-100 rounded-xl overflow-hidden relative group cursor-pointer"
-          onClick={onOpenViewer}
-        >
-          {/* Background blur */}
-          <img
-            src={apiUrl(`/assets/${asset.hash}/preview?max=512&q=60`)}
-            className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-60"
-            alt=""
-            aria-hidden="true"
-          />
-          <div className="absolute inset-0 bg-black/5" />
-
-          {/* Main image */}
-          {!thumbError ? (
-            <img
-              src={apiUrl(`/assets/${asset.hash}/preview?max=1024&q=80`)}
-              className="absolute inset-0 w-full h-full object-contain z-10"
-              alt={asset.file_name || 'preview'}
-              onError={() => setThumbError(true)}
-            />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center z-10">
-              <div className="text-center text-gray-400">
-                <ImageIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                <span className="text-xs">无法加载预览</span>
-              </div>
-            </div>
-          )}
-
-          {/* Hover overlay */}
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors z-20 flex items-center justify-center opacity-0 group-hover:opacity-100">
-            <div className="bg-white/90 backdrop-blur-sm rounded-full px-4 py-2 flex items-center gap-2 shadow-lg">
-              <Maximize2 className="h-4 w-4" />
-              <span className="text-sm font-medium">查看大图</span>
-            </div>
-          </div>
-
-          {/* Type badge */}
-          <div className="absolute top-3 left-3 z-30">
-            <Badge variant="secondary" className="bg-white/90 text-gray-700 text-[10px]">
-              {asset.ext?.toUpperCase() || asset.mime_type?.split('/')[1]?.toUpperCase() || 'UNKNOWN'}
-            </Badge>
-          </div>
-
-          {/* Video indicator */}
-          {isVideo && (
-            <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
-              <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-                <div className="w-0 h-0 border-t-6 border-t-transparent border-l-10 border-l-gray-800 border-b-6 border-b-transparent ml-1" />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Quick actions */}
-        <div className="flex gap-2 mt-3">
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1 h-9 text-xs"
-            onClick={handleOpenLocation}
-          >
-            <FolderOpen className="h-3.5 w-3.5 mr-1.5" />
-            在文件夹中显示
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            className="flex-1 h-9 text-xs"
+      {/* Scrollable Content - unified scrolling */}
+      <div className="flex-1 overflow-auto">
+        {/* Preview - now scrolls with content */}
+        <div className="p-4 border-b">
+          <div
+            className="aspect-square bg-gray-100 rounded-xl overflow-hidden relative group cursor-pointer"
             onClick={onOpenViewer}
           >
-            <Maximize2 className="h-3.5 w-3.5 mr-1.5" />
-            全屏查看
-          </Button>
-        </div>
-      </div>
+            {/* Background blur */}
+            <img
+              src={apiUrl(`/assets/${asset.hash}/preview?max=512&q=60`)}
+              className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-60"
+              alt=""
+              aria-hidden="true"
+            />
+            <div className="absolute inset-0 bg-black/5" />
 
-      {/* Info */}
-      <div className="flex-1 overflow-auto">
-        {/* Status & Quick Filters */}
+            {/* Main image */}
+            {!thumbError ? (
+              <img
+                src={apiUrl(`/assets/${asset.hash}/preview?max=1024&q=80`)}
+                className="absolute inset-0 w-full h-full object-contain z-10"
+                alt={asset.file_name || 'preview'}
+                onError={() => setThumbError(true)}
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center z-10">
+                <div className="text-center text-gray-400">
+                  <ImageIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <span className="text-xs">无法加载预览</span>
+                </div>
+              </div>
+            )}
+
+            {/* Hover overlay */}
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors z-20 flex items-center justify-center opacity-0 group-hover:opacity-100">
+              <div className="bg-white/90 backdrop-blur-sm rounded-full px-4 py-2 flex items-center gap-2 shadow-lg">
+                <Maximize2 className="h-4 w-4" />
+                <span className="text-sm font-medium">查看大图</span>
+              </div>
+            </div>
+
+            {/* Type badge */}
+            <div className="absolute top-3 left-3 z-30">
+              <Badge variant="secondary" className="bg-white/90 text-gray-700 text-[10px]">
+                {asset.ext?.toUpperCase() || asset.mime_type?.split('/')[1]?.toUpperCase() || 'UNKNOWN'}
+              </Badge>
+            </div>
+
+            {/* Video indicator */}
+            {isVideo && (
+              <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+                <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                  <div className="w-0 h-0 border-t-6 border-t-transparent border-l-10 border-l-gray-800 border-b-6 border-b-transparent ml-1" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Quick actions */}
+          <div className="flex gap-2 mt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 h-9 text-xs cursor-pointer"
+              onClick={handleOpenLocation}
+            >
+              <FolderOpen className="h-3.5 w-3.5 mr-1.5" />
+              在文件夹中显示
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              className="flex-1 h-9 text-xs cursor-pointer"
+              onClick={onOpenViewer}
+            >
+              <Maximize2 className="h-3.5 w-3.5 mr-1.5" />
+              全屏查看
+            </Button>
+          </div>
+        </div>
+
+        {/* Info */}
         <div className="p-4 border-b space-y-3">
+          {/* Status */}
           <div className="flex items-center gap-2">
             <Badge
               className={`
@@ -220,35 +220,37 @@ export function AssetDetail({
 
           {/* Quick filter buttons */}
           <div className="flex flex-wrap gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-[11px] px-2"
+            <button
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 hover:border-gray-300 transition-colors cursor-pointer"
               onClick={() => onApplyFilter?.({ hash: asset.hash })}
             >
-              <Hash className="h-3 w-3 mr-1" />
+              <Hash className="h-3 w-3" />
               同Hash
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-[11px] px-2"
+            </button>
+            <button
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium border transition-colors ${
+                canFindSimilar
+                  ? 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200 hover:border-gray-300 cursor-pointer'
+                  : 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed'
+              }`}
               disabled={!canFindSimilar}
               onClick={() => onApplySimilarPhash?.(asset)}
             >
-              <Sparkles className="h-3 w-3 mr-1" />
+              <Sparkles className="h-3 w-3" />
               相似图
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-[11px] px-2"
+            </button>
+            <button
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium border transition-colors ${
+                canFindSimilarClip
+                  ? 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200 hover:border-gray-300 cursor-pointer'
+                  : 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed'
+              }`}
               disabled={!canFindSimilarClip}
               onClick={() => onApplySimilarClip?.(asset)}
             >
-              <Sparkles className="h-3 w-3 mr-1" />
+              <Sparkles className="h-3 w-3" />
               语义相似
-            </Button>
+            </button>
           </div>
         </div>
 
@@ -263,23 +265,19 @@ export function AssetDetail({
               {formatDate(asset.taken_at)}
             </div>
             {asset.taken_at && (
-              <div className="flex gap-1.5 mt-1.5">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 text-[10px] px-2"
+              <div className="flex gap-2 mt-2">
+                <button
+                  className="inline-flex items-center px-2 py-1 rounded text-[11px] bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
                   onClick={() => handleDateFilter('from')}
                 >
                   筛选从此日期
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 text-[10px] px-2"
+                </button>
+                <button
+                  className="inline-flex items-center px-2 py-1 rounded text-[11px] bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
                   onClick={() => handleDateFilter('to')}
                 >
                   筛选至此日期
-                </Button>
+                </button>
               </div>
             )}
           </InfoRow>
@@ -307,77 +305,61 @@ export function AssetDetail({
           />
         </div>
 
-        {/* Files List - Collapsible */}
+        {/* Files List - No longer collapsible */}
         <div className="border-t">
-          <button
-            className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
-            onClick={() => setShowFiles(!showFiles)}
-          >
-            <div className="flex items-center gap-2">
-              <FolderSearch className="h-4 w-4 text-gray-500" />
-              <span className="text-sm font-medium text-gray-900">物理文件</span>
-              <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
-                {fileCount}
-              </Badge>
-            </div>
-            {showFiles ? (
-              <ChevronUp className="h-4 w-4 text-gray-400" />
-            ) : (
-              <ChevronDown className="h-4 w-4 text-gray-400" />
-            )}
-          </button>
+          <div className="px-4 py-3 flex items-center gap-2">
+            <FolderSearch className="h-4 w-4 text-gray-500" />
+            <span className="text-sm font-medium text-gray-900">物理文件</span>
+            <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+              {fileCount}
+            </Badge>
+          </div>
 
-          {showFiles && (
-            <div className="px-4 pb-4 max-h-48 overflow-auto">
-              <div className="space-y-2">
-                {(asset.files || []).map((f) => (
-                  <div key={f.id || f.path} className="text-xs bg-gray-50 rounded-lg p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="font-mono text-gray-700 break-all text-[11px]">
-                        {f.path}
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between mt-2">
-                      <div className="text-[10px] text-gray-500">
-                        {Number.isFinite(f.size) ? formatBytes(f.size) : '—'}
-                        {f.mtime_ms && (
-                          <span className="ml-2">{new Date(f.mtime_ms).toLocaleString()}</span>
-                        )}
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-[10px] px-2"
-                        onClick={() => onApplyFilter?.({ pathContains: dirPrefixOf(f.path) })}
-                      >
-                        同目录
-                      </Button>
+          <div className="px-4 pb-4">
+            <div className="space-y-2">
+              {(asset.files || []).map((f) => (
+                <div key={f.id || f.path} className="text-xs bg-gray-50 rounded-lg p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="font-mono text-gray-700 break-all text-[11px]">
+                      {f.path}
                     </div>
                   </div>
-                ))}
-                {fileCount === 0 && (
-                  <div className="text-xs text-gray-500 text-center py-4">无物理文件信息</div>
-                )}
-              </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="text-[10px] text-gray-500">
+                      {Number.isFinite(f.size) ? formatBytes(f.size) : '—'}
+                      {f.mtime_ms && (
+                        <span className="ml-2">{new Date(f.mtime_ms).toLocaleString()}</span>
+                      )}
+                    </div>
+                    <button
+                      className="inline-flex items-center px-2 py-1 rounded text-[10px] bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
+                      onClick={() => onApplyFilter?.({ pathContains: dirPrefixOf(f.path) })}
+                    >
+                      同目录
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {fileCount === 0 && (
+                <div className="text-xs text-gray-500 text-center py-4">无物理文件信息</div>
+              )}
             </div>
-          )}
+          </div>
         </div>
 
         {/* Metadata - Collapsible */}
         <div className="border-t">
           <button
-            className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+            className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors cursor-pointer"
             onClick={() => setShowMetadata(!showMetadata)}
           >
             <div className="flex items-center gap-2">
               <Camera className="h-4 w-4 text-gray-500" />
               <span className="text-sm font-medium text-gray-900">元数据 (EXIF)</span>
             </div>
-            {showMetadata ? (
-              <ChevronUp className="h-4 w-4 text-gray-400" />
-            ) : (
-              <ChevronDown className="h-4 w-4 text-gray-400" />
-            )}
+            <span className="text-gray-400 text-xs">
+              {showMetadata ? '收起' : '展开'}
+            </span>
           </button>
 
           {showMetadata && (
@@ -389,13 +371,13 @@ export function AssetDetail({
           )}
         </div>
 
-        {/* Actions */}
-        <div className="p-4 border-t">
+        {/* Actions - sticky at bottom */}
+        <div className="p-4 border-t bg-white">
           <div className="grid grid-cols-2 gap-3">
             <Button
               variant="outline"
               size="sm"
-              className={`h-11 ${
+              className={`h-11 cursor-pointer ${
                 asset.status === 'trash'
                   ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
                   : 'text-red-600 hover:text-red-700 hover:bg-red-50'
@@ -408,7 +390,7 @@ export function AssetDetail({
             <Button
               variant="outline"
               size="sm"
-              className={`h-11 ${
+              className={`h-11 cursor-pointer ${
                 asset.status === 'sorted'
                   ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
                   : 'text-green-600 hover:text-green-700 hover:bg-green-50'
