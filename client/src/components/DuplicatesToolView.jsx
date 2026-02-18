@@ -1,20 +1,20 @@
 /**
  * input: props + API（duplicates）+ 本地状态
- * output: “检查重复项”工具页（分组处理重复项）
+ * output: "检查重复项"工具页（单组聚焦、左右对比、键盘驱动）
  * pos: 客户端视图层：实用工具入口之一（变更需同步更新本头注释与所属目录 README）
  */
 
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Check, Copy, Eye, Loader2, Trash2 } from 'lucide-react';
-import React, { useMemo, useState } from 'react';
-import { apiUrl, applyDuplicateActions, getDuplicateGroups, getAsset } from '../api/client';
+import { ChevronLeft, ChevronRight, Trash2, Check, Loader2, AlertCircle, Images } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { apiUrl, applyDuplicateActions, getDuplicateGroups } from '../api/client';
 import { Button } from './ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Badge } from './ui/badge';
 
 function fmtBytes(n) {
   const v = Number(n);
   if (!Number.isFinite(v) || v <= 0) return '—';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const units = ['B', 'KB', 'MB', 'GB'];
   let x = v;
   let i = 0;
   while (x >= 1024 && i < units.length - 1) {
@@ -28,74 +28,49 @@ function fmtDate(ms) {
   const v = Number(ms);
   if (!Number.isFinite(v) || v <= 0) return '—';
   try {
-    return new Date(v).toLocaleDateString();
+    return new Date(v).toLocaleDateString('zh-CN');
   } catch {
     return '—';
   }
-}
-
-function fmtTime(ms) {
-  const v = Number(ms);
-  if (!Number.isFinite(v) || v <= 0) return '—';
-  try {
-    return new Date(v).toLocaleTimeString();
-  } catch {
-    return '—';
-  }
-}
-
-function pickDisplayMs(item) {
-  return item?.asset_taken_at ?? item?.mtime_ms ?? null;
-}
-
-function uniq(arr) {
-  return Array.from(new Set(arr));
-}
-
-function groupByHash(items) {
-  const map = new Map();
-  for (const it of items || []) {
-    const h = it?.hash ? String(it.hash) : null;
-    if (!h) continue;
-    if (!map.has(h)) map.set(h, []);
-    map.get(h).push(it);
-  }
-  return map;
 }
 
 export function DuplicatesToolView({ onAssetClick }) {
-  "use no memo";
   const qc = useQueryClient();
-  const [kind, setKind] = useState('phash'); // phash | hash
+  const [kind, setKind] = useState('phash'); // 'phash' | 'hash'
   const [threshold, setThreshold] = useState(10);
+  const [groupIndex, setGroupIndex] = useState(0);
+  const containerRef = useRef(null);
 
-  const query = useInfiniteQuery({
+  // Load all groups at once (similar to immich)
+  const { data, isLoading, isError, error } = useInfiniteQuery({
     queryKey: ['duplicates', { kind, threshold }],
-    queryFn: ({ pageParam }) => getDuplicateGroups({ kind, threshold, limit: 12, cursor: pageParam }),
+    queryFn: ({ pageParam }) => getDuplicateGroups({ kind, threshold, limit: 100, cursor: pageParam }),
     getNextPageParam: (lastPage) => lastPage?.nextCursor ?? undefined,
     staleTime: 5000,
   });
 
   const groups = useMemo(() => {
-    const list = query.data ? query.data.pages.flatMap((p) => p.groups || []) : [];
-    return list;
-  }, [query.data]);
+    return data?.pages.flatMap((p) => p.groups || []) || [];
+  }, [data]);
 
-  // Selection state: keepSet per group id (file_id kept)
-  const [keepByGroup, setKeepByGroup] = useState(() => new Map());
+  const currentGroup = groups[groupIndex] || null;
 
-  const defaultKeepSet = (items, suggestedKeepFileId) => {
-    const list = Array.isArray(items) ? items : [];
-    const suggested = suggestedKeepFileId != null ? Number(suggestedKeepFileId) : null;
-    const fallback = list[0]?.file_id != null ? Number(list[0].file_id) : null;
-    const keep = Number.isFinite(suggested) ? suggested : fallback;
-    return keep != null ? new Set([keep]) : new Set();
-  };
+  // Selection state: map of file_id -> 'keep' | 'trash'
+  const [selections, setSelections] = useState({});
 
-  const getKeepSet = (gid, items, suggestedKeepFileId) => {
-    const key = String(gid);
-    return keepByGroup.get(key) || defaultKeepSet(items, suggestedKeepFileId);
-  };
+  // Initialize selections when group changes
+  useEffect(() => {
+    if (!currentGroup) return;
+    const items = currentGroup.items || [];
+    const suggested = currentGroup.suggested_keep_file_id;
+    const init = {};
+    items.forEach((item) => {
+      const fid = Number(item.file_id);
+      // Suggested keep is 'keep', others default to 'trash'
+      init[fid] = fid === suggested ? 'keep' : 'trash';
+    });
+    setSelections(init);
+  }, [currentGroup?.id]);
 
   const applyMutation = useMutation({
     mutationFn: ({ keepFileIds, deleteFileIds }) => applyDuplicateActions({ keepFileIds, deleteFileIds }),
@@ -103,314 +78,353 @@ export function DuplicatesToolView({ onAssetClick }) {
       qc.invalidateQueries({ queryKey: ['duplicates'] });
       qc.invalidateQueries({ queryKey: ['files'] });
       qc.invalidateQueries({ queryKey: ['assets'] });
-      qc.invalidateQueries({ queryKey: ['albums'] });
+      // Move to next group after successful apply
+      if (groupIndex < groups.length - 1) {
+        setGroupIndex((i) => i + 1);
+      }
     },
   });
 
-  const setGroupKeepOnly = (gid, fileId) => {
-    setKeepByGroup((prev) => {
-      const next = new Map(prev);
-      next.set(String(gid), new Set([Number(fileId)]));
-      return next;
+  const goPrev = () => setGroupIndex((i) => Math.max(0, i - 1));
+  const goNext = () => setGroupIndex((i) => Math.min(groups.length - 1, i + 1));
+
+  const toggleItem = (fileId) => {
+    setSelections((prev) => {
+      const current = prev[fileId];
+      return { ...prev, [fileId]: current === 'keep' ? 'trash' : 'keep' };
     });
   };
 
-  const toggleKeep = (gid, fileId, items, suggestedKeepFileId) => {
-    const id = Number(fileId);
-    if (!Number.isFinite(id)) return;
-    setKeepByGroup((prev) => {
-      const next = new Map(prev);
-      const key = String(gid);
-      const base = next.get(key) || defaultKeepSet(items, suggestedKeepFileId);
-      const set = new Set(base);
-      if (set.has(id)) set.delete(id);
-      else set.add(id);
-      // Ensure at least one kept if possible
-      if (set.size === 0) set.add(id);
-      next.set(key, set);
-      return next;
+  const setAll = (action) => {
+    if (!currentGroup) return;
+    const next = {};
+    currentGroup.items.forEach((item) => {
+      next[Number(item.file_id)] = action;
     });
+    setSelections(next);
   };
 
-  const toggleHashAll = (gid, hash, items, suggestedKeepFileId) => {
-    const h = String(hash || '');
-    if (!h) return;
-    const ids = items.filter((it) => String(it?.hash || '') === h).map((it) => Number(it.file_id)).filter(Number.isFinite);
-    if (!ids.length) return;
-
-    setKeepByGroup((prev) => {
-      const next = new Map(prev);
-      const key = String(gid);
-      const base = next.get(key) || defaultKeepSet(items, suggestedKeepFileId);
-      const set = new Set(base);
-      const allKept = ids.every((id) => set.has(id));
-      if (allKept) {
-        // Mark all as delete => remove from keep set
-        ids.forEach((id) => set.delete(id));
-      } else {
-        // Keep all
-        ids.forEach((id) => set.add(id));
-      }
-      // Ensure at least one kept overall
-      if (set.size === 0 && ids.length) set.add(ids[0]);
-      next.set(key, set);
-      return next;
-    });
-  };
-
-  const applyGroup = async (g) => {
-    const gid = String(g.id);
-    const items = Array.isArray(g.items) ? g.items : [];
-    const keepSet = getKeepSet(gid, items, g.suggested_keep_file_id);
+  const applyCurrent = () => {
+    if (!currentGroup) return;
     const keepFileIds = [];
     const deleteFileIds = [];
-    for (const it of items) {
-      const fid = Number(it.file_id);
-      if (!Number.isFinite(fid)) continue;
-      if (keepSet.has(fid)) keepFileIds.push(fid);
+    currentGroup.items.forEach((item) => {
+      const fid = Number(item.file_id);
+      if (selections[fid] === 'keep') keepFileIds.push(fid);
       else deleteFileIds.push(fid);
-    }
-    await applyMutation.mutateAsync({ keepFileIds, deleteFileIds });
-    // Remove applied group locally to keep UI responsive.
-    setKeepByGroup((prev) => {
-      const next = new Map(prev);
-      next.delete(gid);
-      return next;
     });
+    // Ensure at least one kept
+    if (keepFileIds.length === 0 && currentGroup.items.length > 0) {
+      keepFileIds.push(Number(currentGroup.items[0].file_id));
+      deleteFileIds.shift();
+    }
+    applyMutation.mutate({ keepFileIds, deleteFileIds });
   };
 
-  const canLoadMore = !!query.hasNextPage && !query.isFetchingNextPage;
+  // Keyboard shortcuts
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.target?.tagName === 'INPUT' || e.target?.tagName === 'TEXTAREA') return;
+
+      switch (e.key) {
+        case 'ArrowLeft':
+          e.preventDefault();
+          goPrev();
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          goNext();
+          break;
+        case 'k':
+        case 'K':
+          e.preventDefault();
+          // Keep the first selected or first item
+          if (currentGroup?.items[0]) {
+            const fid = Number(currentGroup.items[0].file_id);
+            setSelections((prev) => ({ ...prev, [fid]: 'keep' }));
+          }
+          break;
+        case 't':
+        case 'T':
+          e.preventDefault();
+          // Trash the second item if exists
+          if (currentGroup?.items[1]) {
+            const fid = Number(currentGroup.items[1].file_id);
+            setSelections((prev) => ({ ...prev, [fid]: 'trash' }));
+          }
+          break;
+        case 'Enter':
+        case ' ':
+          e.preventDefault();
+          applyCurrent();
+          break;
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9': {
+          const idx = parseInt(e.key, 10) - 1;
+          if (currentGroup?.items[idx]) {
+            const fid = Number(currentGroup.items[idx].file_id);
+            toggleItem(fid);
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [currentGroup, groupIndex, groups.length, selections]);
+
+  if (isLoading) {
+    return (
+      <div className="h-full w-full flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
+          <div className="text-gray-600">加载重复项...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="h-full w-full flex items-center justify-center bg-gray-50">
+        <div className="text-center text-red-600">
+          <AlertCircle className="h-8 w-8 mx-auto mb-4" />
+          <div>加载失败: {error?.message || 'Unknown error'}</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (groups.length === 0) {
+    return (
+      <div className="h-full w-full flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <Images className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+          <div className="text-gray-600">暂无重复项</div>
+          <div className="text-sm text-gray-400 mt-2">{kind === 'phash' ? '尝试调整 pHash 阈值' : '所有文件都是唯一的'}</div>
+        </div>
+      </div>
+    );
+  }
+
+  const items = currentGroup?.items || [];
+  const progress = `${groupIndex + 1} / ${groups.length}`;
 
   return (
-    <div className="h-full w-full overflow-auto bg-gray-100 p-4">
-      <div className="max-w-6xl space-y-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="text-xl font-bold text-gray-900">检查重复项</div>
-            <div className="text-sm text-gray-600 mt-1">
-              以物理文件为主操作：默认保留 1 个，其它删除副本；当同一 hash 的所有实例都被选中删除时，将升级为删除该 asset（保留最后一份到回收站）。
-            </div>
-          </div>
-          <div className="shrink-0 flex items-center gap-2">
-            <Select value={kind} onValueChange={(v) => setKind(v)}>
-              <SelectTrigger className="w-36">
-                <SelectValue placeholder="模式" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="phash">相似度</SelectItem>
-                <SelectItem value="hash">同 hash</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <div className="flex items-center gap-2 rounded-md border bg-white px-3 py-2">
-              <div className="text-xs text-gray-600">阈值</div>
+    <div ref={containerRef} className="h-full w-full bg-gray-50 flex flex-col">
+      {/* Header */}
+      <div className="bg-white border-b px-6 py-4 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-4">
+          <h1 className="text-xl font-bold text-gray-900">检查重复项</h1>
+          <Badge variant="secondary" className="text-sm">
+            {progress}
+          </Badge>
+          {kind === 'phash' && (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <span>阈值:</span>
               <input
                 type="range"
                 min={0}
                 max={32}
                 value={threshold}
-                disabled={kind !== 'phash'}
-                onChange={(e) => setThreshold(Number(e.target.value) || 0)}
+                onChange={(e) => {
+                  setThreshold(Number(e.target.value));
+                  setGroupIndex(0);
+                }}
+                className="w-24"
               />
-              <div className="text-xs font-semibold tabular-nums text-gray-900 w-6 text-right">{threshold}</div>
+              <span className="w-6 text-right">{threshold}</span>
             </div>
-          </div>
+          )}
         </div>
 
-        {query.isLoading ? (
-          <div className="rounded-lg border bg-white p-4 text-sm text-gray-700 flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            加载中…
-          </div>
-        ) : groups.length === 0 ? (
-          <div className="rounded-lg border bg-white p-4 text-sm text-gray-700">
-            暂无重复项（或 pHash 仍在补算中）。
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {groups.map((g) => {
-              const gid = String(g.id);
-              const items = Array.isArray(g.items) ? g.items : [];
-              const keepSet = getKeepSet(gid, items, g.suggested_keep_file_id);
-              const byHash = groupByHash(items);
-              const hashKeys = uniq(Array.from(byHash.keys()));
+        <div className="flex items-center gap-2">
+          <select
+            value={kind}
+            onChange={(e) => {
+              setKind(e.target.value);
+              setGroupIndex(0);
+            }}
+            className="px-3 py-2 rounded border text-sm bg-white"
+          >
+            <option value="phash">相似图片 (pHash)</option>
+            <option value="hash">完全重复 (Hash)</option>
+          </select>
+
+          <div className="w-px h-6 bg-gray-200 mx-2" />
+
+          <Button variant="outline" size="sm" onClick={() => setAll('keep')}>
+            <Check className="h-4 w-4 mr-1" />
+            全部保留
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setAll('trash')}>
+            <Trash2 className="h-4 w-4 mr-1" />
+            全部删除
+          </Button>
+
+          <div className="w-px h-6 bg-gray-200 mx-2" />
+
+          <Button
+            onClick={applyCurrent}
+            disabled={applyMutation.isPending || !currentGroup}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            {applyMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            ) : (
+              <Check className="h-4 w-4 mr-1" />
+            )}
+            应用
+          </Button>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex items-center justify-center p-6 overflow-hidden">
+        <div className="flex items-center gap-4 w-full max-w-7xl">
+          {/* Prev Button */}
+          <button
+            onClick={goPrev}
+            disabled={groupIndex === 0}
+            className="p-3 rounded-full bg-white shadow-md hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+
+          {/* Cards */}
+          <div className="flex-1 grid grid-cols-2 gap-6 h-[calc(100vh-220px)] min-h-[400px]">
+            {items.map((item, idx) => {
+              const fid = Number(item.file_id);
+              const status = selections[fid] || 'trash';
+              const isKeep = status === 'keep';
 
               return (
-                <div key={gid} className="rounded-xl border bg-white p-4 shadow-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-gray-900">
-                        组 {gid} <span className="ml-2 text-xs text-gray-500">({items.length} 项)</span>
-                        {kind === 'phash' ? (
-                          <span className="ml-2 text-xs text-gray-500">pHash ≤ {Number(g.threshold ?? threshold)}</span>
-                        ) : null}
-                      </div>
-                      {hashKeys.length ? (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {hashKeys.slice(0, 12).map((h) => {
-                            const ids = (byHash.get(h) || []).map((it) => Number(it.file_id)).filter(Number.isFinite);
-                            const allKept = ids.length ? ids.every((id) => keepSet.has(id)) : false;
-                            const allDeleted = ids.length ? ids.every((id) => !keepSet.has(id)) : false;
-                            const state = allKept ? 'keep' : (allDeleted ? 'delete' : 'mixed');
-                            return (
-                              <button
-                                key={h}
-                                type="button"
-                                onClick={() => toggleHashAll(gid, h, items, g.suggested_keep_file_id)}
-                                className={`text-[11px] px-2 py-1 rounded border font-mono ${
-                                  state === 'keep'
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                    : state === 'delete'
-                                      ? 'bg-red-50 text-red-700 border-red-200'
-                                      : 'bg-gray-50 text-gray-700 border-gray-200'
-                                }`}
-                                title="点击：切换该 hash 的全选/全不选"
-                              >
-                                {h.slice(0, 8)}… {state === 'keep' ? '保留' : (state === 'delete' ? '删除' : '混合')}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div className="shrink-0 flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          // keep all
-                          const ids = items.map((it) => Number(it.file_id)).filter(Number.isFinite);
-                          setKeepByGroup((prev) => {
-                            const next = new Map(prev);
-                            next.set(gid, new Set(ids));
-                            return next;
-                          });
-                        }}
-                      >
-                        <Check className="mr-2 h-4 w-4" />
-                        全部保留
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const suggested = g.suggested_keep_file_id != null ? Number(g.suggested_keep_file_id) : null;
-                          const fallback = items[0]?.file_id != null ? Number(items[0].file_id) : null;
-                          const keep = Number.isFinite(suggested) ? suggested : fallback;
-                          if (keep == null) return;
-                          setGroupKeepOnly(gid, keep);
-                        }}
-                        title="仅保留推荐项，其它删除副本"
-                      >
-                        <Copy className="mr-2 h-4 w-4" />
-                        仅保留推荐
-                      </Button>
-                      <Button
-                        disabled={applyMutation.isPending}
-                        onClick={() => applyGroup(g)}
-                        title="应用当前选择"
-                      >
-                        {applyMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                        应用
-                      </Button>
-                    </div>
+                <div
+                  key={fid}
+                  className={`relative bg-white rounded-xl shadow-sm border-2 overflow-hidden cursor-pointer transition-all ${
+                    isKeep ? 'border-green-500 ring-2 ring-green-100' : 'border-red-300'
+                  }`}
+                  onClick={() => toggleItem(fid)}
+                >
+                  {/* Header */}
+                  <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between p-3 bg-gradient-to-b from-black/50 to-transparent">
+                    <Badge className={isKeep ? 'bg-green-500' : 'bg-red-500'}>
+                      {isKeep ? '保留' : '删除'}
+                    </Badge>
+                    <Badge variant="secondary" className="bg-white/90">
+                      #{idx + 1}
+                    </Badge>
                   </div>
 
-                  <div className="mt-4 overflow-x-auto">
-                    <div className="flex gap-3 min-w-max">
-                      {items.map((it) => {
-                        const fid = Number(it.file_id);
-                        const keep = keepSet.has(fid);
-                        const ms = pickDisplayMs(it);
-                        const previewHash = it?.hash ? String(it.hash) : null;
-                        const canPreview = !!previewHash;
-                        return (
-                          <button
-                            key={fid}
-                            type="button"
-                            className={`w-72 shrink-0 rounded-xl border overflow-hidden text-left transition ${
-                              keep ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'
-                            }`}
-                            onClick={() => toggleKeep(gid, fid, items, g.suggested_keep_file_id)}
-                            title={keep ? '点击：标记为删除副本' : '点击：标记为保留'}
-                          >
-                            <div className="relative h-44 bg-gray-100">
-                              {canPreview ? (
-                                <>
-                                  <img
-                                    src={apiUrl(`/assets/${previewHash}/preview?max=720&q=80`)}
-                                    className="absolute inset-0 h-full w-full object-cover"
-                                    alt=""
-                                    loading="lazy"
-                                  />
-                                  <button
-                                    type="button"
-                                    className="absolute top-2 left-2 z-20 rounded-md bg-white/90 border border-gray-200 px-2 py-1 text-[11px] font-semibold text-gray-800"
-                                    onClick={async (e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      if (!previewHash) return;
-                                      const full = await getAsset(previewHash);
-                                      onAssetClick?.(full);
-                                    }}
-                                    title="放大查看（复用查看器）"
-                                  >
-                                    <span className="inline-flex items-center gap-1">
-                                      <Eye className="h-3 w-3" />
-                                      查看
-                                    </span>
-                                  </button>
-                                </>
-                              ) : (
-                                <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-500">—</div>
-                              )}
+                  {/* Image */}
+                  <div className="h-1/2 bg-gray-100 relative">
+                    {item.hash ? (
+                      <img
+                        src={apiUrl(`/assets/${item.hash}/preview?max=1280&q=80`)}
+                        className="w-full h-full object-contain"
+                        alt=""
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-400">
+                        无预览
+                      </div>
+                    )}
+                  </div>
 
-                              <div className={`absolute top-2 right-2 z-20 px-2 py-1 rounded-md text-[11px] font-semibold border ${
-                                keep ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-red-600 text-white border-red-600'
-                              }`}>
-                                {keep ? '保留' : '删除'}
-                              </div>
-                            </div>
+                  {/* Info */}
+                  <div className="p-4 space-y-2 h-1/2 overflow-auto">
+                    <div className="font-medium text-gray-900 truncate" title={item.file_name}>
+                      {item.file_name || '—'}
+                    </div>
 
-                            <div className="p-3 space-y-1 text-[12px] text-gray-800">
-                              <div className="font-semibold truncate" title={it.file_name || ''}>{it.file_name || '—'}</div>
-                              <div className="font-mono text-[11px] text-gray-600 break-all line-clamp-2" title={it.path || ''}>
-                                {it.path || '—'}
-                              </div>
-                              <div className="text-[11px] text-gray-600 flex items-center justify-between gap-2">
-                                <div>{fmtBytes(it.size)}</div>
-                                <div>{it.width && it.height ? `${it.width}×${it.height}` : '—'}</div>
-                              </div>
-                              <div className="text-[11px] text-gray-600 flex items-center justify-between gap-2">
-                                <div>{fmtDate(ms)}</div>
-                                <div className="tabular-nums">{fmtTime(ms)}</div>
-                              </div>
-                              <div className="text-[11px] text-gray-600 flex items-center justify-between gap-2">
-                                <div>{(it.lat != null && it.lon != null) ? '有定位' : '—'}</div>
-                                <div className="truncate">{it.organized_to || '—'}</div>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
+                    <div className="text-sm text-gray-600 space-y-1">
+                      <div className="truncate" title={item.path}>
+                        路径: {item.path || '—'}
+                      </div>
+
+                      <div className="flex gap-4">
+                        <span>大小: {fmtBytes(item.size)}</span>
+                        {item.width && item.height && (
+                          <span>尺寸: {item.width}×{item.height}</span>
+                        )}
+                      </div>
+
+                      <div>修改: {fmtDate(item.mtime_ms)}</div>
+
+                      {item.asset_taken_at && (
+                        <div>拍摄: {fmtDate(item.asset_taken_at)}</div>
+                      )}
+
+                      {item.lat != null && item.lon != null && (
+                        <div>位置: {item.lat.toFixed(4)}, {item.lon.toFixed(4)}</div>
+                      )}
+
+                      {item.organized_to && (
+                        <div className="text-green-600">已归档: {item.organized_to}</div>
+                      )}
+                    </div>
+
+                    {/* Toggle Button */}
+                    <div className="pt-2">
+                      <Button
+                        size="sm"
+                        variant={isKeep ? 'default' : 'outline'}
+                        className={`w-full ${isKeep ? 'bg-green-600 hover:bg-green-700' : 'text-red-600 border-red-300 hover:bg-red-50'}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleItem(fid);
+                        }}
+                      >
+                        {isKeep ? (
+                          <>
+                            <Check className="h-4 w-4 mr-1" /> 保留
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="h-4 w-4 mr-1" /> 删除
+                          </>
+                        )}
+                      </Button>
                     </div>
                   </div>
                 </div>
               );
             })}
-
-            <div className="flex items-center justify-center">
-              <Button variant="outline" disabled={!canLoadMore} onClick={() => query.fetchNextPage()}>
-                {query.isFetchingNextPage ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                加载更多
-              </Button>
-            </div>
           </div>
-        )}
+
+          {/* Next Button */}
+          <button
+            onClick={goNext}
+            disabled={groupIndex >= groups.length - 1}
+            className="p-3 rounded-full bg-white shadow-md hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronRight className="h-6 w-6" />
+          </button>
+        </div>
+      </div>
+
+      {/* Footer - Keyboard Shortcuts */}
+      <div className="bg-white border-t px-6 py-3 text-xs text-gray-500 flex items-center justify-center gap-6 shrink-0">
+        <span>快捷键:</span>
+        <span>← → 切换组</span>
+        <span>1-9 切换状态</span>
+        <span>Enter/Space 应用</span>
+        <span>K 保留首个</span>
+        <span>T 删除次个</span>
       </div>
     </div>
   );
 }
-
-
