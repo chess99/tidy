@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Tidy - 文件整理与去重工具</title>
+    <title>Tidy - 本地文件整理与关联查找工具</title>
     <meta
       name="description"
-      content="Tidy 是本地文件系统整理工具：以 hash 为内容主键，直接落盘整理与去重，并提供可恢复的一致性对账。"
+      content="Tidy 是本地文件系统整理工具：以 hash 为内容主键，支持相似图、语义相似、智能搜索等关联查找能力，直接落盘整理，并提供可恢复的一致性对账。"
     />
     <link rel="stylesheet" href="./assets/bootstrap-icons.css" />
     <link rel="stylesheet" href="./styles.css" />
@@ -32,8 +32,8 @@
         <div class="hero-text fade-in">
           <h1>更快地整理你的文件</h1>
           <p>
-            Tidy 是一个本地文件整理与去重工具，通过内容哈希（hash）识别重复项，
-            直接操作文件系统进行整理与归档。所有数据运行在本地，不上传云端，保障隐私安全。
+            Tidy 是一个本地文件整理工具，通过内容哈希管理文件，支持相似图、语义相似、智能搜索等关联查找能力。
+            所有数据运行在本地，不上传云端，保障隐私安全。
           </p>
           <div class="cta-row">
             <a class="btn btn-primary" href="./download.html">
@@ -63,16 +63,29 @@
       <div class="container">
         <div class="section-title fade-in">Tidy 能做什么</div>
         <div class="section-subtitle fade-in">
-          Tidy 关注"整理"和"落盘"。核心能力围绕数据一致性、可恢复性与大库流畅体验展开。
+          Tidy 关注"整理"和"发现"。核心能力围绕文件归档、关联查找、数据一致性与大库流畅体验展开。
         </div>
 
         <div class="feature-list">
           <div class="feature-item fade-in">
             <div class="feature-content">
-              <h3>整理文件</h3>
+              <h3>关联查找</h3>
               <p>
-                基于内容 Hash 识别重复项，将散乱文件整理至结构化目录，只保留唯一副本。
-                所有操作直接作用于文件系统，确保文件真正被整理。
+                集成 pHash 感知哈希与 CLIP 语义模型，支持相似图片查找、语义相似搜索、以文搜图。
+                快速发现内容相关的文件，无论文件名是否相关。
+              </p>
+            </div>
+            <div class="feature-image">
+              <div class="media-placeholder">相似图查找界面截图</div>
+            </div>
+          </div>
+
+          <div class="feature-item fade-in reverse">
+            <div class="feature-content">
+              <h3>整理归档</h3>
+              <p>
+                基于内容 Hash 识别文件，将散乱文件整理至结构化目录。支持批量选择、
+                智能去重（同一内容只保留一份），所有操作直接作用于文件系统。
               </p>
             </div>
             <div class="feature-image">
@@ -80,25 +93,12 @@
             </div>
           </div>
 
-          <div class="feature-item fade-in reverse">
-            <div class="feature-content">
-              <h3>去重与归档</h3>
-              <p>
-                通过内容哈希精确识别重复文件，自动合并重复项，将文件归档到统一目录结构。
-                支持百万级文件的快速去重处理。
-              </p>
-            </div>
-            <div class="feature-image">
-              <div class="media-placeholder">去重工具界面截图</div>
-            </div>
-          </div>
-
           <div class="feature-item fade-in">
             <div class="feature-content">
-              <h3>智能检索</h3>
+              <h3>智能搜索</h3>
               <p>
-                集成 pHash 相似度计算与 CLIP 语义检索，快速发现相似图片与语义相关内容。
-                支持以文搜图，用自然语言描述查找图片。
+                支持自然语言描述搜索图片（如"海边的日落"、"会议白板"），
+                无需依赖文件名或文件夹结构，直接理解图片内容。
               </p>
             </div>
             <div class="feature-image">
@@ -131,10 +131,10 @@
         <div class="benefits-grid">
           <div class="benefit-card fade-in">
             <div class="benefit-icon">
-              <i class="bi bi-hash" aria-hidden="true"></i>
+              <i class="bi bi-search" aria-hidden="true"></i>
             </div>
-            <h3>内容哈希去重</h3>
-            <p>基于文件内容而非文件名，精确识别重复项</p>
+            <h3>关联查找</h3>
+            <p>pHash 相似图、CLIP 语义相似、以文搜图</p>
           </div>
           <div class="benefit-card fade-in">
             <div class="benefit-icon">
@@ -145,10 +145,10 @@
           </div>
           <div class="benefit-card fade-in">
             <div class="benefit-icon">
-              <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+              <i class="bi bi-folder-check" aria-hidden="true"></i>
             </div>
-            <h3>可恢复一致性</h3>
-            <p>操作日志与对账机制，确保数据一致性</p>
+            <h3>落盘整理</h3>
+            <p>操作直接作用于文件系统，文件真正被归档</p>
           </div>
           <div class="benefit-card fade-in">
             <div class="benefit-icon">
@@ -159,17 +159,17 @@
           </div>
           <div class="benefit-card fade-in">
             <div class="benefit-icon">
-              <i class="bi bi-search" aria-hidden="true"></i>
+              <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
             </div>
-            <h3>智能检索</h3>
-            <p>pHash 相似度与 CLIP 语义检索</p>
+            <h3>可恢复一致性</h3>
+            <p>操作日志与对账机制，确保数据一致性</p>
           </div>
           <div class="benefit-card fade-in">
             <div class="benefit-icon">
-              <i class="bi bi-gear" aria-hidden="true"></i>
+              <i class="bi bi-hash" aria-hidden="true"></i>
             </div>
-            <h3>自动化批处理</h3>
-            <p>支持后台任务并发执行，批量处理文件</p>
+            <h3>内容哈希管理</h3>
+            <p>基于文件内容而非文件名，精确识别重复项</p>
           </div>
         </div>
       </div>
@@ -184,7 +184,7 @@
         <div class="faq">
           <div class="faq-item fade-in">
             <h3>这和相册工具有什么不同？</h3>
-            <p>相册偏浏览与展示，Tidy 更像整理引擎：操作直接作用于文件系统，强调"可控/可恢复/可落盘"。</p>
+            <p>相册偏浏览与展示，Tidy 更像整理引擎：操作直接作用于文件系统，强调"可控/可恢复/可落盘"，并提供强大的关联查找能力（相似图、语义搜索）。</p>
           </div>
           <div class="faq-item fade-in">
             <h3>数据安全吗？</h3>
@@ -210,7 +210,7 @@
       <div class="container">
         <div class="cta-content fade-in">
           <h2>准备开始整理文件？</h2>
-          <p>下载 Tidy，体验本地文件整理的新方式。</p>
+          <p>下载 Tidy，体验本地文件整理与关联查找的新方式。</p>
           <a class="btn btn-primary btn-large" href="./download.html">
             <i class="bi bi-download" aria-hidden="true"></i>
             下载 Tidy
@@ -227,7 +227,7 @@
               <img src="./assets/logo.png" alt="Tidy" class="logo-img" width="36" height="36" />
               <span>Tidy</span>
             </a>
-            <p>本地文件系统整理工具。通过内容哈希识别重复项，直接操作文件系统进行整理与归档。你的数据始终在你的电脑上。</p>
+            <p>本地文件系统整理与关联查找工具。通过内容哈希管理文件，支持相似图、语义搜索。你的数据始终在你的电脑上。</p>
           </div>
           <div class="footer-links">
             <div class="footer-column">
