@@ -10,7 +10,6 @@ import { useEffect, useRef, useState } from 'react';
 import { apiUrl, getAsset, getAssetsBatch, getFilesUnified, getFilesBatch, updateAssetStatus, openFileLocation } from './api/client';
 import { MinimalScanStatus } from './components/MinimalScanStatus';
 import { FilesFilters } from './components/FilesFilters';
-import { FilesFiltersSimple } from './components/FilesFiltersSimple';
 import { FilesGrid } from './components/FilesGrid';
 import { AssetDetail } from './components/AssetDetail';
 import { AlbumsView } from './components/AlbumsView';
