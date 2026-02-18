@@ -97,7 +97,7 @@ router.get('/:id/assets', (req, res) => {
     LIMIT ? OFFSET ?
   `).all(id, limit, offset);
 
-  // Enrich with files, parsed metadata, and ext for UI labels
+  // Enrich with files, parsed metadata, ext, and similarity fields for UI labels
   const out = rows.map((r) => {
     const samplePath = r?.sample_path ? String(r.sample_path) : '';
     const ext = samplePath ? path.extname(samplePath).toLowerCase() : null;
@@ -112,11 +112,24 @@ router.get('/:id/assets', (req, res) => {
       `)
       .all(r.hash);
 
+    // Get phash info from files (any file with phash_status='done')
+    const phashInfo = db
+      .prepare("SELECT phash, phash_status FROM files WHERE hash = ? AND phash_status = 'done' LIMIT 1")
+      .get(r.hash);
+
+    // Check if CLIP embedding exists
+    const clipInfo = db
+      .prepare('SELECT 1 as has_clip FROM clip_embeddings WHERE hash = ? LIMIT 1')
+      .get(r.hash);
+
     return {
       ...r,
       sample_ext: ext || null,
       metadata: safeJsonParse(r.metadata),
       files: files || [],
+      phash: phashInfo?.phash || null,
+      phash_status: phashInfo?.phash_status || null,
+      clip_status: clipInfo?.has_clip ? 'ready' : null,
     };
   });
 
