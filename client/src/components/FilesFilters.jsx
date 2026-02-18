@@ -57,6 +57,7 @@ export function FilesFilters({ value, onChange }) {
     v.hasDup,
     v.pathContains,
     v.hash,
+    (v.similarKind === 'phash' || v.similarKind === 'clip') && v.similarToFileId,
   ].filter(Boolean).length;
 
   const clearAll = () => {
@@ -72,6 +73,8 @@ export function FilesFilters({ value, onChange }) {
       hasDup: false,
       pathContains: '',
       hash: '',
+      similarKind: null,
+      similarToFileId: null,
     });
   };
 
