@@ -1,52 +1,33 @@
 /**
  * input: props + API 数据 + 本地状态
- * output: 功能/页面组件（React 组件）
- * pos: 客户端视图层：拼装业务交互（变更需同步更新本头注释与所属目录 README）
+ * output: 美观易用的筛选面板
+ * pos: 客户端视图层：重新设计的筛选面板（变更需同步更新本头注释与所属目录 README）
  */
 
-import { Check, FilterX, Plus, X } from 'lucide-react';
+import { Search, X, Filter, Image, Video, Calendar, Users, Folder, Hash, Sparkles, ChevronDown, ChevronUp, Trash2, CheckCircle2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getPeople } from '../api/client';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Checkbox } from './ui/checkbox';
 import { DateRangePicker } from './ui/date-range-picker';
-import { Input } from './ui/input';
-import { Textarea } from './ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Separator } from './ui/separator';
 
-const COMMON_EXTS = ['mov', 'mp4', 'heic', 'jpg', 'png', 'gif', 'webp'];
+const FILE_TYPE_GROUPS = [
+  { key: 'image', label: '图片', icon: Image, exts: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'tif', 'tiff', 'bmp'] },
+  { key: 'raw', label: 'RAW', icon: Image, exts: ['dng', 'cr2', 'cr3', 'nef', 'arw', 'raf', 'rw2', 'orf', 'sr2', 'pef'] },
+  { key: 'video', label: '视频', icon: Video, exts: ['mp4', 'mov', 'm4v', 'avi', 'mkv', 'webm', '3gp'] },
+];
 
-function normExt(raw) {
-  if (!raw) return null;
-  let s = String(raw).trim().toLowerCase();
-  if (!s) return null;
-  if (s.startsWith('.')) s = s.slice(1);
-  // keep it conservative; extensions like "3gp" etc are fine
-  if (!/^[a-z0-9]{1,10}$/.test(s)) return null;
-  return s;
-}
+const STATUS_OPTIONS = [
+  { key: 'inbox', label: '未整理', color: 'bg-gray-100 text-gray-700' },
+  { key: 'sorted', label: '已保留', color: 'bg-green-100 text-green-700' },
+  { key: 'trash', label: '已删除', color: 'bg-red-100 text-red-700' },
+];
 
 export function FilesFilters({ value, onChange }) {
-  "use no memo"
   const v = value || {};
-  const [extInput, setExtInput] = useState('');
-  const [smartDraft, setSmartDraft] = useState(() => String(v.smartQuery || ''));
-  const [smartComposing, setSmartComposing] = useState(false);
-  const smartQueryAppliedRaw = String(v.smartQuery || '');
-  const smartQueryApplied = smartQueryAppliedRaw.trim();
-  const smartActive = !!smartQueryApplied;
-  const smartDirty = smartDraft !== smartQueryAppliedRaw;
-
-  const similarActive = (v.similarKind === 'phash' || v.similarKind === 'clip') && Number.isFinite(Number(v.similarToFileId));
-  const similarSeedFileId = Number.isFinite(Number(v.similarToFileId)) ? Number(v.similarToFileId) : null;
-  const similarThreshold = Number.isFinite(Number(v.similarThreshold))
-    ? Math.max(0, Math.min(32, Math.floor(Number(v.similarThreshold))))
-    : 10;
-  const similarMinScore = Number.isFinite(Number(v.similarMinScore)) ? Number(v.similarMinScore) : 0.25;
-  const smartMinScore = Number.isFinite(Number(v.smartMinScore)) ? Number(v.smartMinScore) : 0.25;
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [smartInput, setSmartInput] = useState(() => String(v.smartQuery || ''));
 
   const peopleQuery = useQuery({
     queryKey: ['people'],
@@ -54,521 +35,368 @@ export function FilesFilters({ value, onChange }) {
     staleTime: 60000,
   });
   const people = peopleQuery.data || [];
-  // Ensure selectedPeopleIds is array of numbers
+
   const selectedPeopleIds = useMemo(() => {
     if (!v.people) return [];
     const arr = Array.isArray(v.people) ? v.people : String(v.people).split(',');
     return arr.map(Number).filter(n => Number.isFinite(n));
   }, [v.people]);
 
-  const rangeValue = useMemo(() => ({ from: v.from, to: v.to }), [v.from, v.to]);
   const selectedExts = Array.isArray(v.exts) ? v.exts : [];
-  const selectedExtSet = new Set(selectedExts);
 
-  const activeCount =
-    (v.organized != null ? 1 : 0) +
-    (v.hasDup ? 1 : 0) +
-    (v.hasPeople ? 1 : 0) +
-    (Number.isFinite(v.personCountMin) ? 1 : 0) +
-    (Number.isFinite(v.personCountMax) ? 1 : 0) +
-    (v.from ? 1 : 0) +
-    (v.to ? 1 : 0) +
-    (selectedExts.length ? 1 : 0) +
-    (v.pathContains ? 1 : 0) +
-    (selectedPeopleIds.length ? 1 : 0) +
-    (v.hash ? 1 : 0) +
-    (similarActive ? 1 : 0) +
-    (smartActive ? 1 : 0);
+  // 计算激活的筛选条件数
+  const activeFilters = [
+    v.smartQuery,
+    v.from || v.to,
+    selectedExts.length > 0,
+    selectedPeopleIds.length > 0,
+    v.hasPeople,
+    v.status,
+    v.hasDup,
+    v.pathContains,
+  ].filter(Boolean).length;
 
-  const toggleExt = (raw) => {
-    const e = normExt(raw);
-    if (!e) return;
-    const next = new Set(selectedExtSet);
-    if (next.has(e)) next.delete(e);
-    else next.add(e);
-    onChange({ ...v, exts: Array.from(next) });
+  const clearAll = () => {
+    setSmartInput('');
+    onChange({
+      smartQuery: '',
+      from: undefined,
+      to: undefined,
+      exts: [],
+      people: undefined,
+      hasPeople: false,
+      status: undefined,
+      hasDup: false,
+      pathContains: '',
+    });
   };
 
-  const addExtFromInput = () => {
-    const e = normExt(extInput);
-    if (!e) return;
-    if (selectedExtSet.has(e)) {
-      setExtInput('');
-      return;
-    }
-    onChange({ ...v, exts: [...selectedExts, e] });
-    setExtInput('');
+  const toggleExtGroup = (group) => {
+    const groupExts = group.exts;
+    const allSelected = groupExts.every(e => selectedExts.includes(e));
+    const next = allSelected
+      ? selectedExts.filter(e => !groupExts.includes(e))
+      : [...new Set([...selectedExts, ...groupExts])];
+    onChange({ ...v, exts: next });
+  };
+
+  const isGroupActive = (group) => {
+    return group.exts.some(e => selectedExts.includes(e));
+  };
+
+  const applySmartSearch = () => {
+    onChange({ ...v, smartQuery: smartInput.trim() });
   };
 
   return (
-    <div className="h-full w-80 shrink-0 border-r bg-background overflow-auto">
-      <div className="sticky top-0 px-4 pt-4 pb-3 bg-background z-10 border-b">
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold text-foreground">筛选</div>
+    <div className="h-full w-72 shrink-0 border-r bg-white flex flex-col">
+      {/* Header */}
+      <div className="px-4 py-3 border-b flex items-center justify-between bg-gray-50">
         <div className="flex items-center gap-2">
-          {activeCount ? <Badge variant="secondary">{activeCount}</Badge> : null}
-          <Button
-            variant="ghost"
-            size="icon"
-            title="清空筛选"
-            onClick={() => {
-              setSmartDraft('');
-              onChange({
-                ...v,
-                organized: undefined,
-                hasDup: false,
-                hasPeople: false,
-                personCountMin: undefined,
-                personCountMax: undefined,
-                from: undefined,
-                to: undefined,
-                exts: [],
-                people: undefined,
-                pathContains: '',
-                hash: '',
-                similarKind: null,
-                similarToFileId: null,
-                similarThreshold: 10,
-                similarTopK: 500,
-                similarMinScore: 0.25,
-                smartQuery: '',
-                smartTopK: 1000,
-                smartMinScore: 0.25,
-              });
-            }}
-          >
-            <FilterX className="h-4 w-4" />
-          </Button>
-        </div>
-        </div>
-      </div>
-
-      <div className="space-y-6 px-4 py-4">
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold text-muted-foreground">智能搜索（CLIP）</div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setSmartDraft('');
-                onChange({ ...v, smartQuery: '' });
-              }}
-              title="清除智能搜索"
-              className={smartActive ? undefined : 'opacity-0 pointer-events-none'}
-              aria-hidden={!smartActive}
-              tabIndex={smartActive ? 0 : -1}
-            >
-              清除
-            </Button>
-      </div>
-
-          <div className="space-y-1">
-            <Textarea
-              value={smartDraft}
-              onChange={(e) => setSmartDraft(e.target.value)}
-              onCompositionStart={() => setSmartComposing(true)}
-              onCompositionEnd={(e) => {
-                setSmartComposing(false);
-                setSmartDraft(e.target.value);
-              }}
-              onKeyDown={(e) => {
-                // Multiline UX:
-                // - Enter: newline
-                // - Ctrl/Cmd+Enter: apply smart search
-                if (e.key === 'Enter' && !smartComposing && (e.ctrlKey || e.metaKey)) {
-                  e.preventDefault();
-                  onChange({ ...v, smartQuery: smartDraft });
-                }
-                if (e.key === 'Escape') {
-                  e.preventDefault();
-                  setSmartDraft(smartQueryAppliedRaw);
-                }
-              }}
-              placeholder="输入文字（支持长文本）：例如『海边 日落 狗』"
-              rows={2}
-              className="w-full min-h-[64px] resize-y leading-5"
-            />
-            <div className="flex items-center justify-between pl-1">
-              <div className="text-[10px] text-muted-foreground">
-                <span className="font-mono">⌘/Ctrl + Enter</span> 应用
-              </div>
-              <Button
-                type="button"
-                variant={smartDirty ? 'default' : 'secondary'}
-                size="sm"
-                disabled={!smartDirty}
-                title={smartDirty ? '应用智能搜索（⌘/Ctrl + Enter）' : '已应用'}
-                className="h-7 px-3 gap-1.5 text-xs"
-                onClick={() => onChange({ ...v, smartQuery: smartDraft })}
-              >
-                <Check className="h-3.5 w-3.5" />
-                应用
-              </Button>
-            </div>
-          </div>
-
-          {smartActive ? (
-            <div className="space-y-2">
-              <div className="flex items-center gap-3">
-                <div className="text-[11px] text-muted-foreground w-12">阈值</div>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={Math.max(0, Math.min(1, smartMinScore))}
-                  onChange={(e) => onChange({ ...v, smartMinScore: Number(e.target.value) })}
-                  className="w-full"
-                />
-                <div className="text-xs font-semibold tabular-nums w-12 text-right">{Math.max(0, Math.min(1, smartMinScore)).toFixed(2)}</div>
-              </div>
-              <div className="text-[11px] text-muted-foreground leading-4">
-                提示：结果按相似度排序展示；可与其它筛选条件叠加（日期/后缀/人物等）。
-              </div>
-            </div>
-          ) : (
-            <div className="text-xs text-muted-foreground italic">未启用</div>
+          <Filter className="h-4 w-4 text-gray-500" />
+          <span className="text-sm font-semibold text-gray-900">筛选</span>
+          {activeFilters > 0 && (
+            <Badge variant="secondary" className="text-xs h-5 px-1.5">
+              {activeFilters}
+            </Badge>
           )}
         </div>
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-muted-foreground">范围</div>
-          <Select
-            value={v.filter || 'all'}
-            onValueChange={(filter) => onChange({ ...v, filter })}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="选择范围" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部文件</SelectItem>
-              <SelectItem value="media">全部图片/视频</SelectItem>
-              <SelectItem value="camera">相机照片/视频</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        {activeFilters > 0 && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={clearAll}>
+            清空
+          </Button>
+        )}
+      </div>
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold text-muted-foreground">后缀（扩展名）</div>
-            {/* Keep space reserved to avoid layout jump */}
+      {/* Content */}
+      <div className="flex-1 overflow-auto">
+        {/* Smart Search - Compact */}
+        <div className="p-4 border-b">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              value={smartInput}
+              onChange={(e) => setSmartInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && applySmartSearch()}
+              placeholder="智能搜索..."
+              className="w-full pl-9 pr-16 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
             <Button
-              type="button"
-              variant="ghost"
               size="sm"
-              onClick={() => onChange({ ...v, exts: [] })}
-              title="清空后缀筛选"
-              className={selectedExts.length ? undefined : 'opacity-0 pointer-events-none'}
-              aria-hidden={!selectedExts.length}
-              tabIndex={selectedExts.length ? 0 : -1}
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 text-xs"
+              disabled={!smartInput.trim() || smartInput.trim() === v.smartQuery}
+              onClick={applySmartSearch}
             >
-              清空
+              搜索
             </Button>
           </div>
+          {v.smartQuery && (
+            <div className="flex items-center gap-2 mt-2">
+              <Badge className="bg-blue-100 text-blue-700 text-xs">
+                {v.smartQuery}
+              </Badge>
+              <button
+                onClick={() => { setSmartInput(''); onChange({ ...v, smartQuery: '' }); }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )}
+        </div>
 
+        {/* File Types - Visual Tags */}
+        <div className="p-4 border-b">
+          <div className="text-xs font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+            <Image className="h-3.5 w-3.5" />
+            文件类型
+          </div>
           <div className="flex flex-wrap gap-2">
-            {COMMON_EXTS.map((e) => {
-              const on = selectedExtSet.has(e);
+            {FILE_TYPE_GROUPS.map((group) => {
+              const Icon = group.icon;
+              const active = isGroupActive(group);
               return (
-                <Button
-                  key={e}
-                  type="button"
-                  variant={on ? 'secondary' : 'outline'}
-                  size="sm"
-                  onClick={() => toggleExt(e)}
-                  title={`筛选 .${e}`}
+                <button
+                  key={group.key}
+                  onClick={() => toggleExtGroup(group)}
+                  className={`
+                    inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all
+                    ${active
+                      ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                      : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                    }
+                  `}
                 >
-                  .{e}
-                </Button>
+                  <Icon className="h-3 w-3" />
+                  {group.label}
+                  {active && <span className="text-[10px]">✓</span>}
+                </button>
               );
             })}
           </div>
-
-          {selectedExts.length ? (
-            <div className="flex flex-wrap gap-2">
-              {selectedExts.map((e) => (
-                <Badge key={e} variant="secondary" className="gap-1">
-                  .{e}
-                  <button
-                    type="button"
-                    className="ml-1 rounded hover:opacity-80"
-                    title={`移除 .${e}`}
-                    onClick={() => toggleExt(e)}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))}
+          {selectedExts.length > 0 && (
+            <div className="mt-2 text-xs text-gray-500">
+              已选: {selectedExts.map(e => `.${e}`).join(', ')}
             </div>
-          ) : null}
-
-          <div className="flex gap-2">
-            <Input
-              value={extInput}
-              onChange={(e) => setExtInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  addExtFromInput();
-                }
-              }}
-              placeholder="自定义：mov / .mov"
-            />
-            <Button type="button" variant="outline" size="icon" title="添加后缀" onClick={addExtFromInput}>
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <div className="text-[11px] text-muted-foreground leading-4">
-            提示：后缀筛选会与“范围”叠加；若无结果可切回
-            <button
-              type="button"
-              className="ml-1 underline underline-offset-2"
-              onClick={() => onChange({ ...v, filter: 'all' })}
-              title="切回 全部文件"
-            >
-              全部文件
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-muted-foreground">人物 ({selectedPeopleIds.length})</div>
-          {selectedPeopleIds.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {selectedPeopleIds.map((id) => {
-                const p = people.find((x) => x.id === id);
-                return (
-                  <Badge key={id} variant="secondary" className="gap-1">
-                    {p ? p.name : `ID:${id}`}
-                    <button
-                      type="button"
-                      className="ml-1 rounded hover:opacity-80"
-                      onClick={() => {
-                        const next = selectedPeopleIds.filter((pid) => pid !== id);
-                        onChange({ ...v, people: next.length ? next : undefined });
-                      }}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                );
-              })}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-5 px-1 text-xs text-muted-foreground"
-                onClick={() => onChange({ ...v, people: undefined })}
-              >
-                清空
-              </Button>
-            </div>
-          ) : (
-            <div className="text-xs text-muted-foreground italic">未选择（在详情面板添加）</div>
           )}
         </div>
 
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-muted-foreground">有人 / 人数</div>
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox
-              checked={!!v.hasPeople}
-              onCheckedChange={(ck) => onChange({ ...v, hasPeople: !!ck })}
-            />
-            <span>仅有人脸（已识别/已聚类后）</span>
-          </label>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <div className="text-[11px] text-muted-foreground">人数 ≥</div>
-              <Input
-                type="number"
-                inputMode="numeric"
-                min={1}
-                value={Number.isFinite(v.personCountMin) ? String(v.personCountMin) : ''}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  if (!raw) return onChange({ ...v, personCountMin: undefined });
-                  const n = Number(raw);
-                  onChange({ ...v, personCountMin: Number.isFinite(n) ? Math.max(1, Math.floor(n)) : undefined });
-                }}
-                placeholder="例如：1"
-              />
-            </div>
-            <div className="space-y-1">
-              <div className="text-[11px] text-muted-foreground">人数 ≤</div>
-              <Input
-                type="number"
-                inputMode="numeric"
-                min={1}
-                value={Number.isFinite(v.personCountMax) ? String(v.personCountMax) : ''}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  if (!raw) return onChange({ ...v, personCountMax: undefined });
-                  const n = Number(raw);
-                  onChange({ ...v, personCountMax: Number.isFinite(n) ? Math.max(1, Math.floor(n)) : undefined });
-                }}
-                placeholder="例如：2"
-              />
-            </div>
+        {/* Date Range */}
+        <div className="p-4 border-b">
+          <div className="text-xs font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+            <Calendar className="h-3.5 w-3.5" />
+            拍摄日期
           </div>
-          <div className="text-[11px] text-muted-foreground leading-4">
-            提示：人数按同一张照片里的“不同 person”计数；用于筛“合照”（例如 ≥2）。
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-muted-foreground">状态</div>
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={v.organized === 0}
-                onCheckedChange={(ck) =>
-                  onChange({ ...v, organized: ck ? 0 : undefined })
-                }
-              />
-              <span>仅未整理</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={v.organized === 1}
-                onCheckedChange={(ck) =>
-                  onChange({ ...v, organized: ck ? 1 : undefined })
-                }
-              />
-              <span>仅已整理</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={!!v.hasDup}
-                onCheckedChange={(ck) => onChange({ ...v, hasDup: !!ck })}
-              />
-              <span>仅重复</span>
-            </label>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-muted-foreground">日期</div>
           <DateRangePicker
-            value={rangeValue}
-            onChange={(r) => onChange({ ...v, from: r.from, to: r.to })}
+            value={{ from: v.from, to: v.to }}
+            onChange={(range) => onChange({ ...v, from: range?.from, to: range?.to })}
           />
         </div>
 
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-muted-foreground">路径包含</div>
-          <div className="relative">
-            <Input
-              value={v.pathContains || ''}
-              onChange={(e) => onChange({ ...v, pathContains: e.target.value })}
-              placeholder="例如：\\DCIM\\ 或 \\YYYYMMDD-Trip\\"
-              className={v.pathContains ? 'pr-9' : undefined}
-            />
-            {v.pathContains ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
-                title="清空路径筛选"
-                onClick={() => onChange({ ...v, pathContains: '' })}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            ) : null}
+        {/* Quick Filters */}
+        <div className="p-4 border-b">
+          <div className="text-xs font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            快速筛选
           </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-muted-foreground">Hash 精确</div>
-          <div className="relative">
-            <Input
-              value={v.hash || ''}
-              onChange={(e) => onChange({ ...v, hash: e.target.value.trim() })}
-              placeholder="用于“仅看该内容”排查重复"
-              className={v.hash ? 'pr-9' : undefined}
-            />
-            {v.hash ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
-                title="清空 hash 筛选"
-                onClick={() => onChange({ ...v, hash: '' })}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-muted-foreground">相似（pHash / CLIP）</div>
-          {similarActive ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[11px] text-muted-foreground">
-                  seed file_id：<span className="font-mono">{String(similarSeedFileId)}</span>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onChange({ ...v, similarKind: null, similarToFileId: null })}
-                  title="清除相似筛选"
+          <div className="space-y-2">
+            {/* Status */}
+            <div className="flex flex-wrap gap-1.5">
+              {STATUS_OPTIONS.map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => onChange({ ...v, status: v.status === opt.key ? undefined : opt.key })}
+                  className={`
+                    px-2.5 py-1 rounded-md text-xs font-medium transition-colors
+                    ${v.status === opt.key ? opt.color : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}
+                  `}
                 >
-                  清除
-                </Button>
-              </div>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
 
-              {v.similarKind === 'phash' ? (
-                <>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="range"
-                      min={0}
-                      max={32}
-                      value={similarThreshold}
-                      onChange={(e) => onChange({ ...v, similarThreshold: Number(e.target.value) || 0 })}
-                      className="w-full"
-                    />
-                    <div className="text-xs font-semibold tabular-nums w-7 text-right">{similarThreshold}</div>
-                  </div>
-                  <div className="text-[11px] text-muted-foreground leading-4">
-                    pHash 汉明距离阈值：越小越相似（0=完全一致，32=最宽松）。
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="flex items-center gap-3">
-                    <div className="text-[11px] text-muted-foreground w-12">阈值</div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={Math.max(0, Math.min(1, similarMinScore))}
-                      onChange={(e) => onChange({ ...v, similarMinScore: Number(e.target.value) })}
-                      className="w-full"
-                    />
-                    <div className="text-xs font-semibold tabular-nums w-12 text-right">{Math.max(0, Math.min(1, similarMinScore)).toFixed(2)}</div>
-                  </div>
-                  <div className="text-[11px] text-muted-foreground leading-4">
-                    CLIP cosine similarity 阈值：越大越相似（建议从 0.25~0.35 试起）。
-                  </div>
-                </>
+            {/* Other quick filters */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer hover:text-gray-900">
+                <input
+                  type="checkbox"
+                  checked={!!v.hasDup}
+                  onChange={(e) => onChange({ ...v, hasDup: e.target.checked })}
+                  className="rounded border-gray-300 text-blue-600"
+                />
+                仅重复
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer hover:text-gray-900">
+                <input
+                  type="checkbox"
+                  checked={!!v.hasPeople}
+                  onChange={(e) => onChange({ ...v, hasPeople: e.target.checked })}
+                  className="rounded border-gray-300 text-blue-600"
+                />
+                含人物
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* People */}
+        {people.length > 0 && (
+          <div className="p-4 border-b">
+            <div className="text-xs font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+              <Users className="h-3.5 w-3.5" />
+              人物
+              {selectedPeopleIds.length > 0 && (
+                <Badge variant="secondary" className="text-[10px] h-4 px-1">
+                  {selectedPeopleIds.length}
+                </Badge>
               )}
             </div>
-          ) : (
-            <div className="text-xs text-muted-foreground italic">未开启（在详情面板点“找相似”）</div>
+            <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+              {people.map((p) => {
+                const active = selectedPeopleIds.includes(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => {
+                      const next = active
+                        ? selectedPeopleIds.filter(id => id !== p.id)
+                        : [...selectedPeopleIds, p.id];
+                      onChange({ ...v, people: next.length ? next : undefined });
+                    }}
+                    className={`
+                      px-2.5 py-1 rounded-full text-xs transition-colors
+                      ${active
+                        ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                        : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                      }
+                    `}
+                  >
+                    {p.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Advanced Filters */}
+        <div className="border-b">
+          <button
+            className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+          >
+            <span className="text-xs font-semibold text-gray-700">高级筛选</span>
+            {showAdvanced ? (
+              <ChevronUp className="h-4 w-4 text-gray-400" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-gray-400" />
+            )}
+          </button>
+
+          {showAdvanced && (
+            <div className="px-4 pb-4 space-y-4">
+              {/* Path filter */}
+              <div>
+                <div className="text-[11px] font-medium text-gray-500 mb-1.5">路径包含</div>
+                <div className="relative">
+                  <Folder className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={v.pathContains || ''}
+                    onChange={(e) => onChange({ ...v, pathContains: e.target.value })}
+                    placeholder="例如: 2024-旅行"
+                    className="w-full pl-8 pr-7 py-1.5 text-xs border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {v.pathContains && (
+                    <button
+                      onClick={() => onChange({ ...v, pathContains: '' })}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Hash filter */}
+              <div>
+                <div className="text-[11px] font-medium text-gray-500 mb-1.5 flex items-center gap-1">
+                  <Hash className="h-3 w-3" />
+                  Hash 精确匹配
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={v.hash || ''}
+                    onChange={(e) => onChange({ ...v, hash: e.target.value })}
+                    placeholder="输入文件哈希"
+                    className="w-full px-2.5 pr-7 py-1.5 text-xs border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                  />
+                  {v.hash && (
+                    <button
+                      onClick={() => onChange({ ...v, hash: '' })}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Person count */}
+              <div>
+                <div className="text-[11px] font-medium text-gray-500 mb-1.5">人数范围</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    placeholder="最小"
+                    value={v.personCountMin || ''}
+                    onChange={(e) => onChange({ ...v, personCountMin: e.target.value ? parseInt(e.target.value) : undefined })}
+                    className="w-20 px-2 py-1.5 text-xs border rounded-md"
+                  />
+                  <span className="text-gray-400">-</span>
+                  <input
+                    type="number"
+                    min={1}
+                    placeholder="最大"
+                    value={v.personCountMax || ''}
+                    onChange={(e) => onChange({ ...v, personCountMax: e.target.value ? parseInt(e.target.value) : undefined })}
+                    className="w-20 px-2 py-1.5 text-xs border rounded-md"
+                  />
+                </div>
+              </div>
+
+              {/* Similar filter indicator */}
+              {(v.similarKind === 'phash' || v.similarKind === 'clip') && v.similarToFileId && (
+                <div className="bg-blue-50 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-3.5 w-3.5 text-blue-600" />
+                      <span className="text-xs text-blue-700">
+                        {v.similarKind === 'phash' ? '相似图' : '语义相似'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => onChange({ ...v, similarKind: null, similarToFileId: null })}
+                      className="text-blue-600 hover:text-blue-800"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
+      </div>
+
+      {/* Footer hint */}
+      <div className="px-4 py-3 border-t bg-gray-50 text-[10px] text-gray-500 text-center">
+        提示: 多个筛选条件会叠加生效
       </div>
     </div>
   );
 }
-
-
