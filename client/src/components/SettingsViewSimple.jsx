@@ -180,7 +180,7 @@ function WorkspaceSection({ config }) {
   const [showInput, setShowInput] = useState(false);
 
   const workspace = config?.workspace || {};
-  const managedRoot = workspace?.managedRoot || '';
+  const managedRoot = workspace?.MANAGED_ROOT || workspace?.managedRoot || '';
 
   const mutation = useMutation({
     mutationFn: setWorkspacePaths,
