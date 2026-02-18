@@ -111,6 +111,15 @@ async function handleFacesScan(ctx) {
   }
   await q.drained();
 
+  // Auto-trigger face reclustering after scan completes
+  try {
+    if (!ctx.isCancelRequested() && stats.scanned > 0) {
+      ctx.enqueue('faces_recluster', 'all', {});
+    }
+  } catch {
+    // ignore
+  }
+
   ctx.heartbeat({ phase: 'faces_done', done: stats.done, scanned: stats.scanned, errors: stats.errors });
   return { ok: true, ...stats, finishedAt: now() };
 }

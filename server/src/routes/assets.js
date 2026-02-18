@@ -11,7 +11,7 @@ const sharp = require('sharp');
 const { getThumbnailPath, RAW_EXTS, extractEmbeddedPreview } = require('../scanner/thumbnail');
 const fs = require('fs-extra');
 const mime = require('mime-types');
-const { execFile } = require('child_process');
+const { spawn } = require('child_process');
 const { findSystemCommand } = require('../utils/findSystemCommand');
 const { PREVIEW_DIR, POSTER_DIR } = require('../config');
 const { loadConfig } = require('../configStore');
@@ -415,13 +415,15 @@ router.post('/:hash/open-location', async (req, res) => {
       args = [dirPath];
     }
 
-    execFile(command, args, (error) => {
-      if (error) {
-        console.error('Failed to open file location:', error);
-        return res.status(500).json({ error: 'Failed to open file location' });
-      }
-      res.json({ success: true, path: file.path });
+    // Use spawn with detached and stdio ignore to avoid EBADF errors
+    const child = spawn(command, args, {
+      stdio: 'ignore',
+      detached: true,
+      shell: false,
     });
+    child.unref();
+
+    res.json({ success: true, path: file.path });
   } catch (error) {
     console.error('Error opening file location:', error);
     res.status(500).json({ error: 'Failed to open file location' });

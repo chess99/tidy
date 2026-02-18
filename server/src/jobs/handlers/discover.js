@@ -213,14 +213,11 @@ async function handleDiscover(ctx) {
     });
   }
 
-  // Auto-trigger pipeline
+  // Auto-trigger pipeline: discover -> enrich -> thumbs -> faces -> clip
+  // Always auto-trigger the full chain, no user configuration needed
   try {
-    const after = Array.isArray(cfg?.tasks?.autoTrigger?.afterDiscover) ? cfg.tasks.autoTrigger.afterDiscover : [];
-    for (const t of after) {
-      if (ctx.isCancelRequested()) break;
-      if (String(t) === 'enrich') {
-        ctx.enqueue('enrich', 'missing', {});
-      }
+    if (!ctx.isCancelRequested()) {
+      ctx.enqueue('enrich', 'missing', {});
     }
   } catch {
     // ignore

@@ -53,15 +53,13 @@ const DEFAULT_CONFIG = {
     ],
     minFileSizeBytes: 0,
   },
+  // Internal task settings - not exposed to user UI
   tasks: {
     concurrency: {
       enrich: 4,
       faces: 1,
       thumbs: 4,
       clip: 1,
-    },
-    autoTrigger: {
-      afterDiscover: ['enrich'],
     },
   },
   workspace: {
@@ -222,16 +220,10 @@ function normalizeConcurrency(concurrency) {
   };
 }
 
-function normalizeAutoTrigger(autoTrigger) {
-  return {
-    afterDiscover: normalizeStringList(autoTrigger?.afterDiscover, { maxItems: 20, maxLen: 40 }),
-  };
-}
-
 function normalizeTasks(tasks) {
+  // Only keep concurrency settings internally, auto-trigger is now hardcoded
   return {
     concurrency: normalizeConcurrency(tasks?.concurrency),
-    autoTrigger: normalizeAutoTrigger(tasks?.autoTrigger),
   };
 }
 
@@ -365,6 +357,7 @@ function getEnabledRoots(cfg) {
 module.exports = {
   CONFIG_FILE,
   loadConfig,
+  getConfig: loadConfig,
   saveConfig,
   setScanRoots,
   addScanRoot,

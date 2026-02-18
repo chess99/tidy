@@ -510,6 +510,17 @@ async function handleEnrich(ctx) {
 
   await q.drained();
 
+  // Auto-trigger subsequent tasks in the pipeline
+  // enrich -> faces_scan, clip_enrich (thumbs are built during enrich)
+  try {
+    if (!ctx.isCancelRequested()) {
+      ctx.enqueue('faces_scan', 'missing', {});
+      ctx.enqueue('clip_enrich', 'missing', {});
+    }
+  } catch {
+    // ignore
+  }
+
   ctx.heartbeat({ phase: 'done', processed: stats.processed, errors: stats.errors });
   return { ok: true, ...stats, finishedAt: now() };
 }

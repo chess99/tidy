@@ -26,6 +26,10 @@ initDB();
 const { startJobRunner } = require('./src/jobs/runner');
 startJobRunner({ pollIntervalMs: 500 });
 
+// Start file system watcher for auto-scan.
+const { startWatcher } = require('./src/watcher');
+startWatcher().catch(err => console.error('[watcher] Failed to start:', err));
+
 // Log effective config (helps cross-platform setup). MANAGED_ROOT/TRASH_DIR come from config.json (UI-configurable).
 console.log('[config] DATA_DIR   =', DATA_DIR);
 console.log('[config] DB_PATH    =', DB_PATH);

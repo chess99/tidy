@@ -150,6 +150,15 @@ async function handleClipEnrich(ctx) {
   }
   await q.drained();
 
+  // Auto-trigger CLIP index rebuild after enrichment completes
+  try {
+    if (!ctx.isCancelRequested() && stats.embedded > 0) {
+      ctx.enqueue('clip_index', 'rebuild', {});
+    }
+  } catch {
+    // ignore
+  }
+
   ctx.heartbeat({ phase: 'clip_done', done: stats.done, embedded: stats.embedded, errors: stats.errors });
   return { ok: true, ...stats, finishedAt: now() };
 }

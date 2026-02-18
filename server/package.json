@@ -22,6 +22,7 @@
   "description": "",
   "dependencies": {
     "better-sqlite3": "^12.5.0",
+    "chokidar": "^5.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "exifr": "^7.1.3",

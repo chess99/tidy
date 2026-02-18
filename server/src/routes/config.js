@@ -22,6 +22,7 @@ const {
 
 // Reuse the existing clear-by-root logic directly (no legacy compat, but avoid duplicating SQL).
 const { clearByRoot } = require('../services/clearByRoot');
+const { restartWatcher } = require('../watcher');
 
 const router = express.Router();
 
@@ -33,7 +34,7 @@ router.get('/', async (req, res) => {
       scan: cfg.scan,
       scanRoots: cfg.scanRoots,
       scanType: cfg.scanType,
-      tasks: cfg.tasks,
+      // tasks config is now internal only, not exposed to UI
       workspace: {
         MANAGED_ROOT: ws.managedRoot,
         TRASH_DIR: ws.trashDir,
@@ -52,6 +53,7 @@ router.post('/scan-root', async (req, res) => {
   try {
     const root = validateRootOrThrow(req.body?.root);
     const cfg = await addScanRoot(root);
+    await restartWatcher();
     res.json({ scanRoots: cfg.scanRoots });
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
@@ -63,6 +65,7 @@ router.post('/scan-roots', async (req, res) => {
   try {
     const scanRoots = Array.isArray(req.body?.scanRoots) ? req.body.scanRoots : [];
     const next = await setScanRoots(scanRoots);
+    await restartWatcher();
     res.json({ scanRoots: next.scanRoots });
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
@@ -75,6 +78,7 @@ router.patch('/scan-root', async (req, res) => {
     const root = validateRootOrThrow(req.body?.root);
     const enabled = !!req.body?.enabled;
     const cfg = await setScanRootEnabled(root, enabled);
+    await restartWatcher();
     res.json({ scanRoots: cfg.scanRoots });
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
@@ -94,6 +98,7 @@ router.delete('/scan-root', async (req, res) => {
     }
 
     const cfg = await removeScanRoot(root);
+    await restartWatcher();
     res.json({ scanRoots: cfg.scanRoots, clearReport });
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
@@ -122,12 +127,14 @@ router.put('/scan-options', async (req, res) => {
   }
 });
 
-// Update task settings (concurrency, autoTrigger)
+// Update task settings (concurrency only - internal use)
+// Note: autoTrigger is now hardcoded, concurrency uses sensible defaults
 router.put('/tasks', async (req, res) => {
   try {
     const tasks = req.body || {};
     const cfg = await setTaskSettings(tasks);
-    res.json({ tasks: cfg.tasks });
+    // Don't return full tasks config, just success
+    res.json({ ok: true });
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
   }
