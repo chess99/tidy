@@ -168,7 +168,7 @@ router.get('/batch', (req, res) => {
 router.get('/:hash', (req, res) => {
   const db = getDB();
   const { hash } = req.params;
-  
+
   const asset = db.prepare('SELECT * FROM assets WHERE hash = ?').get(hash);
   if (!asset) return res.status(404).json({ error: 'Asset not found' });
 
@@ -185,10 +185,23 @@ router.get('/:hash', (req, res) => {
     )
     .all(hash);
 
+  // Get phash info from files (any file with phash_status='done')
+  const phashInfo = db
+    .prepare("SELECT phash, phash_status FROM files WHERE hash = ? AND phash_status = 'done' LIMIT 1")
+    .get(hash);
+
+  // Check if CLIP embedding exists
+  const clipInfo = db
+    .prepare('SELECT 1 as has_clip FROM clip_embeddings WHERE hash = ? LIMIT 1')
+    .get(hash);
+
   res.json({
     ...asset,
     metadata: safeJsonParse(asset.metadata),
-    files
+    files,
+    phash: phashInfo?.phash || null,
+    phash_status: phashInfo?.phash_status || null,
+    clip_status: clipInfo?.has_clip ? 'ready' : null,
   });
 });
 
