@@ -11,6 +11,7 @@ const picomatch = require('picomatch');
 const { getDB } = require('../../db');
 const { normalizePathForDb } = require('../../utils/normalizePath');
 const { insertChange, now } = require('./_util');
+const { applyMissingPolicyForMissingFileRows } = require('../../services/missingPolicy');
 
 function normGlobPath(p) {
   return String(p || '').replace(/\\/g, '/');
@@ -213,6 +214,43 @@ async function handleDiscover(ctx) {
     });
   }
 
+  // Cleanup: remove file records for files that no longer exist under enabled roots
+  // This prevents dirty data from causing UI issues (wrong duplicate count, open-location errors)
+  ctx.heartbeat({ phase: 'cleanup' });
+  let cleanedCount = 0;
+  try {
+    for (const root of roots) {
+      if (ctx.isCancelRequested()) break;
+      const rootAbs = path.resolve(String(root));
+      // Find all files under this root
+      const filesUnderRoot = db.prepare(
+        "SELECT id, path, hash FROM files WHERE path LIKE ? || '%'"
+      ).all(rootAbs);
+
+      const missingRows = [];
+      for (const row of filesUnderRoot) {
+        if (!(await fs.pathExists(row.path))) {
+          missingRows.push({ id: row.id, hash: row.hash });
+        }
+      }
+
+      if (missingRows.length > 0) {
+        await applyMissingPolicyForMissingFileRows(
+          db,
+          missingRows,
+          {
+            pathExists: fs.pathExists,
+            ts: now(),
+            insertChange,
+          }
+        );
+        cleanedCount += missingRows.length;
+      }
+    }
+  } catch (err) {
+    console.error('[discover] Cleanup error:', err);
+  }
+
   // Auto-trigger pipeline: discover -> enrich -> thumbs -> faces -> clip
   // Always auto-trigger the full chain, no user configuration needed
   try {
@@ -223,8 +261,8 @@ async function handleDiscover(ctx) {
     // ignore
   }
 
-  ctx.heartbeat({ phase: 'discover_done', walked: stats.walked });
-  return { ok: true, ...stats, finishedAt: now() };
+  ctx.heartbeat({ phase: 'discover_done', walked: stats.walked, cleaned: cleanedCount });
+  return { ok: true, ...stats, cleaned: cleanedCount, finishedAt: now() };
 }
 
 module.exports = { handleDiscover };
