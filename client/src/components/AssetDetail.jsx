@@ -258,7 +258,7 @@ export function AssetDetail({
 
           <InfoRow icon={HardDrive} label="文件大小" value={formatBytes(asset.size)} />
 
-          <InfoRow icon={Calendar} label="拍摄时间">
+          <InfoRow icon={Calendar} label="时间">
             <div className="text-sm text-gray-900">
               {formatDate(asset.taken_at)}
             </div>

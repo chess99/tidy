@@ -26,13 +26,13 @@ export function DateRangePicker({ value, onChange, className }) {
             id="date"
             variant="outline"
             className={cn(
-              "w-full justify-between text-left font-normal",
+              "w-full justify-between text-left font-normal px-2.5",
               !from && !to && "text-muted-foreground"
             )}
           >
-            <span className="flex min-w-0 items-center">
-              <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
-              <span className="truncate">
+            <span className="flex min-w-0 items-center overflow-hidden">
+              <CalendarIcon className="mr-1.5 h-4 w-4 shrink-0" />
+              <span className="truncate max-w-[140px]">
                 {from ? (
                   to ? (
                     <>

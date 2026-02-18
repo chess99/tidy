@@ -4,7 +4,7 @@
  * pos: 客户端视图层：重新设计的筛选面板（变更需同步更新本头注释与所属目录 README）
  */
 
-import { Search, X, Filter, Image, Video, Calendar, Users, Folder, Hash, Sparkles, ChevronDown, ChevronUp, Trash2, CheckCircle2 } from 'lucide-react';
+import { Search, X, Filter, Image, Video, Calendar, Users, Folder, Hash, Sparkles, Trash2, CheckCircle2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getPeople } from '../api/client';
@@ -19,14 +19,13 @@ const FILE_TYPE_GROUPS = [
 ];
 
 const STATUS_OPTIONS = [
-  { key: 'inbox', label: '未整理', color: 'bg-gray-100 text-gray-700' },
-  { key: 'sorted', label: '已保留', color: 'bg-green-100 text-green-700' },
-  { key: 'trash', label: '已删除', color: 'bg-red-100 text-red-700' },
+  { key: 'inbox', label: '未整理' },
+  { key: 'sorted', label: '已保留' },
+  { key: 'trash', label: '已删除' },
 ];
 
 export function FilesFilters({ value, onChange }) {
   const v = value || {};
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [smartInput, setSmartInput] = useState(() => String(v.smartQuery || ''));
 
   const peopleQuery = useQuery({
@@ -90,8 +89,8 @@ export function FilesFilters({ value, onChange }) {
 
   return (
     <div className="h-full w-72 shrink-0 border-r bg-white flex flex-col">
-      {/* Header */}
-      <div className="px-4 py-3 border-b flex items-center justify-between bg-gray-50">
+      {/* Header - 固定高度防止跳动 */}
+      <div className="px-4 py-3 border-b flex items-center justify-between bg-gray-50 h-12">
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-gray-500" />
           <span className="text-sm font-semibold text-gray-900">筛选</span>
@@ -101,16 +100,19 @@ export function FilesFilters({ value, onChange }) {
             </Badge>
           )}
         </div>
-        {activeFilters > 0 && (
-          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={clearAll}>
-            清空
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className={`h-7 text-xs ${activeFilters > 0 ? 'visible' : 'invisible'}`}
+          onClick={clearAll}
+        >
+          清空
+        </Button>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-auto">
-        {/* Smart Search - Compact */}
+        {/* Smart Search */}
         <div className="p-4 border-b">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -146,7 +148,7 @@ export function FilesFilters({ value, onChange }) {
           )}
         </div>
 
-        {/* File Types - Visual Tags */}
+        {/* File Types */}
         <div className="p-4 border-b">
           <div className="text-xs font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
             <Image className="h-3.5 w-3.5" />
@@ -182,16 +184,18 @@ export function FilesFilters({ value, onChange }) {
           )}
         </div>
 
-        {/* Date Range */}
+        {/* Date Range - 使用 min-w-0 防止撑大 */}
         <div className="p-4 border-b">
           <div className="text-xs font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
             <Calendar className="h-3.5 w-3.5" />
-            拍摄日期
+            日期
           </div>
-          <DateRangePicker
-            value={{ from: v.from, to: v.to }}
-            onChange={(range) => onChange({ ...v, from: range?.from, to: range?.to })}
-          />
+          <div className="min-w-0">
+            <DateRangePicker
+              value={{ from: v.from, to: v.to }}
+              onChange={(range) => onChange({ ...v, from: range?.from, to: range?.to })}
+            />
+          </div>
         </div>
 
         {/* Quick Filters */}
@@ -200,8 +204,8 @@ export function FilesFilters({ value, onChange }) {
             <CheckCircle2 className="h-3.5 w-3.5" />
             快速筛选
           </div>
-          <div className="space-y-2">
-            {/* Status */}
+          <div className="space-y-3">
+            {/* Status - 统一选中样式 */}
             <div className="flex flex-wrap gap-1.5">
               {STATUS_OPTIONS.map((opt) => (
                 <button
@@ -209,7 +213,10 @@ export function FilesFilters({ value, onChange }) {
                   onClick={() => onChange({ ...v, status: v.status === opt.key ? undefined : opt.key })}
                   className={`
                     px-2.5 py-1 rounded-md text-xs font-medium transition-colors
-                    ${v.status === opt.key ? opt.color : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}
+                    ${v.status === opt.key
+                      ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                      : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                    }
                   `}
                 >
                   {opt.label}
@@ -217,8 +224,33 @@ export function FilesFilters({ value, onChange }) {
               ))}
             </div>
 
+            {/* Path filter - 移出高级筛选 */}
+            <div>
+              <div className="text-[11px] font-medium text-gray-500 mb-1.5 flex items-center gap-1">
+                <Folder className="h-3 w-3" />
+                路径包含
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={v.pathContains || ''}
+                  onChange={(e) => onChange({ ...v, pathContains: e.target.value })}
+                  placeholder="例如: 2024-旅行 或文件名"
+                  className="w-full px-2.5 pr-7 py-1.5 text-xs border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {v.pathContains && (
+                  <button
+                    onClick={() => onChange({ ...v, pathContains: '' })}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Other quick filters */}
-            <div className="flex flex-wrap gap-2 pt-1">
+            <div className="flex flex-wrap gap-3 pt-1">
               <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer hover:text-gray-900">
                 <input
                   type="checkbox"
@@ -241,7 +273,7 @@ export function FilesFilters({ value, onChange }) {
           </div>
         </div>
 
-        {/* People */}
+        {/* People - 包含人数范围 */}
         {people.length > 0 && (
           <div className="p-4 border-b">
             <div className="text-xs font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
@@ -253,9 +285,37 @@ export function FilesFilters({ value, onChange }) {
                 </Badge>
               )}
             </div>
+
+            {/* Person count range */}
+            <div className="mb-3">
+              <div className="text-[11px] font-medium text-gray-500 mb-1.5">人数范围</div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="最小"
+                  value={v.personCountMin || ''}
+                  onChange={(e) => onChange({ ...v, personCountMin: e.target.value ? parseInt(e.target.value) : undefined })}
+                  className="w-16 px-2 py-1 text-xs border rounded-md"
+                />
+                <span className="text-gray-400">-</span>
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="最大"
+                  value={v.personCountMax || ''}
+                  onChange={(e) => onChange({ ...v, personCountMax: e.target.value ? parseInt(e.target.value) : undefined })}
+                  className="w-16 px-2 py-1 text-xs border rounded-md"
+                />
+              </div>
+            </div>
+
+            {/* People tags */}
             <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
               {people.map((p) => {
                 const active = selectedPeopleIds.includes(p.id);
+                // 兜底显示：没有名字时显示 ID:xx
+                const displayName = p.name?.trim() || `ID:${p.id}`;
                 return (
                   <button
                     key={p.id}
@@ -273,7 +333,7 @@ export function FilesFilters({ value, onChange }) {
                       }
                     `}
                   >
-                    {p.name}
+                    {displayName}
                   </button>
                 );
               })}
@@ -281,116 +341,52 @@ export function FilesFilters({ value, onChange }) {
           </div>
         )}
 
-        {/* Advanced Filters */}
-        <div className="border-b">
-          <button
-            className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-          >
-            <span className="text-xs font-semibold text-gray-700">高级筛选</span>
-            {showAdvanced ? (
-              <ChevronUp className="h-4 w-4 text-gray-400" />
-            ) : (
-              <ChevronDown className="h-4 w-4 text-gray-400" />
+        {/* Hash filter - 直接显示，不再折叠 */}
+        <div className="p-4 border-b">
+          <div className="text-[11px] font-medium text-gray-500 mb-1.5 flex items-center gap-1">
+            <Hash className="h-3 w-3" />
+            Hash 精确匹配
+          </div>
+          <div className="relative">
+            <input
+              type="text"
+              value={v.hash || ''}
+              onChange={(e) => onChange({ ...v, hash: e.target.value })}
+              placeholder="输入文件哈希"
+              className="w-full px-2.5 pr-7 py-1.5 text-xs border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+            />
+            {v.hash && (
+              <button
+                onClick={() => onChange({ ...v, hash: '' })}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-3 w-3" />
+              </button>
             )}
-          </button>
-
-          {showAdvanced && (
-            <div className="px-4 pb-4 space-y-4">
-              {/* Path filter */}
-              <div>
-                <div className="text-[11px] font-medium text-gray-500 mb-1.5">路径包含</div>
-                <div className="relative">
-                  <Folder className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-                  <input
-                    type="text"
-                    value={v.pathContains || ''}
-                    onChange={(e) => onChange({ ...v, pathContains: e.target.value })}
-                    placeholder="例如: 2024-旅行"
-                    className="w-full pl-8 pr-7 py-1.5 text-xs border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  {v.pathContains && (
-                    <button
-                      onClick={() => onChange({ ...v, pathContains: '' })}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Hash filter */}
-              <div>
-                <div className="text-[11px] font-medium text-gray-500 mb-1.5 flex items-center gap-1">
-                  <Hash className="h-3 w-3" />
-                  Hash 精确匹配
-                </div>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={v.hash || ''}
-                    onChange={(e) => onChange({ ...v, hash: e.target.value })}
-                    placeholder="输入文件哈希"
-                    className="w-full px-2.5 pr-7 py-1.5 text-xs border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                  />
-                  {v.hash && (
-                    <button
-                      onClick={() => onChange({ ...v, hash: '' })}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Person count */}
-              <div>
-                <div className="text-[11px] font-medium text-gray-500 mb-1.5">人数范围</div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={1}
-                    placeholder="最小"
-                    value={v.personCountMin || ''}
-                    onChange={(e) => onChange({ ...v, personCountMin: e.target.value ? parseInt(e.target.value) : undefined })}
-                    className="w-20 px-2 py-1.5 text-xs border rounded-md"
-                  />
-                  <span className="text-gray-400">-</span>
-                  <input
-                    type="number"
-                    min={1}
-                    placeholder="最大"
-                    value={v.personCountMax || ''}
-                    onChange={(e) => onChange({ ...v, personCountMax: e.target.value ? parseInt(e.target.value) : undefined })}
-                    className="w-20 px-2 py-1.5 text-xs border rounded-md"
-                  />
-                </div>
-              </div>
-
-              {/* Similar filter indicator */}
-              {(v.similarKind === 'phash' || v.similarKind === 'clip') && v.similarToFileId && (
-                <div className="bg-blue-50 rounded-lg p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="h-3.5 w-3.5 text-blue-600" />
-                      <span className="text-xs text-blue-700">
-                        {v.similarKind === 'phash' ? '相似图' : '语义相似'}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => onChange({ ...v, similarKind: null, similarToFileId: null })}
-                      className="text-blue-600 hover:text-blue-800"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          </div>
         </div>
+
+        {/* Similar filter indicator - 直接显示 */}
+        {(v.similarKind === 'phash' || v.similarKind === 'clip') && v.similarToFileId && (
+          <div className="p-4 border-b">
+            <div className="bg-blue-50 rounded-lg p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-3.5 w-3.5 text-blue-600" />
+                  <span className="text-xs text-blue-700">
+                    {v.similarKind === 'phash' ? '相似图' : '语义相似'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => onChange({ ...v, similarKind: null, similarToFileId: null })}
+                  className="text-blue-600 hover:text-blue-800"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Footer hint */}
