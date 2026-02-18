@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, ZoomIn, ZoomOut, RotateCcw, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
-import { apiUrl } from '../api/client';
+import { apiUrl, openFileLocation } from '../api/client';
 import clsx from 'clsx';
 
 function isVideoMime(mime) {
@@ -118,17 +118,29 @@ export function AssetViewer({ open, onOpenChange, asset, defaultMax = 4096, defa
               </>
             ) : null}
 
-            {rawUrl ? (
-              <a
+            {!isMissing ? (
+              <button
+                type="button"
                 className="inline-flex items-center gap-2 px-3 py-2 rounded bg-white/10 hover:bg-white/20 cursor-pointer"
-                href={rawUrl}
-                target="_blank"
-                rel="noreferrer"
-                title="打开原文件"
+                title="在文件夹中显示"
+                onClick={async () => {
+                  try {
+                    if (window.electronAPI?.showInFolder) {
+                      const res = await openFileLocation(hash);
+                      if (res?.path) {
+                        window.electronAPI.showInFolder(res.path);
+                      }
+                    } else {
+                      await openFileLocation(hash);
+                    }
+                  } catch (err) {
+                    console.error('Failed to open file location:', err);
+                  }
+                }}
               >
                 <ExternalLink className="h-4 w-4" />
-                <span className="text-xs">打开原文件</span>
-              </a>
+                <span className="text-xs">在文件夹中显示</span>
+              </button>
             ) : null}
 
             <button

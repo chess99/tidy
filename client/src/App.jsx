@@ -7,7 +7,7 @@
 import { QueryClient, QueryClientProvider, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2, X, FolderCheck, Briefcase, Copy } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { apiUrl, getAsset, getAssetsBatch, getFilesUnified, getFilesBatch, updateAssetStatus } from './api/client';
+import { apiUrl, getAsset, getAssetsBatch, getFilesUnified, getFilesBatch, updateAssetStatus, openFileLocation } from './api/client';
 import { MinimalScanStatus } from './components/MinimalScanStatus';
 import { FilesFilters } from './components/FilesFilters';
 import { FilesGrid } from './components/FilesGrid';
@@ -550,16 +550,30 @@ function Main() {
 
                 {/* Action pills */}
                 <div className="absolute top-3 right-3 z-30 flex items-center gap-2 pointer-events-none">
-                  <a
+                  <button
+                    type="button"
                     className="pointer-events-auto inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-white/90 border text-xs shadow-sm hover:bg-white cursor-pointer"
-                    href={apiUrl(`/assets/${selectedAsset.hash}/raw`)}
-                    target="_blank"
-                    rel="noreferrer"
-                    title="打开/下载原文件"
-                    onClick={(e) => e.stopPropagation()}
+                    title="在文件夹中显示"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      try {
+                        // Desktop: use Electron API if available
+                        if (window.electronAPI?.showInFolder) {
+                          const res = await openFileLocation(selectedAsset.hash);
+                          if (res?.path) {
+                            window.electronAPI.showInFolder(res.path);
+                          }
+                        } else {
+                          // Web: use backend to open file manager
+                          await openFileLocation(selectedAsset.hash);
+                        }
+                      } catch (err) {
+                        console.error('Failed to open file location:', err);
+                      }
+                    }}
                   >
-                    原文件
-                  </a>
+                    在文件夹中显示
+                  </button>
                   <button
                     type="button"
                     className="pointer-events-auto inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-black/70 text-white text-xs shadow-sm hover:bg-black/80 cursor-pointer"

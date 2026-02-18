@@ -375,11 +375,56 @@ router.get('/:hash/raw', async (req, res) => {
   const { hash } = req.params;
   const db = getDB();
   const file = db.prepare('SELECT path FROM files WHERE hash = ? LIMIT 1').get(hash);
-  
+
   if (file && await fs.pathExists(file.path)) {
     res.sendFile(file.path);
   } else {
     res.status(404).send('Not found');
+  }
+});
+
+// Open file location in system file manager
+router.post('/:hash/open-location', async (req, res) => {
+  const { hash } = req.params;
+  const db = getDB();
+  const file = db.prepare('SELECT path FROM files WHERE hash = ? LIMIT 1').get(hash);
+
+  if (!file || !(await fs.pathExists(file.path))) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+
+  try {
+    const dirPath = path.dirname(file.path);
+
+    // Platform-specific commands to open file manager
+    const platform = process.platform;
+    let command;
+    let args;
+
+    if (platform === 'darwin') {
+      // macOS: use open -R to reveal file in Finder
+      command = 'open';
+      args = ['-R', file.path];
+    } else if (platform === 'win32') {
+      // Windows: use explorer /select to highlight file
+      command = 'explorer';
+      args = ['/select,', file.path];
+    } else {
+      // Linux: use xdg-open on the directory (can't easily highlight specific file)
+      command = 'xdg-open';
+      args = [dirPath];
+    }
+
+    execFile(command, args, (error) => {
+      if (error) {
+        console.error('Failed to open file location:', error);
+        return res.status(500).json({ error: 'Failed to open file location' });
+      }
+      res.json({ success: true, path: file.path });
+    });
+  } catch (error) {
+    console.error('Error opening file location:', error);
+    res.status(500).json({ error: 'Failed to open file location' });
   }
 });
 

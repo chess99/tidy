@@ -230,3 +230,6 @@ export const getDuplicateGroups = ({ kind = 'phash', threshold = 10, limit = 20,
 export const applyDuplicateActions = ({ keepFileIds = [], deleteFileIds = [] } = {}) =>
   api.post('/duplicates/apply', { keepFileIds, deleteFileIds }).then((res) => res.data);
 
+// Open file location in system file manager
+export const openFileLocation = (hash) => api.post(`/assets/${hash}/open-location`).then((res) => res.data);
+

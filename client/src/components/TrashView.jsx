@@ -7,7 +7,7 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { apiUrl, getAsset, getAssets } from '../api/client';
+import { apiUrl, getAsset, getAssets, openFileLocation } from '../api/client';
 import { AssetThumbCard } from './AssetThumbCard';
 
 function formatDate(ms) {
@@ -118,14 +118,28 @@ export function TrashView({ onAssetClick }) {
                       bottomContent={
                         <div className="text-[11px] text-gray-600 leading-4">
                           {!asset?.missing && asset?.target_path ? (
-                            <a
-                              className="underline underline-offset-2"
-                              href={apiUrl(`/assets/${hash}/raw`)}
-                              onClick={(e) => e.stopPropagation()}
-                              title="下载/打开原文件"
+                            <button
+                              type="button"
+                              className="underline underline-offset-2 cursor-pointer"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  if (window.electronAPI?.showInFolder) {
+                                    const res = await openFileLocation(hash);
+                                    if (res?.path) {
+                                      window.electronAPI.showInFolder(res.path);
+                                    }
+                                  } else {
+                                    await openFileLocation(hash);
+                                  }
+                                } catch (err) {
+                                  console.error('Failed to open file location:', err);
+                                }
+                              }}
+                              title="在文件夹中显示"
                             >
-                              打开文件
-                            </a>
+                              在文件夹中显示
+                            </button>
                           ) : asset?.missing ? (
                             <span title="磁盘上找不到该内容的任何物理实例">文件缺失</span>
                           ) : (

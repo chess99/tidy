@@ -4,7 +4,7 @@
  * pos: 桌面应用入口：分发形态的最上层入口（变更需同步更新本头注释与所属目录 README）
  */
 
-const { app, BrowserWindow, dialog, Menu, shell, clipboard } = require('electron');
+const { app, BrowserWindow, dialog, Menu, shell, clipboard, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
 
@@ -180,15 +180,22 @@ async function createWindow() {
     height: 840,
     backgroundColor: '#0b0b0f',
     webPreferences: {
-      // Keep it simple for now; we don't expose Node APIs to renderer.
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.cjs'),
     },
   });
   win.on('closed', () => {
     win = null;
   });
 }
+
+// IPC handlers
+ipcMain.on('show-in-folder', (event, filePath) => {
+  if (filePath && typeof filePath === 'string') {
+    shell.showItemInFolder(filePath);
+  }
+});
 
 async function main() {
   const devRepoRoot = resolveRepoRoot();
