@@ -6,7 +6,7 @@
 
 import {
   X, FolderOpen, Maximize2, Calendar, Camera, Hash, FileType, HardDrive, Users, Sparkles,
-  Image as ImageIcon, Trash2, FolderSearch
+  Image as ImageIcon, Trash2, FolderCheck, FolderSearch
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -374,19 +374,34 @@ export function AssetDetail({
 
         {/* Actions - sticky at bottom */}
         <div className="p-4 border-t bg-white">
-          <Button
-            variant="outline"
-            size="sm"
-            className={`w-full h-11 cursor-pointer ${
-              asset.status === 'trash'
-                ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
-                : 'text-red-600 hover:text-red-700 hover:bg-red-50'
-            }`}
-            onClick={() => onStatusChange?.('trash')}
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            删除
-          </Button>
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              className={`h-11 cursor-pointer ${
+                asset.status === 'trash'
+                  ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                  : 'text-red-600 hover:text-red-700 hover:bg-red-50'
+              }`}
+              onClick={() => onStatusChange?.('trash')}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              删除
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className={`h-11 cursor-pointer ${
+                asset.status === 'sorted'
+                  ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                  : 'text-green-600 hover:text-green-700 hover:bg-green-50'
+              }`}
+              onClick={() => onStatusChange?.('sorted')}
+            >
+              <FolderCheck className="h-4 w-4 mr-2" />
+              保留
+            </Button>
+          </div>
         </div>
       </div>
     </aside>
