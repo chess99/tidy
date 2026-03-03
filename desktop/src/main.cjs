@@ -274,20 +274,61 @@ async function main() {
   }
 }
 
+let isShuttingDown = false;
+
 async function shutdown() {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
+  console.log('[desktop] shutting down child processes...');
   await stopProcess(serverProc);
   await stopProcess(aiProc);
   serverProc = null;
   aiProc = null;
+  console.log('[desktop] shutdown complete');
 }
 
 app.on('window-all-closed', async () => {
   await shutdown();
-  if (process.platform !== 'darwin') app.quit();
+  app.quit();
 });
 
-app.on('before-quit', async () => {
+app.on('before-quit', async (event) => {
+  if (!isShuttingDown) {
+    event.preventDefault();
+    await shutdown();
+    app.quit();
+  }
+});
+
+// Handle unexpected exits
+process.on('exit', () => {
+  if (serverProc) {
+    try {
+      serverProc.kill('SIGKILL');
+    } catch (e) {
+      // ignore
+    }
+  }
+  if (aiProc) {
+    try {
+      aiProc.kill('SIGKILL');
+    } catch (e) {
+      // ignore
+    }
+  }
+});
+
+process.on('SIGINT', async () => {
+  console.log('[desktop] received SIGINT');
   await shutdown();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('[desktop] received SIGTERM');
+  await shutdown();
+  process.exit(0);
 });
 
 app.whenReady().then(main).catch((e) => {
