@@ -7,6 +7,7 @@
 const dbSchema = `
   CREATE TABLE IF NOT EXISTS assets (
     hash TEXT PRIMARY KEY,
+    hash_algo TEXT DEFAULT 'sha256',
     mime_type TEXT,
     size INTEGER,
     metadata TEXT,
@@ -27,6 +28,7 @@ const dbSchema = `
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     path TEXT UNIQUE NOT NULL,
     hash TEXT,
+    hash_algo TEXT DEFAULT 'sha256',
     scanned_at INTEGER,
     missing INTEGER DEFAULT 0,
     size INTEGER,
@@ -61,7 +63,7 @@ const dbSchema = `
 
   CREATE TABLE IF NOT EXISTS file_ops (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    op TEXT NOT NULL CHECK(op IN ('move', 'trash', 'delete')),
+    op TEXT NOT NULL CHECK(op IN ('move', 'trash', 'delete', 'quarantine')),
     hash TEXT,
     file_id INTEGER,
     from_path TEXT,
@@ -69,6 +71,8 @@ const dbSchema = `
     album_id INTEGER,
     status TEXT NOT NULL CHECK(status IN ('pending', 'done', 'error')) DEFAULT 'pending',
     error TEXT,
+    attempts INTEGER DEFAULT 0,
+    last_attempt_at INTEGER,
     created_at INTEGER,
     updated_at INTEGER,
     FOREIGN KEY(album_id) REFERENCES albums(id) ON DELETE SET NULL
@@ -201,4 +205,3 @@ const dbSchema = `
 `;
 
 module.exports = dbSchema;
-

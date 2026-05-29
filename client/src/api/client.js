@@ -198,8 +198,8 @@ export const getAlbumAssets = (albumId, page = 1, limit = 50) =>
   api.get(`/albums/${albumId}/assets`, { params: { page, limit } }).then(res => res.data);
 
 // Organize (move + dedupe)
-export const organizeAssets = ({ hashes = [], albumId, albumName }) =>
-  api.post('/organize', { hashes, albumId, albumName }).then(res => res.data);
+export const organizeAssets = ({ hashes = [], albumId, albumName, duplicatePolicy = 'keep-all' }) =>
+  api.post('/organize', { hashes, albumId, albumName, duplicatePolicy }).then(res => res.data);
 
 // Tags (skeleton)
 export const getTags = (type) => api.get('/tags', { params: type ? { type } : {} }).then(res => res.data);
@@ -232,4 +232,3 @@ export const applyDuplicateActions = ({ keepFileIds = [], deleteFileIds = [] } =
 
 // Open file location in system file manager
 export const openFileLocation = (hash) => api.post(`/assets/${hash}/open-location`).then((res) => res.data);
-

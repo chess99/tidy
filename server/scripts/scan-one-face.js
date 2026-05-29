@@ -56,8 +56,10 @@ async function main() {
   initDB();
   const db = getDB();
 
-  const hash = await computeHash(abs);
-  console.log('[one] hash=', hash);
+  const hashResult = await computeHash(abs);
+  const hash = hashResult.hash;
+  const hashAlgo = hashResult.hash_algo;
+  console.log('[one] hash=', hash, 'algo=', hashAlgo);
 
   if (hasFlag('--reset')) {
     db.prepare('DELETE FROM faces WHERE hash = ?').run(hash);
@@ -70,10 +72,11 @@ async function main() {
   const existsAsset = db.prepare('SELECT hash FROM assets WHERE hash = ?').get(hash);
   if (!existsAsset) {
     db.prepare(`
-      INSERT INTO assets (hash, mime_type, size, metadata, taken_at, status, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'inbox', ?)
+      INSERT INTO assets (hash, hash_algo, mime_type, size, metadata, taken_at, status, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'inbox', ?)
     `).run(
       hash,
+      hashAlgo,
       mimeType,
       stat.size,
       JSON.stringify(meta || {}),
@@ -86,11 +89,12 @@ async function main() {
   const existsFile = db.prepare('SELECT id FROM files WHERE path = ?').get(abs);
   if (!existsFile) {
     db.prepare(`
-      INSERT INTO files (path, hash, scanned_at, missing, size, mtime_ms, ext, mime_guess, discovered_at, updated_at, hash_status, thumb_status)
-      VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 'done', 'pending')
+      INSERT INTO files (path, hash, hash_algo, scanned_at, missing, size, mtime_ms, ext, mime_guess, discovered_at, updated_at, hash_status, thumb_status)
+      VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 'done', 'pending')
     `).run(
       abs,
       hash,
+      hashAlgo,
       now,
       stat.size,
       stat.mtimeMs,
@@ -100,7 +104,7 @@ async function main() {
       now
     );
   } else {
-    db.prepare('UPDATE files SET hash = ?, missing = 0, updated_at = ? WHERE path = ?').run(hash, now, abs);
+    db.prepare('UPDATE files SET hash = ?, hash_algo = ?, missing = 0, updated_at = ? WHERE path = ?').run(hash, hashAlgo, now, abs);
   }
 
   const inserted = await processImageFaces(abs, hash);
@@ -114,5 +118,4 @@ main().catch((e) => {
   console.error(e);
   process.exitCode = 1;
 });
-
 

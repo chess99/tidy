@@ -10,20 +10,12 @@ const fs = require('fs-extra');
 const { getDB } = require('../db');
 const { hamming64 } = require('../scanner/phash');
 const { loadConfig } = require('../configStore');
+const { createFileOp, applyFileOp } = require('../services/fileOps');
+const { makeQuarantinePath } = require('../services/fileSafety');
+const { trashAssetKeepOne } = require('../services/assetTrash');
+const { canTreatAsSameContentForDestructiveDedupe } = require('../services/hashPolicy');
 
 const router = express.Router();
-
-function isUnderDir(parent, child) {
-  try {
-    const p = path.resolve(String(parent)).replace(/[/\\]+$/, '');
-    const c = path.resolve(String(child));
-    const pN = process.platform === 'win32' ? p.toLowerCase() : p;
-    const cN = process.platform === 'win32' ? c.toLowerCase() : c;
-    return cN === pN || cN.startsWith(pN + path.sep);
-  } catch {
-    return false;
-  }
-}
 
 function safeJsonParse(v) {
   if (v == null) return null;
@@ -64,6 +56,7 @@ function toItemRow(r) {
     lat: meta?.lat ?? null,
     lon: meta?.lon ?? null,
     hash: r?.hash ?? null,
+    hash_algo: r?.hash_algo ?? null,
     phash: r?.phash ?? null,
     asset_taken_at: r?.asset_taken_at ?? null,
     asset_mime_type: r?.asset_mime_type ?? null,
@@ -114,6 +107,7 @@ function selectItemSql() {
       f.size,
       f.mtime_ms,
       f.hash,
+      f.hash_algo,
       f.phash,
       a.taken_at AS asset_taken_at,
       a.mime_type AS asset_mime_type,
@@ -142,143 +136,43 @@ function insertChange(db, entity, entityId, type) {
   }
 }
 
-async function uniquePath(destPath) {
-  const dir = path.dirname(destPath);
-  const ext = path.extname(destPath);
-  const base = path.basename(destPath, ext);
-  let candidate = destPath;
-  for (let i = 1; i <= 9999; i++) {
-    // eslint-disable-next-line no-await-in-loop
-    if (!(await fs.pathExists(candidate))) return candidate;
-    candidate = path.join(dir, `${base} (${i})${ext}`);
+function allowedRootsFromConfig(cfg) {
+  const roots = [];
+  for (const r of Array.isArray(cfg?.scanRoots) ? cfg.scanRoots : []) {
+    if (r?.root) roots.push(r.root);
   }
-  return candidate;
+  if (cfg?.workspace?.managedRoot) roots.push(cfg.workspace.managedRoot);
+  if (cfg?.workspace?.trashDir) roots.push(cfg.workspace.trashDir);
+  return Array.from(new Set(roots.filter(Boolean).map(String)));
 }
 
-async function ensureDirForFile(filePath) {
-  await fs.ensureDir(path.dirname(filePath));
+function opSucceeded(db, opId) {
+  const row = db.prepare('SELECT status, error FROM file_ops WHERE id = ?').get(opId);
+  return row?.status === 'done' ? { ok: true } : { ok: false, error: row?.error || 'file_op_failed' };
 }
 
-async function deleteFileInstance(db, { hash, fileId, filePath }) {
-  const now = Date.now();
-  const info = db
-    .prepare(
-      `
-      INSERT INTO file_ops (op, hash, file_id, from_path, to_path, album_id, status, created_at, updated_at)
-      VALUES ('delete', ?, ?, ?, NULL, NULL, 'pending', ?, ?)
-      `
-    )
-    .run(hash || null, fileId, filePath, now, now);
-  const opId = info.lastInsertRowid;
-
-  try {
-    await fs.remove(filePath);
-    db.prepare('DELETE FROM files WHERE id = ?').run(fileId);
-    db.prepare('UPDATE file_ops SET status = ?, updated_at = ?, error = NULL WHERE id = ?').run('done', Date.now(), opId);
-    insertChange(db, 'file', fileId, 'deleted');
-    return { ok: true };
-  } catch (e) {
-    const msg = String(e?.message || e);
-    try {
-      db.prepare('UPDATE file_ops SET status = ?, updated_at = ?, error = ? WHERE id = ?').run('error', Date.now(), msg, opId);
-    } catch {
-      // ignore
-    }
-    return { ok: false, error: msg };
-  }
-}
-
-async function trashAssetKeepOne(db, { hash, trashDir }) {
-  // Keep exactly one existing file copy under trashDir.
-  const rows = db
-    .prepare(
-      `
-      SELECT id, path, mtime_ms, updated_at, discovered_at, scanned_at
-      FROM files
-      WHERE hash = ?
-      ORDER BY COALESCE(mtime_ms, updated_at, discovered_at, scanned_at, 0) DESC, id DESC
-      `
-    )
-    .all(hash);
-
-  const existing = [];
-  for (const f of rows) {
-    if (!f?.path) continue;
-    // eslint-disable-next-line no-await-in-loop
-    if (await fs.pathExists(f.path)) existing.push({ ...f, path: String(f.path) });
-    else {
-      try {
-        db.prepare('DELETE FROM files WHERE id = ?').run(f.id);
-        insertChange(db, 'file', f.id, 'deleted');
-      } catch {
-        // ignore
-      }
-    }
-  }
-
-  if (!existing.length) {
-    // No physical files left; treat as orphan cleanup.
-    return { ok: false, error: 'no_existing_files' };
-  }
-
-  await fs.ensureDir(trashDir);
-
-  const keep = existing.find((f) => isUnderDir(trashDir, f.path)) || existing[0];
-  let keepPath = keep.path;
-
-  if (!isUnderDir(trashDir, keepPath)) {
-    const fileName = path.basename(keepPath);
-    const trashRaw = path.join(trashDir, `${hash}_${fileName}`);
-    // eslint-disable-next-line no-await-in-loop
-    const trashPath = await uniquePath(trashRaw);
-    // eslint-disable-next-line no-await-in-loop
-    await ensureDirForFile(trashPath);
-
-    const now = Date.now();
-    const info = db
-      .prepare(
-        `
-        INSERT INTO file_ops (op, hash, file_id, from_path, to_path, album_id, status, created_at, updated_at)
-        VALUES ('trash', ?, ?, ?, ?, NULL, 'pending', ?, ?)
-        `
-      )
-      .run(hash, keep.id, keepPath, trashPath, now, now);
-    const opId = info.lastInsertRowid;
-
-    try {
-      await fs.move(keepPath, trashPath, { overwrite: false });
-      db.prepare('UPDATE files SET path = ?, missing = 0, updated_at = ? WHERE id = ?').run(trashPath, Date.now(), keep.id);
-      db.prepare('UPDATE file_ops SET status = ?, updated_at = ?, error = NULL WHERE id = ?').run('done', Date.now(), opId);
-      insertChange(db, 'file', keep.id, 'trashed');
-      keepPath = trashPath;
-    } catch (e) {
-      const msg = String(e?.message || e);
-      try {
-        db.prepare('UPDATE file_ops SET status = ?, updated_at = ?, error = ? WHERE id = ?').run('error', Date.now(), msg, opId);
-      } catch {
-        // ignore
-      }
-      return { ok: false, error: msg };
-    }
-  }
-
-  // Delete all other copies.
-  for (const f of existing) {
-    if (f.id === keep.id) continue;
-    // eslint-disable-next-line no-await-in-loop
-    await deleteFileInstance(db, { hash, fileId: f.id, filePath: f.path });
-  }
-
-  // Asset-level state
-  try {
-    db.prepare(`UPDATE assets SET status = 'trash', target_path = ?, updated_at = ? WHERE hash = ?`).run(keepPath, Date.now(), hash);
-    db.prepare('DELETE FROM album_assets WHERE hash = ?').run(hash);
-    insertChange(db, 'asset', hash, 'trash');
-  } catch {
-    // ignore
-  }
-
-  return { ok: true, keepPath, keptFileId: keep.id };
+async function quarantineFileInstance(db, { hash, fileId, filePath, trashDir, allowedRoots, reason = 'duplicate' }) {
+  const quarantinePath = await makeQuarantinePath({
+    quarantineDir: path.join(trashDir, '.quarantine'),
+    hash: hash || 'nohash',
+    fileId,
+    sourcePath: filePath,
+    reason,
+  });
+  const op = createFileOp(db, {
+    op: 'quarantine',
+    hash: hash || null,
+    fileId,
+    fromPath: filePath,
+    toPath: quarantinePath,
+  });
+  const report = { moved: 0, deleted: 0, errors: 0, messages: [] };
+  await applyFileOp(db, op, {
+    allowedRoots,
+    insertChange: (entity, entityId, type) => insertChange(db, entity, entityId, type),
+    report,
+  });
+  return opSucceeded(db, op.id);
 }
 
 function chunk(arr, n) {
@@ -331,34 +225,45 @@ router.get('/groups', (req, res) => {
     if (kind === 'hash') {
       const cursor = cursorRaw != null ? String(cursorRaw) : '';
       const hashes = db.prepare(`
-        SELECT h
+        SELECT h, algo, sz, group_key
         FROM (
-          SELECT f.hash AS h
+          SELECT
+            f.hash AS h,
+            COALESCE(f.hash_algo, 'md5') AS algo,
+            COALESCE(f.size, -1) AS sz,
+            f.hash || '|' || COALESCE(f.hash_algo, 'md5') || '|' || COALESCE(f.size, -1) AS group_key
           FROM files f
           WHERE f.hash IS NOT NULL
-          GROUP BY f.hash
+          GROUP BY f.hash, COALESCE(f.hash_algo, 'md5'), COALESCE(f.size, -1)
           HAVING COUNT(*) > 1
         )
-        WHERE h > ?
-        ORDER BY h ASC
+        WHERE group_key > ?
+        ORDER BY group_key ASC
         LIMIT ?
       `).all(cursor, limit);
 
       const groups = [];
       for (const row of hashes) {
         const h = String(row.h);
+        const algo = String(row.algo || 'md5');
+        const size = Number(row.sz);
         const itemsRaw = db.prepare(`
           ${selectItemSql()}
           WHERE f.hash = ?
+            AND COALESCE(f.hash_algo, 'md5') = ?
+            AND COALESCE(f.size, -1) = ?
             AND f.missing = 0
             AND ${isNonTrashAssetExpr()}
           ORDER BY COALESCE(f.mtime_ms, f.updated_at, f.discovered_at, f.scanned_at, 0) DESC, f.id DESC
-        `).all(h);
+        `).all(h, algo, size);
         const items = itemsRaw.map(toItemRow);
         if (items.length < 2) continue;
         groups.push({
-          id: h,
+          id: String(row.group_key),
           kind: 'hash',
+          hash: h,
+          hash_algo: algo,
+          size,
           items,
           suggested_keep_file_id: pickSuggestedKeepFileId(items),
         });
@@ -471,6 +376,7 @@ router.post('/apply', async (req, res) => {
   const cfg = await loadConfig();
   const trashDir = cfg.workspace?.trashDir;
   if (!trashDir) return res.status(500).json({ error: 'workspace.trashDir not configured' });
+  const allowedRoots = allowedRootsFromConfig(cfg);
 
   const keepFileIds = Array.isArray(req.body?.keepFileIds) ? req.body.keepFileIds.map((n) => Number(n)).filter(Number.isFinite) : [];
   const deleteFileIds = Array.isArray(req.body?.deleteFileIds) ? req.body.deleteFileIds.map((n) => Number(n)).filter(Number.isFinite) : [];
@@ -490,13 +396,19 @@ router.post('/apply', async (req, res) => {
     const selected = db
       .prepare(
         `
-        SELECT id, hash, path
+        SELECT id, hash, hash_algo, size, path
         FROM files
         WHERE id IN ${clause}
         `
       )
       .all(...params)
-      .map((r) => ({ id: Number(r.id), hash: r.hash ? String(r.hash) : null, path: r.path ? String(r.path) : null }))
+      .map((r) => ({
+        id: Number(r.id),
+        hash: r.hash ? String(r.hash) : null,
+        hash_algo: r.hash_algo ? String(r.hash_algo) : null,
+        size: r.size,
+        path: r.path ? String(r.path) : null,
+      }))
       .filter((r) => Number.isFinite(r.id));
 
     // Group selected ids by hash (hash may be null -> treat as per-file delete only)
@@ -516,23 +428,38 @@ router.post('/apply', async (req, res) => {
           if (!deleteSet.has(it.id)) continue;
           if (!it.path) continue;
           // eslint-disable-next-line no-await-in-loop
-          const r = await deleteFileInstance(db, { hash: null, fileId: it.id, filePath: it.path });
+          const r = await quarantineFileInstance(db, {
+            hash: null,
+            fileId: it.id,
+            filePath: it.path,
+            trashDir,
+            allowedRoots,
+            reason: 'duplicate-nohash',
+          });
           if (r.ok) report.deletedFiles++;
           else {
             report.errors++;
-            report.messages.push(`delete file#${it.id} failed: ${r.error}`);
+            report.messages.push(`quarantine file#${it.id} failed: ${r.error}`);
           }
         }
         continue;
       }
 
       // Determine current existing files for this hash.
-      const allFiles = db.prepare('SELECT id, path FROM files WHERE hash = ?').all(hash);
+      const allFiles = db.prepare('SELECT id, hash, hash_algo, size, path FROM files WHERE hash = ?').all(hash);
       const existing = [];
       for (const f of allFiles) {
         if (!f?.path) continue;
         // eslint-disable-next-line no-await-in-loop
-        if (await fs.pathExists(f.path)) existing.push({ id: Number(f.id), path: String(f.path) });
+        if (await fs.pathExists(f.path)) {
+          existing.push({
+            id: Number(f.id),
+            hash: f.hash ? String(f.hash) : null,
+            hash_algo: f.hash_algo ? String(f.hash_algo) : null,
+            size: f.size,
+            path: String(f.path),
+          });
+        }
       }
       if (!existing.length) {
         const r = cleanupOrphanAsset(db, hash);
@@ -546,7 +473,13 @@ router.post('/apply', async (req, res) => {
       // Escalate to asset delete only if ALL existing instances are selected for delete.
       if (selectedDeleteIds.length && selectedDeleteIds.length === existing.length) {
         // eslint-disable-next-line no-await-in-loop
-        const r = await trashAssetKeepOne(db, { hash, trashDir });
+        const r = await trashAssetKeepOne(db, {
+          hash,
+          trashDir,
+          allowedRoots,
+          duplicatePolicy: 'quarantine-extra',
+          insertChange: (entity, entityId, type) => insertChange(db, entity, entityId, type),
+        });
         if (r.ok) report.trashedAssets++;
         else {
           report.errors++;
@@ -556,15 +489,38 @@ router.post('/apply', async (req, res) => {
       }
 
       // Otherwise: delete selected instances only.
+      const keepCandidate =
+        existing.find((x) => keepSet.has(x.id)) ||
+        existing.find((x) => !selectedDeleteIds.includes(x.id)) ||
+        null;
       for (const fid of selectedDeleteIds) {
         const it = existing.find((x) => x.id === fid);
         if (!it?.path) continue;
+        if (!keepCandidate) {
+          report.errors++;
+          report.messages.push(`quarantine dup file#${fid} failed: no_keep_candidate`);
+          continue;
+        }
         // eslint-disable-next-line no-await-in-loop
-        const r = await deleteFileInstance(db, { hash, fileId: fid, filePath: it.path });
+        const sameContent = await canTreatAsSameContentForDestructiveDedupe(keepCandidate, it);
+        if (!sameContent) {
+          report.errors++;
+          report.messages.push(`quarantine dup file#${fid} blocked: hash_policy_mismatch`);
+          continue;
+        }
+        // eslint-disable-next-line no-await-in-loop
+        const r = await quarantineFileInstance(db, {
+          hash,
+          fileId: fid,
+          filePath: it.path,
+          trashDir,
+          allowedRoots,
+          reason: 'duplicate',
+        });
         if (r.ok) report.deletedFiles++;
         else {
           report.errors++;
-          report.messages.push(`delete dup file#${fid} failed: ${r.error}`);
+          report.messages.push(`quarantine dup file#${fid} failed: ${r.error}`);
         }
       }
 
@@ -580,5 +536,3 @@ router.post('/apply', async (req, res) => {
 });
 
 module.exports = router;
-
-

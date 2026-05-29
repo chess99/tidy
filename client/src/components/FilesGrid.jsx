@@ -35,6 +35,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
   const [newAlbumName, setNewAlbumName] = useState('');
   const [albumQuery, setAlbumQuery] = useState('');
   const [albumOpen, setAlbumOpen] = useState(false);
+  const [dedupeExtras, setDedupeExtras] = useState(false);
 
   // Query options are owned by parent (left sidebar). Keep a stable object for query keys.
   const filesQueryOpts = useMemo(() => {
@@ -166,6 +167,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
         setShowAdd(false);
         setAddAlbumId('');
         setNewAlbumName('');
+        setDedupeExtras(false);
       } catch {
         // ignore
       }
@@ -458,13 +460,14 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
   const submitOrganize = async () => {
     if (!canOrganize) return;
     const albumIdNum = addAlbumId ? Number(addAlbumId) : null;
+    const duplicatePolicy = dedupeExtras ? 'quarantine-extra' : 'keep-all';
     if (albumIdNum && Number.isFinite(albumIdNum)) {
-      organizeMutation.mutate({ hashes: selectedHashes, albumId: albumIdNum });
+      organizeMutation.mutate({ hashes: selectedHashes, albumId: albumIdNum, duplicatePolicy });
       return;
     }
     const name = String(newAlbumName || '').trim();
     if (!name) return;
-    organizeMutation.mutate({ hashes: selectedHashes, albumName: name });
+    organizeMutation.mutate({ hashes: selectedHashes, albumName: name, duplicatePolicy });
   };
 
   return (
@@ -789,7 +792,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
             </div>
             <div className="p-4 space-y-3">
               <div className="text-xs text-gray-500">
-                将按内容哈希归档：同一 hash 只保留一份，其余副本将移动到工具 Trash。
+                将所选内容归档到目标文件夹；相同内容的其他物理副本默认保留。
               </div>
 
               <div className="space-y-2">
@@ -870,6 +873,15 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
                 </div>
               </div>
 
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={dedupeExtras}
+                  onChange={(e) => setDedupeExtras(e.target.checked)}
+                />
+                <span>隔离相同内容的额外副本</span>
+              </label>
+
               {organizeMutation.isPending ? (
                 <div className="text-sm text-blue-600">整理中…</div>
               ) : null}
@@ -901,5 +913,4 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
     </div>
   );
 });
-
 

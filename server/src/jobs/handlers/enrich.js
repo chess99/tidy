@@ -213,15 +213,16 @@ async function handleEnrich(ctx) {
       scanned_at IS NULL
       OR mtime_ms IS NULL
       OR scanned_at < mtime_ms
-      OR hash IS NULL
-      OR COALESCE(hash_status, 'pending') != 'done'
-      OR COALESCE(thumb_status, 'pending') != 'ready'
-      OR COALESCE(phash_status, 'pending') NOT IN ('done', 'unsupported')
-    )
-  `;
+	      OR hash IS NULL
+	      OR COALESCE(hash_status, 'pending') != 'done'
+	      OR COALESCE(thumb_status, 'pending') != 'ready'
+	      OR COALESCE(phash_status, 'pending') NOT IN ('done', 'unsupported')
+	      ${mode === 'all' ? "OR COALESCE(hash_algo, 'md5') != 'sha256'" : ''}
+	    )
+	  `;
 
-  const rows = db.prepare(`
-    SELECT id, path, hash, scanned_at, mtime_ms, ext, mime_guess, hash_status, thumb_status, phash, phash_status
+	  const rows = db.prepare(`
+	    SELECT id, path, hash, hash_algo, scanned_at, mtime_ms, ext, mime_guess, hash_status, thumb_status, phash, phash_status
     FROM files
     WHERE ${where}
     ORDER BY id ASC
@@ -332,11 +333,13 @@ async function handleEnrich(ctx) {
       return;
     }
 
-    // Compute hash + upsert asset metadata
-    try {
-      const hash = await computeHash(filePath);
-      const existingAsset = db.prepare('SELECT hash, status FROM assets WHERE hash = ?').get(hash);
-      const status = existingAsset ? existingAsset.status : 'inbox';
+	  // Compute hash + upsert asset metadata
+	  try {
+	    const hashResult = await computeHash(filePath);
+	    const hash = hashResult.hash;
+	    const hashAlgo = hashResult.hash_algo;
+	    const existingAsset = db.prepare('SELECT hash, status, hash_algo FROM assets WHERE hash = ?').get(hash);
+	    const status = existingAsset ? existingAsset.status : 'inbox';
 
       const metadata = mimeType && String(mimeType).startsWith('image/')
         ? await extractMetadata(filePath)
@@ -350,9 +353,10 @@ async function handleEnrich(ctx) {
 
       if (existingAsset) {
         db.prepare(`
-          UPDATE assets
-          SET mime_type = COALESCE(mime_type, ?),
-              size = COALESCE(size, ?),
+	          UPDATE assets
+	          SET mime_type = COALESCE(mime_type, ?),
+	              hash_algo = COALESCE(hash_algo, ?),
+	              size = COALESCE(size, ?),
               metadata = COALESCE(metadata, ?),
               taken_at = COALESCE(taken_at, ?),
               camera_make = COALESCE(camera_make, ?),
@@ -365,9 +369,10 @@ async function handleEnrich(ctx) {
               missing = 0,
               updated_at = ?
           WHERE hash = ?
-        `).run(
-          mimeType,
-          stat.size,
+	        `).run(
+	          mimeType,
+	          hashAlgo,
+	          stat.size,
           safeJsonStringify(metadata || {}),
           takenAt,
           cameraMake,
@@ -376,13 +381,14 @@ async function handleEnrich(ctx) {
           ts,
           hash
         );
-      } else {
-        db.prepare(`
-          INSERT INTO assets (hash, mime_type, size, metadata, taken_at, status, missing, camera_make, camera_model, is_camera, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
-        `).run(
-          hash,
-          mimeType,
+	      } else {
+	        db.prepare(`
+	          INSERT INTO assets (hash, hash_algo, mime_type, size, metadata, taken_at, status, missing, camera_make, camera_model, is_camera, updated_at)
+	          VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+	        `).run(
+	          hash,
+	          hashAlgo,
+	          mimeType,
           stat.size,
           safeJsonStringify(metadata || {}),
           takenAt,
@@ -397,16 +403,17 @@ async function handleEnrich(ctx) {
 
       // Update file row
       db.prepare(`
-        UPDATE files
-        SET hash = ?,
-            scanned_at = ?,
+	        UPDATE files
+	        SET hash = ?,
+	            hash_algo = ?,
+	            scanned_at = ?,
             size = ?,
             mtime_ms = ?,
             missing = 0,
             updated_at = ?,
             hash_status = 'done'
-        WHERE id = ?
-      `).run(hash, ts, stat.size, stat.mtimeMs, ts, fileId);
+	        WHERE id = ?
+	      `).run(hash, hashAlgo, ts, stat.size, stat.mtimeMs, ts, fileId);
 
       insertChange('file', fileId, 'upsert');
       insertChange('asset', hash, 'upsert');
@@ -526,5 +533,4 @@ async function handleEnrich(ctx) {
 }
 
 module.exports = { handleEnrich };
-
 

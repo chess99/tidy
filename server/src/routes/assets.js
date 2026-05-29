@@ -15,6 +15,7 @@ const { spawn } = require('child_process');
 const { findSystemCommand } = require('../utils/findSystemCommand');
 const { PREVIEW_DIR, POSTER_DIR } = require('../config');
 const { loadConfig } = require('../configStore');
+const { trashAssetKeepOne } = require('../services/assetTrash');
 
 // Lazy load ffmpeg path (system-installed)
 let ffmpegPath = null;
@@ -25,27 +26,6 @@ async function getFfmpegPath() {
 }
 
 const router = express.Router();
-
-function stripTrailingSep(p) {
-  if (!p) return p;
-  let s = String(p);
-  while (s.length > 1 && (s.endsWith(path.sep) || s.endsWith('/') || s.endsWith('\\'))) {
-    s = s.slice(0, -1);
-  }
-  return s;
-}
-
-function isUnder(parent, child) {
-  try {
-    const p = stripTrailingSep(path.resolve(String(parent)));
-    const c = stripTrailingSep(path.resolve(String(child)));
-    const pNorm = process.platform === 'win32' ? p.toLowerCase() : p;
-    const cNorm = process.platform === 'win32' ? c.toLowerCase() : c;
-    return cNorm === pNorm || cNorm.startsWith(pNorm + path.sep);
-  } catch {
-    return false;
-  }
-}
 
 // Ensure preview dir exists
 try {
@@ -96,17 +76,14 @@ function insertChange(db, entity, entityId, type) {
   }
 }
 
-async function uniquePath(destPath) {
-  const dir = path.dirname(destPath);
-  const ext = path.extname(destPath);
-  const base = path.basename(destPath, ext);
-  let candidate = destPath;
-  for (let i = 1; i <= 9999; i++) {
-    // eslint-disable-next-line no-await-in-loop
-    if (!(await fs.pathExists(candidate))) return candidate;
-    candidate = path.join(dir, `${base} (${i})${ext}`);
+function allowedRootsFromConfig(cfg) {
+  const roots = [];
+  for (const r of Array.isArray(cfg?.scanRoots) ? cfg.scanRoots : []) {
+    if (r?.root) roots.push(r.root);
   }
-  return candidate;
+  if (cfg?.workspace?.managedRoot) roots.push(cfg.workspace.managedRoot);
+  if (cfg?.workspace?.trashDir) roots.push(cfg.workspace.trashDir);
+  return Array.from(new Set(roots.filter(Boolean).map(String)));
 }
 
 // List assets
@@ -206,7 +183,7 @@ router.get('/:hash', (req, res) => {
 });
 
 // Update asset (e.g. trash it)
-router.patch('/:hash', (req, res) => {
+router.patch('/:hash', async (req, res) => {
   const db = getDB();
   const { hash } = req.params;
   const { status } = req.body;
@@ -215,11 +192,29 @@ router.patch('/:hash', (req, res) => {
     return res.status(400).json({ error: 'Invalid status' });
   }
 
-  const result = db.prepare('UPDATE assets SET status = ? WHERE hash = ?').run(status, hash);
-  
-  if (result.changes === 0) return res.status(404).json({ error: 'Asset not found' });
+  const asset = db.prepare('SELECT hash FROM assets WHERE hash = ?').get(hash);
+  if (!asset) return res.status(404).json({ error: 'Asset not found' });
 
-  res.json({ success: true, hash, status });
+  if (status === 'trash') {
+    const cfg = await loadConfig();
+    const trashDir = cfg.workspace?.trashDir;
+    if (!trashDir) return res.status(500).json({ error: 'workspace.trashDir not configured' });
+
+    const result = await trashAssetKeepOne(db, {
+      hash,
+      trashDir,
+      allowedRoots: allowedRootsFromConfig(cfg),
+      duplicatePolicy: 'quarantine-extra',
+      insertChange: (entity, entityId, type) => insertChange(db, entity, entityId, type),
+    });
+    if (!result.ok) return res.status(409).json({ error: result.error || 'trash_failed', hash, result });
+    return res.json({ success: true, hash, status, result });
+  }
+
+  db.prepare('UPDATE assets SET status = ?, updated_at = ? WHERE hash = ?').run(status, Date.now(), hash);
+  insertChange(db, 'asset', hash, `status:${status}`);
+
+  return res.json({ success: true, hash, status });
 });
 
 // Batch update asset status (used by multi-select operations)
@@ -227,7 +222,9 @@ router.post('/batch-status', async (req, res) => {
   const db = getDB();
   const cfg = await loadConfig();
   const trashDir = cfg.workspace?.trashDir;
-  if (!trashDir) return res.status(500).json({ error: 'workspace.trashDir not configured' });
+  if (String(req.body?.status || '').trim() === 'trash' && !trashDir) {
+    return res.status(500).json({ error: 'workspace.trashDir not configured' });
+  }
 
   const hashes = Array.isArray(req.body?.hashes) ? req.body.hashes.map(String).filter(Boolean) : [];
   const status = String(req.body?.status || '').trim();
@@ -239,129 +236,32 @@ router.post('/batch-status', async (req, res) => {
   if (limited.length === 0) return res.status(400).json({ error: 'hashes is required' });
 
   const report = { updated: 0, deleted: 0, errors: 0, messages: [] };
-  await fs.ensureDir(trashDir);
+  if (status === 'trash') await fs.ensureDir(trashDir);
+  const allowedRoots = allowedRootsFromConfig(cfg);
 
   for (const hash of limited) {
     try {
+      if (status === 'trash') {
+        const r = await trashAssetKeepOne(db, {
+          hash,
+          trashDir,
+          allowedRoots,
+          duplicatePolicy: 'quarantine-extra',
+          insertChange: (entity, entityId, type) => insertChange(db, entity, entityId, type),
+        });
+        if (r.ok) {
+          report.updated++;
+          report.deleted += Number(r.quarantined || 0);
+        } else {
+          report.errors++;
+          report.messages.push(`Failed to trash ${hash}: ${r.error || 'trash_failed'}`);
+        }
+        continue;
+      }
+
       const r = db.prepare('UPDATE assets SET status = ?, updated_at = ? WHERE hash = ?').run(status, Date.now(), hash);
       if (r.changes > 0) report.updated++;
       insertChange(db, 'asset', hash, `status:${status}`);
-
-      if (status !== 'trash') continue;
-
-      // New semantics:
-      // - Keep exactly ONE physical copy for the asset under TRASH_DIR (last-copy keep).
-      // - All other physical copies are deleted (do not go into TRASH_DIR).
-      // - Keep the corresponding files row (now pointing to TRASH_DIR) so UI can render trash items.
-      const rows = db
-        .prepare(
-          `
-          SELECT id, path, mtime_ms, updated_at, discovered_at, scanned_at
-          FROM files
-          WHERE hash = ?
-          ORDER BY COALESCE(mtime_ms, updated_at, discovered_at, scanned_at, 0) DESC, id DESC
-          `
-        )
-        .all(hash);
-
-      const existing = [];
-      for (const f of rows) {
-        if (!f?.path) continue;
-        // eslint-disable-next-line no-await-in-loop
-        if (await fs.pathExists(f.path)) existing.push({ ...f, path: String(f.path) });
-        else {
-          // Cleanup DB rows for missing paths to keep DB consistent.
-          try {
-            db.prepare('DELETE FROM files WHERE id = ?').run(f.id);
-            insertChange(db, 'file', f.id, 'deleted');
-          } catch {
-            // ignore
-          }
-        }
-      }
-
-      const alreadyInTrash = existing.find((f) => isUnder(trashDir, f.path)) || null;
-      const keep = alreadyInTrash || existing[0] || null;
-
-      let keepPath = keep?.path || null;
-
-      if (keep && keepPath && !isUnder(trashDir, keepPath)) {
-        // Move the kept copy into trashDir.
-        const fileName = path.basename(keepPath);
-        const trashRaw = path.join(trashDir, `${hash}_${fileName}`);
-        // eslint-disable-next-line no-await-in-loop
-        const trashPath = await uniquePath(trashRaw);
-        // eslint-disable-next-line no-await-in-loop
-        await fs.ensureDir(path.dirname(trashPath));
-
-        const tnow = Date.now();
-        const info = db.prepare(`
-          INSERT INTO file_ops (op, hash, file_id, from_path, to_path, status, created_at, updated_at)
-          VALUES ('trash', ?, ?, ?, ?, 'pending', ?, ?)
-        `).run(hash, keep.id, keepPath, trashPath, tnow, tnow);
-
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          await fs.move(keepPath, trashPath, { overwrite: false });
-          db.prepare('UPDATE files SET path = ?, missing = 0, updated_at = ? WHERE id = ?').run(trashPath, Date.now(), keep.id);
-          db.prepare('UPDATE file_ops SET status = ?, updated_at = ?, error = NULL WHERE id = ?').run('done', Date.now(), info.lastInsertRowid);
-          insertChange(db, 'file', keep.id, 'trashed');
-          keepPath = trashPath;
-        } catch (e) {
-          report.errors++;
-          const msg = String(e.message || e);
-          report.messages.push(`Failed to keep trash copy ${keepPath}: ${msg}`);
-          try {
-            db.prepare('UPDATE file_ops SET status = ?, updated_at = ?, error = ? WHERE id = ?').run('error', Date.now(), msg, info.lastInsertRowid);
-          } catch {
-            // ignore
-          }
-          // If we couldn't keep a copy, we still proceed to mark asset as trash (but target may be null).
-          keepPath = null;
-        }
-      }
-
-      // Delete all other existing copies.
-      for (const f of existing) {
-        if (!keep || f.id === keep.id) continue;
-        if (!f.path) continue;
-
-        const dnow = Date.now();
-        const info = db.prepare(`
-          INSERT INTO file_ops (op, hash, file_id, from_path, to_path, status, created_at, updated_at)
-          VALUES ('delete', ?, ?, ?, NULL, 'pending', ?, ?)
-        `).run(hash, f.id, f.path, dnow, dnow);
-
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          await fs.remove(f.path);
-          db.prepare('DELETE FROM files WHERE id = ?').run(f.id);
-          db.prepare('UPDATE file_ops SET status = ?, updated_at = ?, error = NULL WHERE id = ?').run('done', Date.now(), info.lastInsertRowid);
-          insertChange(db, 'file', f.id, 'deleted');
-          report.deleted++;
-        } catch (e) {
-          report.errors++;
-          const msg = String(e.message || e);
-          report.messages.push(`Failed to delete ${f.path}: ${msg}`);
-          try {
-            db.prepare('UPDATE file_ops SET status = ?, updated_at = ?, error = ? WHERE id = ?').run('error', Date.now(), msg, info.lastInsertRowid);
-          } catch {
-            // ignore
-          }
-        }
-      }
-
-      // Asset-level cleanup for trash.
-      try {
-        db.prepare(`DELETE FROM album_assets WHERE hash = ?`).run(hash);
-      } catch {
-        // ignore
-      }
-      try {
-        db.prepare(`UPDATE assets SET target_path = ?, updated_at = ? WHERE hash = ?`).run(keepPath, Date.now(), hash);
-      } catch {
-        // ignore
-      }
     } catch (e) {
       report.errors++;
       report.messages.push(`Failed to update ${hash}: ${String(e.message || e)}`);
@@ -713,4 +613,3 @@ router.get('/:hash/poster', async (req, res) => {
 });
 
 module.exports = router;
-

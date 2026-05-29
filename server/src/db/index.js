@@ -40,6 +40,7 @@ function migrateDB(dbConn) {
     { name: 'is_camera', type: 'INTEGER', defaultSql: '0' },
     { name: 'face_scanned_at', type: 'INTEGER' },
     { name: 'missing', type: 'INTEGER', defaultSql: '0' },
+    { name: 'hash_algo', type: 'TEXT', defaultSql: "'md5'" },
   ]);
 
   ensureColumns(dbConn, 'files', [
@@ -54,7 +55,23 @@ function migrateDB(dbConn) {
     { name: 'thumb_updated_at', type: 'INTEGER' },
     { name: 'phash', type: 'TEXT' },
     { name: 'phash_status', type: 'TEXT' },
+    { name: 'hash_algo', type: 'TEXT', defaultSql: "'md5'" },
   ]);
+
+  ensureColumns(dbConn, 'file_ops', [
+    { name: 'attempts', type: 'INTEGER', defaultSql: '0' },
+    { name: 'last_attempt_at', type: 'INTEGER' },
+  ]);
+
+  try {
+    dbConn.exec(`
+      UPDATE assets SET hash_algo = COALESCE(hash_algo, 'md5') WHERE hash_algo IS NULL;
+      UPDATE files SET hash_algo = COALESCE(hash_algo, 'md5') WHERE hash_algo IS NULL;
+      UPDATE file_ops SET attempts = COALESCE(attempts, 0) WHERE attempts IS NULL;
+    `);
+  } catch {
+    // ignore
+  }
 
   // Basic backfill for timestamps (best-effort, safe if columns already populated).
   try {
@@ -110,21 +127,21 @@ function migrateDB(dbConn) {
     // ignore
   }
 
-  // Migrate CHECK constraints that cannot be ALTERed (SQLite): file_ops.op must include 'delete'.
+  // Migrate CHECK constraints that cannot be ALTERed (SQLite): file_ops.op must include 'quarantine'.
   try {
     const row = dbConn
       .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'file_ops'`)
       .get();
     const sql = String(row?.sql || '');
     const hasTable = !!sql;
-    const hasDelete = sql.includes("'delete'") || sql.includes('"delete"');
-    if (hasTable && !hasDelete) {
+    const hasQuarantine = sql.includes("'quarantine'") || sql.includes('"quarantine"');
+    if (hasTable && !hasQuarantine) {
       dbConn.exec('BEGIN');
       dbConn.exec('ALTER TABLE file_ops RENAME TO file_ops_old');
       dbConn.exec(`
         CREATE TABLE file_ops (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          op TEXT NOT NULL CHECK(op IN ('move', 'trash', 'delete')),
+          op TEXT NOT NULL CHECK(op IN ('move', 'trash', 'delete', 'quarantine')),
           hash TEXT,
           file_id INTEGER,
           from_path TEXT,
@@ -132,14 +149,21 @@ function migrateDB(dbConn) {
           album_id INTEGER,
           status TEXT NOT NULL CHECK(status IN ('pending', 'done', 'error')) DEFAULT 'pending',
           error TEXT,
+          attempts INTEGER DEFAULT 0,
+          last_attempt_at INTEGER,
           created_at INTEGER,
           updated_at INTEGER,
           FOREIGN KEY(album_id) REFERENCES albums(id) ON DELETE SET NULL
         );
       `);
       dbConn.exec(`
-        INSERT INTO file_ops (id, op, hash, file_id, from_path, to_path, album_id, status, error, created_at, updated_at)
-        SELECT id, op, hash, file_id, from_path, to_path, album_id, status, error, created_at, updated_at
+        INSERT INTO file_ops (
+          id, op, hash, file_id, from_path, to_path, album_id, status, error,
+          attempts, last_attempt_at, created_at, updated_at
+        )
+        SELECT
+          id, op, hash, file_id, from_path, to_path, album_id, status, error,
+          COALESCE(attempts, 0), last_attempt_at, created_at, updated_at
         FROM file_ops_old;
       `);
       dbConn.exec('DROP TABLE file_ops_old');
@@ -186,5 +210,4 @@ function getDB() {
   return db;
 }
 
-module.exports = { initDB, getDB };
-
+module.exports = { initDB, getDB, applyMigrationsForTest: migrateDB };

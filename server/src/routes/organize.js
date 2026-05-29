@@ -9,6 +9,9 @@ const fs = require('fs-extra');
 const path = require('path');
 const { getDB } = require('../db');
 const { loadConfig } = require('../configStore');
+const { createFileOp, applyFileOp } = require('../services/fileOps');
+const { makeQuarantinePath } = require('../services/fileSafety');
+const { canTreatAsSameContentForDestructiveDedupe } = require('../services/hashPolicy');
 
 const router = express.Router();
 
@@ -56,6 +59,21 @@ function insertChange(db, entity, entityId, type) {
   }
 }
 
+function allowedRootsFromConfig(cfg) {
+  const roots = [];
+  for (const r of Array.isArray(cfg?.scanRoots) ? cfg.scanRoots : []) {
+    if (r?.root) roots.push(r.root);
+  }
+  if (cfg?.workspace?.managedRoot) roots.push(cfg.workspace.managedRoot);
+  if (cfg?.workspace?.trashDir) roots.push(cfg.workspace.trashDir);
+  return Array.from(new Set(roots.filter(Boolean).map(String)));
+}
+
+function opSucceeded(db, opId) {
+  const row = db.prepare('SELECT status, error FROM file_ops WHERE id = ?').get(opId);
+  return row?.status === 'done' ? { ok: true } : { ok: false, error: row?.error || 'file_op_failed' };
+}
+
 function pickPrimaryFile(files, managedRoot) {
   // Prefer existing, non-missing file outside managed root (so we move from source),
   // otherwise any existing one.
@@ -69,10 +87,15 @@ router.post('/', async (req, res) => {
   const cfg = await loadConfig();
   const managedRoot = cfg.workspace?.managedRoot;
   if (!managedRoot) return res.status(500).json({ error: 'workspace.managedRoot not configured' });
+  const trashDir = cfg.workspace?.trashDir;
+  const allowedRoots = allowedRootsFromConfig(cfg);
 
   const hashes = Array.isArray(req.body?.hashes) ? req.body.hashes.map(String) : [];
   const albumNameRaw = req.body?.albumName;
   const albumIdRaw = req.body?.albumId;
+  const duplicatePolicy = ['keep-all', 'quarantine-extra'].includes(req.body?.duplicatePolicy)
+    ? req.body.duplicatePolicy
+    : 'keep-all';
 
   const hashesLimited = hashes.filter(Boolean).slice(0, 500);
   if (hashesLimited.length === 0) return res.status(400).json({ error: 'hashes is required' });
@@ -99,13 +122,13 @@ router.post('/', async (req, res) => {
   const albumDir = path.join(managedRoot, sanitizeSegment(albumName));
   await fs.ensureDir(albumDir);
 
-  const report = { album: { id: albumId, name: albumName }, moved: 0, deleted: 0, errors: 0, messages: [] };
+  const report = { album: { id: albumId, name: albumName }, duplicatePolicy, moved: 0, deleted: 0, errors: 0, messages: [] };
 
   for (const hash of hashesLimited) {
     // eslint-disable-next-line no-await-in-loop
     await (async () => {
       try {
-        const files = db.prepare('SELECT id, path FROM files WHERE hash = ? ORDER BY path ASC').all(hash);
+        const files = db.prepare('SELECT id, path, hash, hash_algo, size FROM files WHERE hash = ? ORDER BY path ASC').all(hash);
         if (!files || files.length === 0) {
           report.messages.push(`No files for hash: ${hash}`);
           return;
@@ -122,36 +145,40 @@ router.post('/', async (req, res) => {
         const targetPathRaw = path.join(albumDir, baseName);
         const targetPath = await uniquePath(targetPathRaw);
 
-        // Op log: pending move
-        const opMove = db.prepare(`
-          INSERT INTO file_ops (op, hash, file_id, from_path, to_path, album_id, status, created_at, updated_at)
-          VALUES ('move', ?, ?, ?, ?, ?, 'pending', ?, ?)
-        `).run(hash, primary.id, fromPath, targetPath, albumId, now, now);
-        const opMoveId = opMove.lastInsertRowid;
-
-        // Move primary
-        if (fromPath !== targetPath) {
-          await fs.move(fromPath, targetPath, { overwrite: false });
+        const moveOp = createFileOp(db, {
+          op: 'move',
+          hash,
+          fileId: primary.id,
+          fromPath,
+          toPath: targetPath,
+          albumId,
+        });
+        await applyFileOp(db, moveOp, {
+          allowedRoots,
+          insertChange: (entity, entityId, type) => insertChange(db, entity, entityId, type),
+          report,
+        });
+        const moveResult = opSucceeded(db, moveOp.id);
+        if (!moveResult.ok) {
+          report.messages.push(`Move failed for ${hash}: ${moveResult.error}`);
+          return;
         }
-
-        // Update DB for primary
-        db.prepare('UPDATE files SET path = ?, missing = 0, updated_at = ? WHERE id = ?').run(targetPath, Date.now(), primary.id);
-        db.prepare(`UPDATE assets SET status = 'sorted', target_path = ?, updated_at = ? WHERE hash = ?`).run(targetPath, Date.now(), hash);
 
         // Ensure single-folder semantics: remove from other albums, then add to this album.
         db.prepare('DELETE FROM album_assets WHERE hash = ? AND album_id <> ?').run(hash, albumId);
         db.prepare('INSERT OR REPLACE INTO album_assets (album_id, hash, added_at) VALUES (?, ?, ?)').run(albumId, hash, Date.now());
         db.prepare('UPDATE albums SET updated_at = ? WHERE id = ?').run(Date.now(), albumId);
 
-        // Mark op done
-        db.prepare('UPDATE file_ops SET status = ?, updated_at = ? WHERE id = ?').run('done', Date.now(), opMoveId);
+        // By default, preserve extra same-content copies. Only explicit policy quarantines them.
+        if (duplicatePolicy !== 'quarantine-extra') return;
+        if (!trashDir) {
+          report.errors++;
+          report.messages.push(`Cannot quarantine extras for ${hash}: workspace.trashDir not configured`);
+          return;
+        }
 
-        insertChange(db, 'file', primary.id, 'moved');
-        insertChange(db, 'asset', hash, 'sorted');
-        report.moved++;
-
-        // Delete duplicates (do NOT use TRASH_DIR for dedupe; TRASH_DIR is for user-deleted assets' last-copy keep).
         const dupFiles = files.filter((f) => f.id !== primary.id);
+        const primaryAfterMove = { ...primary, path: targetPath };
         for (const dup of dupFiles) {
           if (!dup.path) continue;
           if (!fs.existsSync(dup.path)) {
@@ -161,32 +188,35 @@ router.post('/', async (req, res) => {
             continue;
           }
 
-          let opDelId = null;
-          try {
-            const ts = Date.now();
-            const opDel = db.prepare(`
-              INSERT INTO file_ops (op, hash, file_id, from_path, to_path, album_id, status, created_at, updated_at)
-              VALUES ('delete', ?, ?, ?, NULL, ?, 'pending', ?, ?)
-            `).run(hash, dup.id, dup.path, albumId, ts, ts);
-            opDelId = opDel.lastInsertRowid;
-
-            // eslint-disable-next-line no-await-in-loop
-            await fs.remove(dup.path);
-            db.prepare('DELETE FROM files WHERE id = ?').run(dup.id);
-            db.prepare('UPDATE file_ops SET status = ?, updated_at = ? WHERE id = ?').run('done', Date.now(), opDelId);
-            insertChange(db, 'file', dup.id, 'deleted');
-            report.deleted++;
-          } catch (e) {
-            try {
-              if (opDelId != null) {
-                db.prepare('UPDATE file_ops SET status = ?, error = ?, updated_at = ? WHERE id = ?').run('error', String(e.message || e), Date.now(), opDelId);
-              }
-            } catch {
-              // ignore
-            }
+          // eslint-disable-next-line no-await-in-loop
+          const sameContent = await canTreatAsSameContentForDestructiveDedupe(primaryAfterMove, dup);
+          if (!sameContent) {
             report.errors++;
-            report.messages.push(`Failed to delete dup ${dup.path}: ${String(e.message || e)}`);
+            report.messages.push(`Skipped quarantining ${dup.path}: hash_policy_mismatch`);
+            continue;
           }
+
+          const quarantinePath = await makeQuarantinePath({
+            quarantineDir: path.join(trashDir, '.quarantine'),
+            hash,
+            fileId: dup.id,
+            sourcePath: dup.path,
+            reason: 'organize-extra',
+          });
+          const quarantineOp = createFileOp(db, {
+            op: 'quarantine',
+            hash,
+            fileId: dup.id,
+            fromPath: dup.path,
+            toPath: quarantinePath,
+            albumId,
+          });
+          // eslint-disable-next-line no-await-in-loop
+          await applyFileOp(db, quarantineOp, {
+            allowedRoots,
+            insertChange: (entity, entityId, type) => insertChange(db, entity, entityId, type),
+            report,
+          });
         }
       } catch (e) {
         report.errors++;
@@ -199,5 +229,3 @@ router.post('/', async (req, res) => {
 });
 
 module.exports = router;
-
-
