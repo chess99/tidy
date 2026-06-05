@@ -6,5 +6,5 @@
 
 - 本目录内容为**生成物**，默认不入库（由根 `.gitignore` 忽略）。
 - 生成入口：`desktop/scripts/generate-icons.mjs`
-
+- 桌面图标生成时会把源图居中缩到画布约 82%，保留透明安全边距，避免 Dock 中视觉尺寸偏大。
 

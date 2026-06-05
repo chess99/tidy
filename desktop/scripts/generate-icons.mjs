@@ -21,6 +21,7 @@ const repoRoot = path.resolve(desktopRoot, '..');
 const srcPng = path.join(repoRoot, 'client', 'public', 'icon.png');
 const srcSvg = path.join(repoRoot, 'client', 'public', 'icon.svg');
 const outDir = path.join(desktopRoot, 'assets');
+const desktopIconContentScale = 0.82;
 
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
@@ -36,9 +37,20 @@ async function renderPng(source, size) {
   const s = source?.path;
   const kind = source?.kind;
   if (!s) throw new Error('renderPng: missing source');
+  const contentSize = Math.round(size * desktopIconContentScale);
   const input = kind === 'svg' ? sharp(s, { density: 512 }) : sharp(s);
-  const buf = await input.resize(size, size).png().toBuffer();
-  return buf;
+  const icon = await input.resize(contentSize, contentSize, { fit: 'contain' }).png().toBuffer();
+  return sharp({
+    create: {
+      width: size,
+      height: size,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
+    .composite([{ input: icon, gravity: 'center' }])
+    .png()
+    .toBuffer();
 }
 
 async function writePng(source, file, size) {
@@ -90,5 +102,4 @@ main().catch((e) => {
   console.error('[generate-icons] failed:', e?.stack || e);
   process.exit(1);
 });
-
 

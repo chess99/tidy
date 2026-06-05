@@ -5,6 +5,5 @@
 ### 文件
 
 - `prepare-resources.mjs`：生成 `desktop/bundle/`（供 electron-builder `extraResources` 使用）。
-- `generate-icons.mjs`：从 `client/public/icon.png` 生成 `desktop/assets/icon.icns`/`icon.ico`/`icon.png`（供 electron-builder 使用）。
-
+- `generate-icons.mjs`：从 `client/public/icon.png` 生成 `desktop/assets/icon.icns`/`icon.ico`/`icon.png`（供 electron-builder 使用）；生成时会保留透明安全边距，避免 Dock 图标视觉尺寸偏大。
 

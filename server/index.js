@@ -6,6 +6,7 @@
 
 require('dotenv').config();
 const { initDB } = require('./src/db');
+const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const { DATA_DIR, DB_PATH, THUMB_DIR, PREVIEW_DIR, POSTER_DIR } = require('./src/config');

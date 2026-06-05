@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "electron .",
     "generate:icons": "node scripts/generate-icons.mjs",
+    "test:icons": "node --test scripts/generate-icons.test.mjs",
     "prepare:resources": "node scripts/prepare-resources.mjs",
     "dist": "npm run generate:icons && npm run prepare:resources && electron-builder",
     "dist:mac": "npm run generate:icons && npm run prepare:resources && electron-builder --mac"
@@ -48,6 +49,5 @@
     }
   }
 }
-
 
 
