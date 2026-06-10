@@ -92,11 +92,6 @@ async function handleFacesScan(ctx) {
       stats.scanned++;
     } catch {
       stats.errors++;
-      try {
-        db.prepare('UPDATE assets SET face_scanned_at = ? WHERE hash = ?').run(now(), hash);
-      } catch {
-        // ignore
-      }
     }
 
     if (stats.done % 10 === 0) {
@@ -125,5 +120,4 @@ async function handleFacesScan(ctx) {
 }
 
 module.exports = { handleFacesScan };
-
 

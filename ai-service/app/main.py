@@ -98,7 +98,7 @@ def _get_face_app() -> FaceAnalysis:
   # Providers:
   # - CPU-only: onnxruntime (default)
   # - If you install onnxruntime-gpu and CUDA runtime is available, ORT may use CUDA provider.
-    fa = FaceAnalysis(name="buffalo_l")
+    fa = FaceAnalysis(name="buffalo_l", allowed_modules=["detection", "recognition"])
     # det_size affects detector speed/accuracy; can be made configurable
     fa.prepare(ctx_id=0, det_size=(640, 640))
     _fa = fa
@@ -281,5 +281,4 @@ def clip_image_embed(payload: Dict[str, Any], request: Request) -> Dict[str, Any
         prof.mark("serialized", {"n": len(images), "dim": int(out.dim), "device": out.device})
         payload_out2["profile"] = prof.finish()
     return payload_out2
-
 

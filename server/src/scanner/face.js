@@ -30,7 +30,7 @@ async function detectFaces(imagePath) {
     return filtered;
   } catch (err) {
     console.error(`Error detecting faces in ${imagePath}:`, err.message);
-    return [];
+    throw err;
   }
 }
 
@@ -80,4 +80,3 @@ module.exports = {
   detectFaces,
   processImageFaces
 };
-
