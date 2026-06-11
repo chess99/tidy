@@ -4,7 +4,7 @@
  * pos: 服务端服务层：跨路由/任务复用的领域能力（变更需同步更新本头注释与所属目录 README）
  */
 
-const { dbscan, parseDescriptor, norm, cosineDistance } = require('./faceClustering');
+const { DEFAULT_FACE_CLUSTER_EPS, dbscan, parseDescriptor, norm, cosineDistance } = require('./faceClustering');
 
 function meanVector(vecs) {
   if (!vecs.length) return null;
@@ -22,7 +22,7 @@ function meanVector(vecs) {
 }
 
 function reclusterPeople(db, opts = {}) {
-  const eps = Number(opts.eps ?? 0.04);
+  const eps = Number(opts.eps ?? DEFAULT_FACE_CLUSTER_EPS);
   const minSamples = Number(opts.minSamples ?? 2);
   const preserveNamed = opts.preserveNamed !== false;
   const anchorMaxDist = Number(opts.anchorMaxDist ?? eps);
@@ -235,5 +235,4 @@ function reclusterPeople(db, opts = {}) {
 }
 
 module.exports = { reclusterPeople };
-
 

@@ -36,6 +36,8 @@ function cosineDistance(a, b, na, nb) {
   return 1 - c;
 }
 
+const DEFAULT_FACE_CLUSTER_EPS = 0.3;
+
 /**
  * DBSCAN clustering (O(n^2)). Fine for small/medium face counts.
  *
@@ -45,9 +47,9 @@ function cosineDistance(a, b, na, nb) {
  *  labels: -1 = noise, else clusterId 0..k-1
  */
 function dbscan(points, opts) {
-  // NOTE: InsightFace descriptors tend to have small cosine distances.
-  // A practical starting point is ~0.04 (tune with scripts/cluster-calibrate.js).
-  const eps = Number(opts?.eps ?? 0.04);
+  // InsightFace same-person distances in the local desktop dataset are commonly
+  // around 0.25-0.30. Tune with scripts/cluster-calibrate.js when datasets shift.
+  const eps = Number(opts?.eps ?? DEFAULT_FACE_CLUSTER_EPS);
   const minSamples = Number(opts?.minSamples ?? 2);
 
   const n = points.length;
@@ -94,10 +96,10 @@ function dbscan(points, opts) {
 }
 
 module.exports = {
+  DEFAULT_FACE_CLUSTER_EPS,
   parseDescriptor,
   norm,
   cosineDistance,
   dbscan,
 };
-
 

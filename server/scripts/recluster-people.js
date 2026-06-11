@@ -3,9 +3,10 @@
  * Recluster all faces into people using DBSCAN (cosine distance).
  *
  * Usage:
- *   node scripts/recluster-people.js --eps 0.4 --minSamples 2
+ *   node scripts/recluster-people.js --eps 0.3 --minSamples 2
  */
 const { initDB, getDB } = require('../src/db');
+const { DEFAULT_FACE_CLUSTER_EPS } = require('../src/services/faceClustering');
 const { reclusterPeople } = require('../src/services/reclusterPeople');
 
 function readArg(name, fallback) {
@@ -19,7 +20,7 @@ async function main() {
   initDB();
   const db = getDB();
 
-  const eps = Number(readArg('--eps', '0.04'));
+  const eps = Number(readArg('--eps', String(DEFAULT_FACE_CLUSTER_EPS)));
   const minSamples = Number(readArg('--minSamples', '2'));
 
   const res = reclusterPeople(db, { eps, minSamples });
@@ -30,5 +31,4 @@ main().catch((e) => {
   console.error(e);
   process.exitCode = 1;
 });
-
 
