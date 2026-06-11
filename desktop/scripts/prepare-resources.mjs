@@ -6,6 +6,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -33,6 +34,15 @@ function copyFile(src, dst) {
   fs.copyFileSync(src, dst);
 }
 
+function run(cmd, args, opts = {}) {
+  const res = spawnSync(cmd, args, { encoding: 'utf8', ...opts });
+  if (res.status !== 0) {
+    const detail = [res.stdout, res.stderr].filter(Boolean).join('\n').trim();
+    throw new Error(`${cmd} ${args.join(' ')} failed${detail ? `:\n${detail}` : ''}`);
+  }
+  return res.stdout || '';
+}
+
 function copyDir(src, dst) {
   mkdirp(dst);
   fs.cpSync(src, dst, {
@@ -56,6 +66,116 @@ function assertExists(p, hint) {
   }
 }
 
+function isSystemDylib(dep) {
+  return dep.startsWith('/usr/lib/') || dep.startsWith('/System/Library/');
+}
+
+function parseOtoolDeps(file) {
+  const out = run('otool', ['-L', file]);
+  return out
+    .split('\n')
+    .slice(1)
+    .map((line) => line.trim().split(/\s+/)[0])
+    .filter(Boolean);
+}
+
+function resolveDylib(dep, { fromDir } = {}) {
+  if (dep.startsWith('@loader_path/') && fromDir) {
+    const p = path.join(fromDir, dep.slice('@loader_path/'.length));
+    if (fs.existsSync(p)) return p;
+  }
+  if (path.isAbsolute(dep) && fs.existsSync(dep)) return dep;
+  const base = path.basename(dep);
+  const candidates = [
+    path.join('/opt/homebrew/lib', base),
+    path.join('/opt/homebrew/opt/node/lib', base),
+    path.join('/usr/local/lib', base),
+  ];
+  const direct = candidates.find((p) => fs.existsSync(p));
+  if (direct) return direct;
+
+  for (const optRoot of ['/opt/homebrew/opt', '/usr/local/opt']) {
+    if (!fs.existsSync(optRoot)) continue;
+    for (const pkg of fs.readdirSync(optRoot)) {
+      const p = path.join(optRoot, pkg, 'lib', base);
+      if (fs.existsSync(p)) return p;
+    }
+  }
+
+  return null;
+}
+
+function patchInstallName(file, args) {
+  run('install_name_tool', [...args, file]);
+}
+
+function bundleNodeRuntime({ nodeBin }) {
+  if (process.platform !== 'darwin') return;
+
+  const libDir = path.join(bundleNodeDir, 'lib');
+  mkdirp(libDir);
+
+  const copied = new Map();
+  const queue = [];
+  for (const dep of parseOtoolDeps(nodeBin)) {
+    if (isSystemDylib(dep)) continue;
+    queue.push({ dep, fromDir: path.dirname(nodeBin) });
+  }
+
+  while (queue.length > 0) {
+    const { dep, fromDir } = queue.shift();
+    const src = resolveDylib(dep, { fromDir });
+    if (!src) throw new Error(`unable to resolve dylib dependency for ${dep}`);
+    const base = path.basename(src);
+    if (!copied.has(base)) {
+      const dst = path.join(libDir, base);
+      copyFile(src, dst);
+      fs.chmodSync(dst, 0o755);
+      copied.set(base, dst);
+      for (const childDep of parseOtoolDeps(dst)) {
+        if (!isSystemDylib(childDep) && path.basename(childDep) !== base) {
+          queue.push({ dep: childDep, fromDir: path.dirname(dst) });
+        }
+      }
+    }
+  }
+
+  for (const dep of parseOtoolDeps(nodeBin)) {
+    if (!isSystemDylib(dep)) {
+      patchInstallName(nodeBin, ['-change', dep, `@executable_path/lib/${path.basename(dep)}`]);
+    }
+  }
+
+  for (const lib of copied.values()) {
+    patchInstallName(lib, ['-id', `@loader_path/${path.basename(lib)}`]);
+    for (const dep of parseOtoolDeps(lib)) {
+      if (!isSystemDylib(dep)) {
+        patchInstallName(lib, ['-change', dep, `@loader_path/${path.basename(dep)}`]);
+      }
+    }
+  }
+}
+
+function patchAiServiceRuntime({ aiRoot }) {
+  if (process.platform !== 'darwin') return;
+
+  const internalDir = path.join(aiRoot, '_internal');
+  const libssl = path.join(internalDir, 'libssl.3.dylib');
+  const libcrypto = path.join(internalDir, 'libcrypto.3.dylib');
+  if (!fs.existsSync(libssl) || !fs.existsSync(libcrypto)) return;
+
+  fs.chmodSync(libssl, 0o755);
+  fs.chmodSync(libcrypto, 0o755);
+  patchInstallName(libssl, ['-id', '@rpath/libssl.3.dylib']);
+  patchInstallName(libcrypto, ['-id', '@rpath/libcrypto.3.dylib']);
+
+  for (const dep of parseOtoolDeps(libssl)) {
+    if (path.basename(dep) === 'libcrypto.3.dylib') {
+      patchInstallName(libssl, ['-change', dep, '@loader_path/libcrypto.3.dylib']);
+    }
+  }
+}
+
 function main() {
   rmrf(bundleRoot);
   mkdirp(bundleRoot);
@@ -73,6 +193,7 @@ function main() {
       // ignore
     }
   }
+  bundleNodeRuntime({ nodeBin: nodeDst });
 
   // 2) Bundle server (including node_modules).
   const serverSrc = path.join(repoRoot, 'server');
@@ -90,7 +211,9 @@ function main() {
   const aiOnedir = path.join(repoRoot, 'ai-service', 'dist', 'tidy-ai-service');
   const aiExe = path.join(aiOnedir, isWindows ? 'tidy-ai-service.exe' : 'tidy-ai-service');
   assertExists(aiExe, 'Build ai-service first: `cd ai-service && ./scripts/build-ai-service.sh` (or .bat).');
-  copyDir(aiOnedir, path.join(bundleAiDir, 'dist', 'tidy-ai-service'));
+  const aiDst = path.join(bundleAiDir, 'dist', 'tidy-ai-service');
+  copyDir(aiOnedir, aiDst);
+  patchAiServiceRuntime({ aiRoot: aiDst });
 
   console.log('[prepare-resources] OK');
   console.log('  bundle =', bundleRoot);
@@ -101,5 +224,3 @@ function main() {
 }
 
 main();
-
-

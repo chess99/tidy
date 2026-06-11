@@ -95,6 +95,11 @@ function startAiService({
   const aiDir = path.join(repoRoot, 'ai-service');
   const env = {
     ...process.env,
+    // PyInstaller's Python readline extension can crash under macOS GUI
+    // launch environments that provide an invalid LC_* value such as "UTF-8".
+    LANG: 'en_US.UTF-8',
+    LC_ALL: 'en_US.UTF-8',
+    LC_CTYPE: 'en_US.UTF-8',
     ...(clipModelId ? { TIDY_CLIP_MODEL_ID: String(clipModelId) } : {}),
     ...(clipConcurrency ? { TIDY_CLIP_CONCURRENCY: String(clipConcurrency) } : {}),
     TIDY_AI_PORT: String(port),
@@ -142,5 +147,3 @@ function stopProcess(proc, { timeoutMs = 2500 } = {}) {
 }
 
 module.exports = { resolveRepoRoot, startServer, startAiService, stopProcess };
-
-
