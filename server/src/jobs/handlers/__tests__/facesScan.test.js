@@ -18,10 +18,10 @@ async function makeHarness() {
   process.env.DATA_DIR = dataDir;
   process.env.DB_PATH = path.join(dataDir, 'tidy.db');
 
-  const { initDB, getDB } = require('../../../db');
+  const { initDB, getDB, closeDB } = require('../../../db');
   initDB();
   const db = getDB();
-  return { root, db };
+  return { root, db, closeDB };
 }
 
 function seedImage(db, filePath, hash = 'hash-face-fail') {
@@ -44,6 +44,7 @@ describe('faces scan job', () => {
 
   afterEach(async () => {
     jest.dontMock('../../../scanner/face');
+    harness?.closeDB?.();
     if (harness?.root) await fs.remove(harness.root);
     delete process.env.DATA_DIR;
     delete process.env.DB_PATH;

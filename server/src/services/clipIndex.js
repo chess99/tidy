@@ -26,7 +26,10 @@ function requireHnsw() {
     return require('hnswlib-node');
   } catch (e) {
     const msg = String(e?.message || e);
-    throw new Error(`hnswlib-node not available: ${msg}. Run: cd server && npm i`);
+    throw new Error(
+      `CLIP vector index is unavailable because optional dependency hnswlib-node is not installed or failed to load: ${msg}. ` +
+      'On Windows, install Visual Studio Build Tools with the C++ workload, then run: cd server && npm install hnswlib-node'
+    );
   }
 }
 
@@ -373,5 +376,4 @@ module.exports = {
   queryTopKByVector,
   queryTopKByFileId,
 };
-
 

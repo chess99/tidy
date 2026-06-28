@@ -210,4 +210,10 @@ function getDB() {
   return db;
 }
 
-module.exports = { initDB, getDB, applyMigrationsForTest: migrateDB };
+function closeDB() {
+  if (!db) return;
+  db.close();
+  db = null;
+}
+
+module.exports = { initDB, getDB, closeDB, applyMigrationsForTest: migrateDB };

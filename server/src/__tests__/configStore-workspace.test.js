@@ -57,8 +57,8 @@ describe('normalizeWorkspacePath', () => {
 
   test('normalizes valid absolute paths', () => {
     const customPath = '/custom/path/to/managed';
-    expect(normalizeWorkspacePath(customPath, DEFAULT_MANAGED_ROOT)).toBe(customPath);
-    expect(normalizeWorkspacePath('  /custom/path  ', DEFAULT_MANAGED_ROOT)).toBe('/custom/path');
+    expect(normalizeWorkspacePath(customPath, DEFAULT_MANAGED_ROOT)).toBe(path.resolve(customPath));
+    expect(normalizeWorkspacePath('  /custom/path  ', DEFAULT_MANAGED_ROOT)).toBe(path.resolve('/custom/path'));
   });
 
   test('returns resolved path for relative paths (path.resolve makes them absolute)', () => {
@@ -73,7 +73,7 @@ describe('normalizeWorkspacePath', () => {
 
   test('handles trailing separators', () => {
     const customPath = '/custom/path/';
-    const expected = '/custom/path';
+    const expected = path.resolve('/custom/path');
     expect(normalizeWorkspacePath(customPath, DEFAULT_MANAGED_ROOT)).toBe(expected);
   });
 

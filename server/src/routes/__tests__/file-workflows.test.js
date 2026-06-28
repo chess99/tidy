@@ -29,7 +29,7 @@ async function makeHarness() {
   await fs.ensureDir(managedRoot);
   await fs.ensureDir(trashDir);
 
-  const { initDB, getDB } = require('../../db');
+  const { initDB, getDB, closeDB } = require('../../db');
   initDB();
   const db = getDB();
   const { saveConfig } = require('../../configStore');
@@ -43,7 +43,7 @@ async function makeHarness() {
   const { createApp } = require('../../app');
   const app = createApp({ includeConfig: false });
 
-  return { root, sourceRoot, managedRoot, trashDir, db, app };
+  return { root, sourceRoot, managedRoot, trashDir, db, app, closeDB };
 }
 
 function seedAssetFile(db, { filePath, hash, content = 'same-bytes', hashAlgo = 'sha256' }) {
@@ -65,6 +65,7 @@ describe('file workflow routes', () => {
   let harness;
 
   afterEach(async () => {
+    harness?.closeDB?.();
     if (harness?.root) await fs.remove(harness.root);
     delete process.env.DATA_DIR;
     delete process.env.DB_PATH;
