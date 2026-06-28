@@ -35,6 +35,13 @@ def _pick_device(torch_mod: Any) -> str:
     return "cpu"
 
 
+def _default_model_id() -> str:
+    local_model = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models", "openai-clip-vit-base-patch32"))
+    if os.path.isdir(local_model):
+        return local_model
+    return "jinaai/jina-clip-v2"
+
+
 @dataclass(frozen=True)
 class ClipEncodeResult:
     model: str
@@ -57,9 +64,9 @@ class ClipEncoder:
         import torch  # type: ignore
         from transformers import AutoModel, AutoProcessor  # type: ignore
 
-        mid = (model_id or os.environ.get("TIDY_CLIP_MODEL_ID") or "jinaai/jina-clip-v2").strip()
+        mid = (model_id or os.environ.get("TIDY_CLIP_MODEL_ID") or _default_model_id()).strip()
         if not mid:
-            mid = "jinaai/jina-clip-v2"
+            mid = _default_model_id()
 
         device = _pick_device(torch)
 
@@ -216,5 +223,4 @@ def get_encoder() -> ClipEncoder:
     if _ENCODER is None:
         _ENCODER = ClipEncoder.load()
     return _ENCODER
-
 

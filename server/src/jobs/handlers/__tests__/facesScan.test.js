@@ -72,6 +72,7 @@ describe('faces scan job', () => {
 
     expect(result.errors).toBe(1);
     expect(result.scanned).toBe(0);
+    expect(result.lastError).toBe('ai-service error 500');
     const asset = harness.db.prepare('SELECT face_scanned_at FROM assets WHERE hash = ?').get(hash);
     expect(asset.face_scanned_at).toBeNull();
   });

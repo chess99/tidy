@@ -66,6 +66,7 @@ async function handleFacesScan(ctx) {
     scanned: 0,
     skipped: 0,
     errors: 0,
+    lastError: null,
     startedAt: now(),
   };
 
@@ -90,12 +91,13 @@ async function handleFacesScan(ctx) {
       await processImageFaces(filePath, hash);
       db.prepare('UPDATE assets SET face_scanned_at = ? WHERE hash = ?').run(now(), hash);
       stats.scanned++;
-    } catch {
+    } catch (e) {
       stats.errors++;
+      stats.lastError = String(e?.message || e || 'face_scan_failed');
     }
 
     if (stats.done % 10 === 0) {
-      ctx.heartbeat({ phase: 'faces', done: stats.done, scanned: stats.scanned, skipped: stats.skipped, errors: stats.errors });
+      ctx.heartbeat({ phase: 'faces', done: stats.done, scanned: stats.scanned, skipped: stats.skipped, errors: stats.errors, lastError: stats.lastError });
     }
   };
 
@@ -115,7 +117,7 @@ async function handleFacesScan(ctx) {
     // ignore
   }
 
-  ctx.heartbeat({ phase: 'faces_done', done: stats.done, scanned: stats.scanned, errors: stats.errors });
+  ctx.heartbeat({ phase: 'faces_done', done: stats.done, scanned: stats.scanned, errors: stats.errors, lastError: stats.lastError });
   return { ok: true, ...stats, finishedAt: now() };
 }
 

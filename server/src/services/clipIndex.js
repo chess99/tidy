@@ -1,5 +1,5 @@
 /**
- * input: SQLite（clip_embeddings/clip_index_meta）+ DATA_DIR 文件系统 + hnswlib-node
+ * input: SQLite（clip_embeddings/clip_index_meta）+ DATA_DIR 文件系统 + hnsw
  * output: CLIP 近邻检索（topK）与索引构建/加载能力
  * pos: 服务端服务层：为智能搜索/找相似提供向量检索（变更需同步更新本头注释与所属目录 README）
  */
@@ -17,20 +17,15 @@ function getIndexDir() {
 }
 
 function getIndexPath() {
-  return path.join(getIndexDir(), 'clip_hnsw.bin');
+  return path.join(getIndexDir(), 'clip_hnsw.json');
 }
 
-function requireHnsw() {
-  try {
-    // eslint-disable-next-line global-require
-    return require('hnswlib-node');
-  } catch (e) {
-    const msg = String(e?.message || e);
-    throw new Error(
-      `CLIP vector index is unavailable because optional dependency hnswlib-node is not installed or failed to load: ${msg}. ` +
-      'On Windows, install Visual Studio Build Tools with the C++ workload, then run: cd server && npm install hnswlib-node'
-    );
-  }
+let _hnswModule = null;
+
+async function loadHnsw() {
+  if (_hnswModule) return _hnswModule;
+  _hnswModule = await import('hnsw');
+  return _hnswModule;
 }
 
 function packF32(arr) {
@@ -136,23 +131,21 @@ async function rebuildIndex({ model = CLIP_MODEL_ID, m = 16, efConstruction = 20
   const normalized = rows.every((r) => r.normalized);
   if (!Number.isFinite(dim) || dim <= 0) throw new Error('invalid clip_embeddings.dim');
 
-  const H = requireHnsw();
+  const { HNSW } = await loadHnsw();
   await fs.ensureDir(getIndexDir());
   const indexPath = getIndexPath();
 
-  const index = new H.HierarchicalNSW('ip', dim);
-  // Keep headroom for incremental additions (on-demand embeddings / new scans).
-  const maxElements = rows.length + 20000;
-  index.initIndex(maxElements, m, efConstruction, 123);
-
+  const index = new HNSW(m, efConstruction, dim, 'cosine', 128);
+  const data = [];
   for (const r of rows) {
     const id = Number(r.file_id);
     if (!Number.isFinite(id)) continue;
     const v = unpackF32(r.embedding, dim);
-    index.addPoint(v, id);
+    data.push({ id, vector: normalized ? v : l2Normalize(v) });
   }
+  await index.buildIndex(data);
 
-  index.writeIndexSync(indexPath);
+  await fs.writeJson(indexPath, index.toJSON());
   _index = index;
   _indexInfo = { model, dim, normalized, path: indexPath, builtAt: Date.now(), fileCount: rows.length };
 
@@ -162,7 +155,7 @@ async function rebuildIndex({ model = CLIP_MODEL_ID, m = 16, efConstruction = 20
     normalized: normalized ? 1 : 0,
     built_at: _indexInfo.builtAt,
     file_count: rows.length,
-    params_json: JSON.stringify({ m, efConstruction, space: 'ip', maxElements }),
+    params_json: JSON.stringify({ m, efConstruction, metric: 'cosine', engine: 'hnsw' }),
     index_path: indexPath,
   });
 
@@ -188,14 +181,13 @@ async function ensureIndexLoaded({ model = CLIP_MODEL_ID } = {}) {
     throw makeIndexNotReadyError('CLIP index meta invalid. Run task: clip_index (rebuild).');
   }
 
-  const H = requireHnsw();
   if (!(await fs.pathExists(indexPath))) {
     throw makeIndexNotReadyError(`CLIP index file missing: ${indexPath}. Run task: clip_index (rebuild).`);
   }
 
-  const index = new H.HierarchicalNSW('ip', dim);
-  // hnswlib-node v3 stores dimensionality in the index; passing a numeric 2nd arg breaks (expects boolean).
-  index.readIndexSync(indexPath);
+  const { HNSW } = await loadHnsw();
+  const indexJson = await fs.readJson(indexPath);
+  const index = HNSW.fromJSON(indexJson);
   _index = index;
   _indexInfo = {
     model,
@@ -271,7 +263,7 @@ async function ensureEmbeddingForFileId(fileId, { model = CLIP_MODEL_ID } = {}) 
   try {
     await ensureIndexLoaded({ model: String(r.model || model) });
     if (_index && _indexInfo?.dim === dim) {
-      _index.addPoint(l2Normalize(emb), id);
+      _index.addPoint(id, l2Normalize(emb));
       if (_indexInfo) _indexInfo.fileCount = (_indexInfo.fileCount || 0) + 1;
     }
   } catch {
@@ -295,14 +287,10 @@ async function queryTopKByVector(
   const qn = l2Normalize(q);
   profile?.mark?.('clip.query.normalize', { dim: qn.length, k, efSearch });
 
-  _index.setEf(efSearch);
   const ids = profile?.wrap
-    ? await profile.wrap('clip.query.hnsw.searchKnn', () => _index.searchKnn(qn, k), { k, efSearch })
-    : _index.searchKnn(qn, k);
-  // hnswlib-node returns { neighbors: number[], distances: number[] } in some versions,
-  // or a tuple; normalize defensively.
-  const neighbors = Array.isArray(ids?.neighbors) ? ids.neighbors : (Array.isArray(ids?.labels) ? ids.labels : ids[0]);
-  const cand = Array.isArray(neighbors) ? neighbors.map(Number).filter(Number.isFinite) : [];
+    ? await profile.wrap('clip.query.hnsw.searchKnn', () => _index.searchKNN(qn, k, { efSearch }), { k, efSearch })
+    : _index.searchKNN(qn, k, { efSearch });
+  const cand = Array.isArray(ids) ? ids.map((r) => Number(r?.id)).filter(Number.isFinite) : [];
   if (!cand.length) return { matches: [], model, dim: info.dim, normalized: true };
 
   const rows = profile?.wrap
@@ -376,4 +364,3 @@ module.exports = {
   queryTopKByVector,
   queryTopKByFileId,
 };
-

@@ -80,6 +80,7 @@ async function handleClipEnrich(ctx) {
     embedded: 0,
     skipped: 0,
     errors: 0,
+    lastError: null,
     startedAt: now(),
   };
 
@@ -134,12 +135,13 @@ async function handleClipEnrich(ctx) {
 
       upsert.run(fileId, hash, String(r.model || model), dim, r.normalized ? 1 : 0, packF32(emb), now());
       stats.embedded++;
-    } catch {
+    } catch (e) {
       stats.errors++;
+      stats.lastError = String(e?.message || e || 'clip_enrich_failed');
     }
 
     if (stats.done % 10 === 0) {
-      ctx.heartbeat({ phase: 'clip', done: stats.done, embedded: stats.embedded, skipped: stats.skipped, errors: stats.errors });
+      ctx.heartbeat({ phase: 'clip', done: stats.done, embedded: stats.embedded, skipped: stats.skipped, errors: stats.errors, lastError: stats.lastError });
     }
   };
 
@@ -159,7 +161,7 @@ async function handleClipEnrich(ctx) {
     // ignore
   }
 
-  ctx.heartbeat({ phase: 'clip_done', done: stats.done, embedded: stats.embedded, errors: stats.errors });
+  ctx.heartbeat({ phase: 'clip_done', done: stats.done, embedded: stats.embedded, errors: stats.errors, lastError: stats.lastError });
   return { ok: true, ...stats, finishedAt: now() };
 }
 

@@ -22,6 +22,50 @@ const {
 let _running = false;
 let _timer = null;
 
+const SUCCESS_COUNT_KEYS = [
+  'ok',
+  'updated',
+  'changed',
+  'added',
+  'removed',
+  'cleaned',
+  'scanned',
+  'embedded',
+  'moved',
+  'deleted',
+];
+
+function numericValue(value) {
+  if (typeof value === 'boolean') return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function getSuccessCount(result) {
+  if (!result || typeof result !== 'object') return 0;
+  let total = 0;
+  for (const key of SUCCESS_COUNT_KEYS) {
+    total += numericValue(result[key]);
+  }
+  const report = result.report && typeof result.report === 'object' ? result.report : null;
+  if (report) {
+    for (const key of SUCCESS_COUNT_KEYS) {
+      total += numericValue(report[key]);
+    }
+  }
+  return total;
+}
+
+function classifyJobResult(result) {
+  const total = numericValue(result?.total);
+  const errors = numericValue(result?.errors);
+  if (total > 0 && errors >= total && getSuccessCount(result) === 0) {
+    const lastError = result?.lastError ? `; last error: ${String(result.lastError)}` : '';
+    return { status: 'failed', error: `job_failed_all_items: ${errors}/${total} items failed${lastError}` };
+  }
+  return { status: 'finished' };
+}
+
 function makeCtx(job) {
   return {
     job,
@@ -68,6 +112,11 @@ async function runOne(job) {
       finishJob(job.id, { status: 'cancelled', result: { cancelled: true, result } });
       return;
     }
+    const classification = classifyJobResult(result);
+    if (classification.status === 'failed') {
+      failJob(job.id, new Error(classification.error));
+      return;
+    }
     finishJob(job.id, { status: 'finished', result });
   } catch (e) {
     if (ctx.isCancelRequested()) {
@@ -102,6 +151,4 @@ function startJobRunner({ pollIntervalMs = 500 } = {}) {
   tick().catch(() => {});
 }
 
-module.exports = { startJobRunner };
-
-
+module.exports = { startJobRunner, classifyJobResult };

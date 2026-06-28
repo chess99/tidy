@@ -18,10 +18,12 @@ try:
 except Exception as e:  # pragma: no cover
     raise RuntimeError(f"OpenCV import failed: {e}") from e
 
+_face_import_error: Optional[Exception] = None
 try:
     from insightface.app import FaceAnalysis  # type: ignore
 except Exception as e:  # pragma: no cover
-    raise RuntimeError(f"InsightFace import failed: {e}") from e
+    FaceAnalysis = None  # type: ignore
+    _face_import_error = e
 
 try:
     from PIL import Image  # type: ignore
@@ -31,7 +33,7 @@ except Exception as e:  # pragma: no cover
 
 app = FastAPI(title="tidy-ai-service", version="0.2.0")
 
-_fa: Optional[FaceAnalysis] = None
+_fa: Optional[Any] = None
 
 # CLIP model is loaded lazily because it is heavy and may require offline model files.
 _clip: Optional[Any] = None  # ClipEncoder (lazy)
@@ -90,10 +92,13 @@ def _pil_from_path(p: str) -> Image.Image:
         raise HTTPException(status_code=400, detail=f"cannot open image_path: {e}") from e
 
 
-def _get_face_app() -> FaceAnalysis:
+def _get_face_app() -> Any:
     global _fa
     if _fa is not None:
         return _fa
+
+    if FaceAnalysis is None:
+        raise HTTPException(status_code=503, detail=f"InsightFace unavailable: {_face_import_error}")
 
   # Providers:
   # - CPU-only: onnxruntime (default)

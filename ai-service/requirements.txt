@@ -4,7 +4,7 @@ numpy==2.2.1
 pillow==11.0.0
 opencv-python-headless==4.10.0.84
 onnxruntime==1.20.1
-insightface==0.7.3
+insightface==0.7.3; platform_system != "Windows"
 
 # CLIP / smart search (CPU by default; GPU optional via torch extra installs)
 # NOTE: Python 3.13 wheels are available from torch 2.6+; earlier pins will fail to install.
@@ -14,5 +14,4 @@ transformers==4.46.3
 # Jina CLIP v2 and similar vision encoders often depend on these utilities
 einops==0.8.1
 timm==1.0.12
-
 
