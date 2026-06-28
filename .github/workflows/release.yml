@@ -1,18 +1,29 @@
-name: Build
+name: Release
 
 on:
-  push:
-    branches:
-      - main
-      - dev
-  pull_request:
-    branches:
-      - main
-      - dev
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag, or commit SHA to release from"
+        required: true
+        default: "main"
+      tag:
+        description: "Release tag, must match desktop/package.json version, for example v0.1.0"
+        required: true
+      draft:
+        description: "Create the GitHub Release as a draft"
+        type: boolean
+        default: true
+      prerelease:
+        description: "Mark the GitHub Release as a prerelease"
+        type: boolean
+        default: false
 
 env:
   NODE_VERSION: "20"
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -40,6 +51,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -135,3 +148,57 @@ jobs:
             desktop/dist/*.zip
             desktop/dist/*.app
           if-no-files-found: ignore
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout for version
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          path: repo
+
+      - name: Validate release tag
+        id: version
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          VERSION=$(node -p "require('./repo/desktop/package.json').version")
+          EXPECTED_TAG="v$VERSION"
+          if [ "$RELEASE_TAG" != "$EXPECTED_TAG" ]; then
+            echo "Release tag $RELEASE_TAG does not match desktop/package.json version $VERSION ($EXPECTED_TAG)."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: |
+          ls -R artifacts
+          echo "---"
+          find artifacts -type f \( -name "*.exe" -o -name "*.dmg" -o -name "*.zip" \) | head -20
+
+      - name: Flatten artifacts for release
+        run: |
+          mkdir -p release-files
+          find artifacts -type f \( -name "*.exe" -o -name "*.dmg" -o -name "*.zip" \) -exec cp {} release-files/ \;
+          ls -la release-files/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          tag_name: ${{ inputs.tag }}
+          target_commitish: ${{ inputs.ref }}
+          name: Tidy ${{ inputs.tag }}
+          files: release-files/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
