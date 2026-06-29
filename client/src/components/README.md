@@ -21,7 +21,6 @@
 - `SystemAdminView.jsx`：系统管理入口（左：配置；右：任务队列，immich 风格）。
 - `TasksView.jsx`：任务队列面板（immich 风格：显示并发“正在处理”与剩余“准备处理”，并展示标准化进度/错误）。
 - `SettingsView.jsx`：配置面板（扫描目录/类型/排除规则/任务并发等）。
-- `MinimalScanStatus.jsx`：扫描/任务状态的轻量提示组件（失败时展示 `last_error` 并提供“刷新”）。
+- `MinimalScanStatus.jsx`：Header 内的任务状态 chip（运行/等待/失败聚合展示，点击 popover 查看进度与进入任务队列）。
 - `AssetFacesPanel.jsx`：资产的人脸识别/聚类面板（人物、分组、操作）。
 - `VirtualGrid.jsx`：通用虚拟网格基础实现（高性能大列表渲染）。
-

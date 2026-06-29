@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "test:task-status-ui": "node scripts/check-task-status-header-chip.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

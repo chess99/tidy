@@ -400,6 +400,7 @@ function Main() {
           <span>Tidy</span>
         </button>
         <div className="flex items-center gap-2">
+          <MinimalScanStatus onOpenTasks={() => setActiveTabSafe('admin')} />
           {activeTab !== 'admin' && activeTab !== 'duplicates' ? (
             <>
               <Tabs value={activeTab} onValueChange={setActiveTabSafe}>
@@ -456,9 +457,6 @@ function Main() {
       {/* {activeTab === 'config' ? <ScanProgress /> : null} REMOVED */}
       
       <div className="flex-1 flex overflow-hidden relative">
-        {/* Floating Minimal Status for non-task pages */}
-        {activeTab !== 'admin' && <MinimalScanStatus />}
-
         {activeTab === 'files' ? (
           <FilesFilters value={filesQuery} onChange={setFilesQuery} />
         ) : null}
