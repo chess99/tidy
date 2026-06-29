@@ -7,4 +7,5 @@
 - `build-ai-service.sh`：macOS/Linux 打包脚本（PyInstaller onedir）。
 - `build-ai-service.bat`：Windows 打包脚本（PyInstaller onedir）。
 
-
+脚本安装依赖时使用 `pip install --only-binary=:all:` 并运行 `pip check`，确保桌面
+sidecar 构建不会退回源码编译路径。

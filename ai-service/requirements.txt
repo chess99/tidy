@@ -2,9 +2,14 @@ fastapi==0.115.6
 uvicorn[standard]==0.34.0
 numpy==2.2.1
 pillow==11.0.0
-opencv-python-headless==4.10.0.84
+opencv-python==4.10.0.84
 onnxruntime==1.20.1
-insightface==0.7.3; platform_system != "Windows"
+onnx==1.22.0
+scipy==1.18.0
+scikit-image==0.26.0
+tqdm==4.68.3
+requests==2.34.2
+insightface==1.0.1
 
 # CLIP / smart search (CPU by default; GPU optional via torch extra installs)
 # NOTE: Python 3.13 wheels are available from torch 2.6+; earlier pins will fail to install.

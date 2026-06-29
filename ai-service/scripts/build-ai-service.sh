@@ -7,8 +7,9 @@ python -m venv .venv
 source .venv/bin/activate
 
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python -m pip install pyinstaller
+python -m pip install --only-binary=:all: -r requirements.txt
+python -m pip install --only-binary=:all: pyinstaller
+python -m pip check
 
 rm -rf dist build
 
@@ -47,5 +48,4 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
 fi
 
 echo "Built: $OUT_DIR/"
-
 

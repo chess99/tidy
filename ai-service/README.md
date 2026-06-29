@@ -20,9 +20,13 @@
 ```bash
 cd ai-service
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install --only-binary=:all: -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8002
 ```
+
+依赖安装使用 wheel-only 模式，避免 Windows 交付时触发本机编译。人脸检测使用
+`insightface==1.0.1`，该版本提供通用 wheel；首次调用人脸接口时仍会按
+InsightFace 默认机制下载模型到用户缓存目录。
 
 ### 打包为可执行文件（桌面分发）
 
@@ -43,5 +47,4 @@ uvicorn app.main:app --host 0.0.0.0 --port 8002
 - `TIDY_CLIP_CONCURRENCY`：CLIP 推理并发（默认 `1`）。
   - 说明：FastAPI 的同步 handler 会跑在线程池里；如果允许多请求并发进 Torch 推理，CPU/MPS/CUDA 很容易争用并产生严重长尾。
   - 调参：结合 profiling 中的 `clip.slot.waitMs`（排队等待）与 `totalMs`（端到端）一起看，避免“吞吐略升但 P95/P99 暴涨”。
-
 
