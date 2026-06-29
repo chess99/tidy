@@ -13,6 +13,45 @@ const { normalizePathForDb } = require('../../utils/normalizePath');
 const { insertChange, now } = require('./_util');
 const { applyMissingPolicyForMissingFileRows } = require('../../services/missingPolicy');
 
+const DEFAULT_READDIR_TIMEOUT_MS = 15_000;
+const DEFAULT_STAT_TIMEOUT_MS = 10_000;
+
+function positiveIntEnv(name, fallback) {
+  const n = Number(process.env[name]);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
+function makeTimeoutError({ operation, target, timeoutMs }) {
+  const err = new Error(`${operation}_timeout: ${target}`);
+  err.code = 'ETIMEDOUT';
+  err.operation = operation;
+  err.target = target;
+  err.timeoutMs = timeoutMs;
+  return err;
+}
+
+async function withTimeout(promise, { operation, target, timeoutMs }) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(makeTimeoutError({ operation, target, timeoutMs })), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function normalizeWalkError(err, { operation, target }) {
+  return {
+    operation,
+    target,
+    code: err?.code || err?.name || 'ERR_FS',
+    message: err?.message || String(err),
+  };
+}
+
 function normGlobPath(p) {
   return String(p || '').replace(/\\/g, '/');
 }
@@ -117,12 +156,25 @@ function upsertFileDiscovered(db, filePath, stat) {
   return { id, changed: true };
 }
 
-async function walkDir(ctx, root, onFile) {
+async function walkDir(ctx, root, onFile, options = {}) {
   if (ctx.isCancelRequested()) return;
+  const onError = typeof options.onError === 'function' ? options.onError : null;
+  const readdirTimeoutMs = Number(options.readdirTimeoutMs) > 0
+    ? Number(options.readdirTimeoutMs)
+    : positiveIntEnv('TIDY_DISCOVER_READDIR_TIMEOUT_MS', DEFAULT_READDIR_TIMEOUT_MS);
+  const statTimeoutMs = Number(options.statTimeoutMs) > 0
+    ? Number(options.statTimeoutMs)
+    : positiveIntEnv('TIDY_DISCOVER_STAT_TIMEOUT_MS', DEFAULT_STAT_TIMEOUT_MS);
+
   let items;
   try {
-    items = await fs.readdir(root);
-  } catch {
+    items = await withTimeout(fs.readdir(root), {
+      operation: 'readdir',
+      target: root,
+      timeoutMs: readdirTimeoutMs,
+    });
+  } catch (err) {
+    onError?.(normalizeWalkError(err, { operation: 'readdir', target: root }));
     return;
   }
 
@@ -133,13 +185,18 @@ async function walkDir(ctx, root, onFile) {
     const fullPath = path.join(root, item);
     let stat;
     try {
-      stat = await fs.stat(fullPath);
-    } catch {
+      stat = await withTimeout(fs.stat(fullPath), {
+        operation: 'stat',
+        target: fullPath,
+        timeoutMs: statTimeoutMs,
+      });
+    } catch (err) {
+      onError?.(normalizeWalkError(err, { operation: 'stat', target: fullPath }));
       continue;
     }
     if (stat.isDirectory()) {
       // eslint-disable-next-line no-await-in-loop
-      await walkDir(ctx, fullPath, onFile);
+      await walkDir(ctx, fullPath, onFile, options);
     } else if (stat.isFile()) {
       // eslint-disable-next-line no-await-in-loop
       await onFile(fullPath, stat);
@@ -173,10 +230,30 @@ async function handleDiscover(ctx) {
     filtered: 0,
     excluded: 0,
     errors: 0,
+    lastError: null,
     startedAt: now(),
   };
 
   ctx.heartbeat({ phase: 'discover', roots: stats.roots, walked: 0 });
+
+  const onWalkError = (err) => {
+    stats.errors++;
+    stats.lastError = `${err.operation} ${err.code}: ${err.target}`;
+    if (stats.errors <= 5 || stats.errors % 50 === 0) {
+      console.warn('[discover] Skipping path after filesystem error:', err);
+    }
+    if (stats.errors % 20 === 0) {
+      ctx.heartbeat({
+        phase: 'discover',
+        walked: stats.walked,
+        changed: stats.changed,
+        filtered: stats.filtered,
+        excluded: stats.excluded,
+        errors: stats.errors,
+        lastError: stats.lastError,
+      });
+    }
+  };
 
   for (const root of roots) {
     if (ctx.isCancelRequested()) break;
@@ -209,9 +286,9 @@ async function handleDiscover(ctx) {
       }
 
       if (stats.walked % 200 === 0) {
-        ctx.heartbeat({ phase: 'discover', walked: stats.walked, changed: stats.changed, filtered: stats.filtered, excluded: stats.excluded, errors: stats.errors });
+        ctx.heartbeat({ phase: 'discover', walked: stats.walked, changed: stats.changed, filtered: stats.filtered, excluded: stats.excluded, errors: stats.errors, lastError: stats.lastError });
       }
-    });
+    }, { onError: onWalkError });
   }
 
   // Cleanup: remove file records for files that no longer exist under enabled roots
@@ -261,10 +338,10 @@ async function handleDiscover(ctx) {
     // ignore
   }
 
-  ctx.heartbeat({ phase: 'discover_done', walked: stats.walked, cleaned: cleanedCount });
+  ctx.heartbeat({ phase: 'discover_done', walked: stats.walked, cleaned: cleanedCount, errors: stats.errors, lastError: stats.lastError });
   return { ok: true, ...stats, cleaned: cleanedCount, finishedAt: now() };
 }
 
-module.exports = { handleDiscover };
+module.exports = { handleDiscover, walkDir };
 
 
