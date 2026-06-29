@@ -28,6 +28,28 @@ function uniq(arr) {
   return Array.from(new Set(arr));
 }
 
+function pickPrimaryScanRoot(scanRoots) {
+  const roots = Array.isArray(scanRoots) ? scanRoots : [];
+  const enabled = roots.find((r) => r?.enabled !== false && r?.root);
+  return String((enabled || roots.find((r) => r?.root))?.root || '').trim();
+}
+
+function childPath(root, child) {
+  const base = String(root || '').trim().replace(/[\\/]+$/, '');
+  if (!base) return '';
+  const sep = /\\|^[a-zA-Z]:/.test(base) ? '\\' : '/';
+  return `${base}${sep}${child}`;
+}
+
+function getRecommendedWorkspace(scanRoots) {
+  const root = pickPrimaryScanRoot(scanRoots);
+  if (!root) return { managedRoot: '', trashDir: '' };
+  return {
+    managedRoot: childPath(root, '_tidy_sorted'),
+    trashDir: childPath(root, '_tidy_trash'),
+  };
+}
+
 function Card({ title, icon: Icon, children, desc }) {
   return (
     <section className="bg-white border rounded-xl p-5 shadow-sm">
@@ -184,60 +206,128 @@ function FileTypesSection({ config }) {
 
 function WorkspaceSection({ config }) {
   const queryClient = useQueryClient();
-  const [newManagedRoot, setNewManagedRoot] = useState('');
+  const [draftManagedRoot, setDraftManagedRoot] = useState('');
+  const [draftTrashDir, setDraftTrashDir] = useState('');
   const [showInput, setShowInput] = useState(false);
 
   const workspace = config?.workspace || {};
   const managedRoot = workspace?.MANAGED_ROOT || workspace?.managedRoot || '';
+  const trashDir = workspace?.TRASH_DIR || workspace?.trashDir || '';
+  const recommended = getRecommendedWorkspace(config?.scanRoots);
 
   const mutation = useMutation({
     mutationFn: setWorkspacePaths,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['config'] });
-      setNewManagedRoot('');
+      setDraftManagedRoot('');
+      setDraftTrashDir('');
       setShowInput(false);
     },
   });
 
+  const openEditor = () => {
+    setShowInput(!showInput);
+    setDraftManagedRoot(managedRoot || recommended.managedRoot);
+    setDraftTrashDir(trashDir || recommended.trashDir);
+  };
+
+  const applyRecommended = () => {
+    setDraftManagedRoot(recommended.managedRoot);
+    setDraftTrashDir(recommended.trashDir);
+  };
+
+  const saveWorkspace = () => {
+    mutation.mutate({
+      managedRoot: draftManagedRoot.trim(),
+      trashDir: draftTrashDir.trim(),
+    });
+  };
+
   return (
-    <Card title="整理目标目录" icon={FolderCheck} desc="设置整理后的文件存放位置">
+    <Card title="工作目录" icon={FolderCheck} desc="整理目标和回收站目录">
       <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg border bg-white">
-          <div className="min-w-0 flex-1">
-            <div className="text-sm text-gray-900 truncate" title={managedRoot}>
-              {managedRoot || '未设置'}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg border bg-white">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs text-gray-500 mb-1">整理目标目录</div>
+              <div className="text-sm text-gray-900 truncate" title={managedRoot}>
+                {managedRoot || '未设置'}
+              </div>
             </div>
           </div>
+          <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg border bg-white">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs text-gray-500 mb-1">回收站目录</div>
+              <div className="text-sm text-gray-900 truncate" title={trashDir}>
+                {trashDir || '未设置'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          {recommended.managedRoot && recommended.trashDir ? (
+            <div className="min-w-0 text-xs text-gray-500">
+              推荐放在扫描目录下：<span className="font-mono">_tidy_sorted</span> / <span className="font-mono">_tidy_trash</span>
+            </div>
+          ) : <div />}
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
-              setShowInput(!showInput);
-              setNewManagedRoot('');
-            }}
+            onClick={openEditor}
           >
-            更改
+            {showInput ? '收起' : '更改'}
           </Button>
         </div>
 
         {showInput && (
-          <div className="flex gap-2">
-            <Input
-              value={newManagedRoot}
-              onChange={(e) => setNewManagedRoot(e.target.value)}
-              placeholder="例如: /Users/xxx/Pictures/Tidy"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && newManagedRoot.trim()) {
-                  mutation.mutate({ managedRoot: newManagedRoot.trim() });
-                }
-              }}
-            />
-            <Button
-              disabled={!newManagedRoot.trim() || mutation.isPending}
-              onClick={() => mutation.mutate({ managedRoot: newManagedRoot.trim() })}
-            >
-              {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : '保存'}
-            </Button>
+          <div className="space-y-3 rounded-lg border bg-gray-50 p-3">
+            <div>
+              <div className="text-xs text-gray-500 mb-1">整理目标目录</div>
+              <Input
+                value={draftManagedRoot}
+                onChange={(e) => setDraftManagedRoot(e.target.value)}
+                placeholder={recommended.managedRoot || '例如: D:\\Photos\\Tidy'}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && draftManagedRoot.trim() && draftTrashDir.trim()) {
+                    saveWorkspace();
+                  }
+                }}
+              />
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-1">回收站目录</div>
+              <Input
+                value={draftTrashDir}
+                onChange={(e) => setDraftTrashDir(e.target.value)}
+                placeholder={recommended.trashDir || '例如: D:\\Photos\\TidyTrash'}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && draftManagedRoot.trim() && draftTrashDir.trim()) {
+                    saveWorkspace();
+                  }
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <Button
+                variant="outline"
+                disabled={!recommended.managedRoot || !recommended.trashDir || mutation.isPending}
+                onClick={applyRecommended}
+              >
+                使用推荐
+              </Button>
+              <Button
+                disabled={!draftManagedRoot.trim() || !draftTrashDir.trim() || mutation.isPending}
+                onClick={saveWorkspace}
+              >
+                {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : '保存'}
+              </Button>
+            </div>
+            {mutation.isError ? (
+              <div className="text-sm text-red-600">
+                {String(mutation.error?.response?.data?.error ?? mutation.error?.message ?? '保存失败')}
+              </div>
+            ) : null}
           </div>
         )}
       </div>
