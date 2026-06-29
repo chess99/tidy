@@ -74,6 +74,11 @@ async function getEnabledScanRoots() {
 }
 
 async function startWatcher() {
+  if (process.env.TIDY_DISABLE_WATCHER === '1') {
+    console.log('[watcher] Disabled by TIDY_DISABLE_WATCHER=1');
+    return;
+  }
+
   if (watcher) {
     console.log('[watcher] Already running, stopping first...');
     stopWatcher();
