@@ -46,17 +46,22 @@ function ScanRootsSection({ config }) {
   const [newRoot, setNewRoot] = useState('');
 
   const addMutation = useMutation({
-    mutationFn: addScanRoot,
+    mutationFn: (root) => addScanRoot({ root }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['config'] }),
   });
 
   const removeMutation = useMutation({
-    mutationFn: removeScanRoot,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['config'] }),
+    mutationFn: ({ root, clearDb }) => removeScanRoot({ root, clearDb }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config'] });
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      queryClient.invalidateQueries({ queryKey: ['albums'] });
+    },
   });
 
   const toggleMutation = useMutation({
-    mutationFn: ({ root, enabled }) => setScanRootEnabled(root, enabled),
+    mutationFn: ({ root, enabled }) => setScanRootEnabled({ root, enabled }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['config'] }),
   });
 
@@ -111,7 +116,10 @@ function ScanRootsSection({ config }) {
               variant="ghost"
               size="sm"
               className="text-red-500 hover:text-red-600 hover:bg-red-50"
-              onClick={() => removeMutation.mutate(r.root)}
+              onClick={() => {
+                const clearDb = window.confirm('移除目录时是否同时清除 DB 记录？（仅清 DB，不删磁盘文件）');
+                removeMutation.mutate({ root: r.root, clearDb });
+              }}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
