@@ -16,6 +16,7 @@ import {
   setScanType,
   setWorkspacePaths,
 } from '../api/client';
+import { SystemHealthSection } from './SystemHealthSection';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Input } from './ui/input';
@@ -412,6 +413,7 @@ export function SettingsViewSimple() {
 
       <ScanRootsSection config={config} />
       <WorkspaceSection config={config} />
+      <SystemHealthSection />
       <FileTypesSection config={config} />
       <ExcludeRulesSection config={config} />
 
