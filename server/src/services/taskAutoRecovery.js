@@ -5,18 +5,22 @@
  */
 
 const { getDB } = require('../db');
-const { createJob, listJobs } = require('../jobs/store');
+const { createQueuedJobIfNoActiveJob } = require('../jobs/store');
 const { getAiCapabilities } = require('./aiCapabilities');
 
 const CHECK_INTERVAL_MS = 60_000;
 
 let lastCheckAt = 0;
 
-function hasActiveFaceJob() {
-  if (listJobs({ limit: 1, type: 'faces_scan', status: 'running' }).length > 0) {
-    return true;
-  }
-  return listJobs({ limit: 1, type: 'faces_scan', status: 'queued' }).length > 0;
+function hasActiveFaceJob(db) {
+  const row = db.prepare(`
+    SELECT id
+    FROM jobs
+    WHERE type = 'faces_scan'
+      AND status IN ('queued', 'running')
+    LIMIT 1
+  `).get();
+  return !!row;
 }
 
 function countMissingFaceAssets(db) {
@@ -54,11 +58,12 @@ async function runTaskAutoRecovery({ force = false } = {}) {
     };
   }
 
-  if (hasActiveFaceJob()) {
+  const db = getDB();
+  if (hasActiveFaceJob(db)) {
     return { checked: true, facesQueued: false, reason: 'faces_job_active' };
   }
 
-  const missingFaceAssets = countMissingFaceAssets(getDB());
+  const missingFaceAssets = countMissingFaceAssets(db);
   if (missingFaceAssets <= 0) {
     return {
       checked: true,
@@ -68,11 +73,14 @@ async function runTaskAutoRecovery({ force = false } = {}) {
     };
   }
 
-  createJob({
+  const job = createQueuedJobIfNoActiveJob({
     type: 'faces_scan',
     mode: 'missing',
     params: { auto: true, reason: 'faces_capability_recovered' },
   });
+  if (!job) {
+    return { checked: true, facesQueued: false, reason: 'faces_job_active' };
+  }
 
   return { checked: true, facesQueued: true, missingFaceAssets };
 }

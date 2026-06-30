@@ -41,14 +41,37 @@ function normalizeJobRow(r) {
   };
 }
 
-function createJob({ type, mode, params }) {
-  const db = getDB();
-  const ts = now();
+function insertQueuedJob(db, { type, mode, params }, ts = now()) {
   const info = db.prepare(`
     INSERT INTO jobs (type, mode, status, params_json, progress_json, result_json, last_error, cancel_requested, created_at, updated_at, started_at, finished_at, heartbeat_at)
     VALUES (?, ?, 'queued', ?, NULL, NULL, NULL, 0, ?, ?, NULL, NULL, NULL)
   `).run(String(type), String(mode), safeJsonStringify(params || {}), ts, ts);
-  return getJobById(info.lastInsertRowid);
+  return Number(info.lastInsertRowid);
+}
+
+function createJob({ type, mode, params }) {
+  const db = getDB();
+  const jobId = insertQueuedJob(db, { type, mode, params });
+  return getJobById(jobId);
+}
+
+function createQueuedJobIfNoActiveJob({ type, mode, params }) {
+  const db = getDB();
+  const createIfIdle = db.transaction((nextJob) => {
+    const activeJob = db.prepare(`
+      SELECT id
+      FROM jobs
+      WHERE type = ?
+        AND status IN ('queued', 'running')
+      LIMIT 1
+    `).get(String(nextJob.type));
+    if (activeJob) {
+      return null;
+    }
+    return insertQueuedJob(db, nextJob);
+  });
+  const jobId = createIfIdle({ type, mode, params });
+  return jobId == null ? null : getJobById(jobId);
 }
 
 function getJobById(id) {
@@ -209,6 +232,7 @@ function pickNextQueuedJob() {
 
 module.exports = {
   createJob,
+  createQueuedJobIfNoActiveJob,
   getJobById,
   listJobs,
   requestCancel,
@@ -223,5 +247,4 @@ module.exports = {
   interruptStaleRunningJobs,
   pickNextQueuedJob,
 };
-
 
