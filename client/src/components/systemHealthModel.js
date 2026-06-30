@@ -15,13 +15,15 @@ function asFiniteNumber(value) {
 
 function getProgressText(progress) {
   if (!progress || typeof progress !== 'object') return '';
+  const done = asFiniteNumber(progress.done);
   const processed = asFiniteNumber(progress.processed);
+  const completed = done != null ? done : processed;
   const total = asFiniteNumber(progress.total);
-  if (processed != null && total != null && total > 0) {
-    return `${processed} / ${total}`;
+  if (completed != null && total != null && total > 0) {
+    return `${completed} / ${total}`;
   }
-  if (processed != null) {
-    return `${processed}`;
+  if (completed != null) {
+    return `${completed}`;
   }
   return '';
 }

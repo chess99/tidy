@@ -48,7 +48,22 @@ test('returns auto-retry summary when latest faces task is blocked by unavailabl
   assert.equal(model.text, '最近任务：人脸能力不可用，系统会在恢复后自动重试');
 });
 
-test('returns running summary for active latest task', () => {
+test('returns running summary for active latest task using done and total counts', () => {
+  const model = getTaskSummaryModel(
+    {
+      latest: {
+        status: 'running',
+        progress: { done: 12, total: 40 },
+      },
+    },
+    { capabilityKey: 'clip' }
+  );
+
+  assert.equal(model.tone, 'running');
+  assert.equal(model.text, '最近任务：处理中 12 / 40');
+});
+
+test('retains processed compatibility for active latest task summaries', () => {
   const model = getTaskSummaryModel(
     {
       latest: {
