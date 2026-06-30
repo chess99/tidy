@@ -13,10 +13,10 @@ const CHECK_INTERVAL_MS = 60_000;
 let lastCheckAt = 0;
 
 function hasActiveFaceJob() {
-  const jobs = listJobs({ limit: 50, type: 'faces_scan' });
-  return jobs.some((job) => {
-    return job?.type === 'faces_scan' && (job.status === 'queued' || job.status === 'running');
-  });
+  if (listJobs({ limit: 1, type: 'faces_scan', status: 'running' }).length > 0) {
+    return true;
+  }
+  return listJobs({ limit: 1, type: 'faces_scan', status: 'queued' }).length > 0;
 }
 
 function countMissingFaceAssets(db) {

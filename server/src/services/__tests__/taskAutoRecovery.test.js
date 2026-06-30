@@ -25,7 +25,8 @@ describe('taskAutoRecovery', () => {
     const out = await runTaskAutoRecovery({ force: true });
 
     expect(out).toEqual({ checked: true, facesQueued: true, missingFaceAssets: 12 });
-    expect(listJobs).toHaveBeenCalledWith({ limit: 50, type: 'faces_scan' });
+    expect(listJobs).toHaveBeenCalledWith({ limit: 1, type: 'faces_scan', status: 'running' });
+    expect(listJobs).toHaveBeenCalledWith({ limit: 1, type: 'faces_scan', status: 'queued' });
     expect(prepare.mock.calls[0][0]).toEqual(expect.stringContaining('a.face_scanned_at IS NULL'));
     expect(prepare.mock.calls[0][0]).toEqual(expect.stringContaining("a.status NOT IN ('trash', 'ignored')"));
     expect(prepare.mock.calls[0][0]).toEqual(expect.stringContaining('f.missing = 0'));
@@ -36,9 +37,12 @@ describe('taskAutoRecovery', () => {
     });
   });
 
-  test('does not enqueue when a face job is already active', async () => {
+  test('does not enqueue when a running face job is already active', async () => {
     const createJob = jest.fn();
-    const listJobs = jest.fn(() => [{ id: 5, type: 'faces_scan', status: 'running' }]);
+    const listJobs = jest.fn(({ status }) => {
+      if (status === 'running') return [{ id: 5, type: 'faces_scan', status: 'running' }];
+      return [];
+    });
     const prepare = jest.fn(() => ({ get: jest.fn(() => ({ count: 12 })) }));
     jest.doMock('../../jobs/store', () => ({ createJob, listJobs }));
     jest.doMock('../../db', () => ({ getDB: () => ({ prepare }) }));
@@ -48,6 +52,29 @@ describe('taskAutoRecovery', () => {
     const out = await runTaskAutoRecovery({ force: true });
 
     expect(out).toEqual({ checked: true, facesQueued: false, reason: 'faces_job_active' });
+    expect(listJobs).toHaveBeenCalledWith({ limit: 1, type: 'faces_scan', status: 'running' });
+    expect(listJobs).not.toHaveBeenCalledWith({ limit: 1, type: 'faces_scan', status: 'queued' });
+    expect(createJob).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  test('does not enqueue when a queued face job is already active', async () => {
+    const createJob = jest.fn();
+    const listJobs = jest.fn(({ status }) => {
+      if (status === 'queued') return [{ id: 6, type: 'faces_scan', status: 'queued' }];
+      return [];
+    });
+    const prepare = jest.fn(() => ({ get: jest.fn(() => ({ count: 12 })) }));
+    jest.doMock('../../jobs/store', () => ({ createJob, listJobs }));
+    jest.doMock('../../db', () => ({ getDB: () => ({ prepare }) }));
+    mockAvailableFaces();
+
+    const { runTaskAutoRecovery } = require('../taskAutoRecovery');
+    const out = await runTaskAutoRecovery({ force: true });
+
+    expect(out).toEqual({ checked: true, facesQueued: false, reason: 'faces_job_active' });
+    expect(listJobs).toHaveBeenCalledWith({ limit: 1, type: 'faces_scan', status: 'running' });
+    expect(listJobs).toHaveBeenCalledWith({ limit: 1, type: 'faces_scan', status: 'queued' });
     expect(createJob).not.toHaveBeenCalled();
     expect(prepare).not.toHaveBeenCalled();
   });
