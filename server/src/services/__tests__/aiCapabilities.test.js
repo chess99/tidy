@@ -185,4 +185,88 @@ describe('aiCapabilities', () => {
     expect(out.clip).toEqual(out.faces);
     expect(out.ok).toBe(false);
   });
+
+  test('returns service_timeout when AI health JSON parsing hangs past timeout', async () => {
+    jest.useFakeTimers();
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: () => new Promise(() => {}),
+    }));
+
+    const { getAiCapabilities } = require('../aiCapabilities');
+    const pending = getAiCapabilities({ aiServiceUrl: 'http://ai.local', timeoutMs: 25 });
+    await jest.advanceTimersByTimeAsync(25);
+    const out = await pending;
+
+    expect(out.faces).toEqual({
+      available: false,
+      code: 'ai_service_timeout',
+      message: expect.stringMatching(/^AI service health timed out/),
+    });
+    expect(out.clip).toEqual(out.faces);
+    expect(out.ok).toBe(false);
+  });
+
+  test('returns service_timeout when AI health JSON parsing rejects with AbortError after timeout', async () => {
+    jest.useFakeTimers();
+    global.fetch = jest.fn(async (url, opts) => ({
+      ok: true,
+      json: () =>
+        new Promise((resolve, reject) => {
+          opts.signal.addEventListener('abort', () => {
+            const err = new Error('The operation was aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        }),
+    }));
+
+    const { getAiCapabilities } = require('../aiCapabilities');
+    const pending = getAiCapabilities({ aiServiceUrl: 'http://ai.local', timeoutMs: 25 });
+    await jest.advanceTimersByTimeAsync(25);
+    const out = await pending;
+
+    expect(out.faces).toEqual({
+      available: false,
+      code: 'ai_service_timeout',
+      message: expect.stringMatching(/^AI service health timed out/),
+    });
+    expect(out.clip).toEqual(out.faces);
+    expect(out.ok).toBe(false);
+  });
+
+  test('uses default timeout when timeoutMs is zero instead of timing out immediately', async () => {
+    jest.useFakeTimers();
+    global.fetch = jest.fn((url, opts) => {
+      return new Promise((resolve, reject) => {
+        opts.signal.addEventListener('abort', () => {
+          const err = new Error('The operation was aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+        setTimeout(() => {
+          resolve({
+            ok: true,
+            json: async () => ({
+              ok: true,
+              service: 'tidy-ai-service',
+              capabilities: {
+                faces: { available: true, code: null, message: 'InsightFace import is available' },
+                clip: { available: true, code: null, message: 'CLIP encoder import is available' },
+              },
+            }),
+          });
+        }, 1);
+      });
+    });
+
+    const { getAiCapabilities } = require('../aiCapabilities');
+    const pending = getAiCapabilities({ aiServiceUrl: 'http://ai.local', timeoutMs: 0 });
+    await jest.advanceTimersByTimeAsync(1);
+    const out = await pending;
+
+    expect(out.ok).toBe(true);
+    expect(out.faces.available).toBe(true);
+    expect(out.clip.available).toBe(true);
+  });
 });

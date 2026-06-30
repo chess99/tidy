@@ -43,58 +43,83 @@ function timeoutMessage(timeoutMs) {
   return `AI service health timed out after ${timeoutMs}ms`;
 }
 
+function normalizeTimeoutMs(timeoutMs) {
+  const n = Number(timeoutMs);
+  if (!Number.isFinite(n) || n <= 0) return 3000;
+  return n;
+}
+
+function isAbortError(err) {
+  return err?.name === 'AbortError';
+}
+
 async function getAiCapabilities({ aiServiceUrl = AI_SERVICE_URL, timeoutMs = 3000 } = {}) {
   const url = joinUrl(aiServiceUrl, '/health');
+  const effectiveTimeoutMs = normalizeTimeoutMs(timeoutMs);
   const controller = new AbortController();
-  let timedOut = false;
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, timeoutMs);
+  let timeout;
+
+  const timeoutResult = new Promise((resolve) => {
+    timeout = setTimeout(() => {
+      controller.abort();
+      resolve(unavailableAll('ai_service_timeout', timeoutMessage(effectiveTimeoutMs)));
+    }, effectiveTimeoutMs);
+  });
+
+  const operation = async () => {
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) {
+        return unavailableAll('ai_service_unhealthy', `AI service health returned ${res.status}`);
+      }
+
+      let json;
+      try {
+        json = await res.json();
+      } catch (err) {
+        if (controller.signal.aborted && isAbortError(err)) {
+          return unavailableAll('ai_service_timeout', timeoutMessage(effectiveTimeoutMs));
+        }
+        return unavailableAll(
+          'ai_service_invalid_response',
+          `AI service health returned invalid JSON: ${err?.message || err}`
+        );
+      }
+
+      if (json?.ok === false) {
+        return unavailableAll('ai_service_unhealthy', unhealthyMessage(json));
+      }
+
+      const caps = json?.capabilities || {};
+      return {
+        ok: true,
+        service: String(json?.service || 'tidy-ai-service'),
+        faces: normalizeCapability(
+          caps.faces,
+          'faces_capability_missing',
+          'Face recognition capability is not reported by AI service'
+        ),
+        clip: normalizeCapability(
+          caps.clip,
+          'clip_capability_missing',
+          'CLIP capability is not reported by AI service'
+        ),
+        checkedAt: Date.now(),
+      };
+    } catch (err) {
+      if (controller.signal.aborted && isAbortError(err)) {
+        return unavailableAll('ai_service_timeout', timeoutMessage(effectiveTimeoutMs));
+      }
+      return unavailableAll('ai_service_unreachable', `AI service unreachable: ${err?.message || err}`);
+    }
+  };
 
   try {
-    const res = await fetch(url, { signal: controller.signal });
-    if (!res.ok) {
-      return unavailableAll('ai_service_unhealthy', `AI service health returned ${res.status}`);
-    }
-
-    let json;
-    try {
-      json = await res.json();
-    } catch (err) {
-      return unavailableAll(
-        'ai_service_invalid_response',
-        `AI service health returned invalid JSON: ${err?.message || err}`
-      );
-    }
-
-    if (json?.ok === false) {
-      return unavailableAll('ai_service_unhealthy', unhealthyMessage(json));
-    }
-
-    const caps = json?.capabilities || {};
-    return {
-      ok: true,
-      service: String(json?.service || 'tidy-ai-service'),
-      faces: normalizeCapability(
-        caps.faces,
-        'faces_capability_missing',
-        'Face recognition capability is not reported by AI service'
-      ),
-      clip: normalizeCapability(
-        caps.clip,
-        'clip_capability_missing',
-        'CLIP capability is not reported by AI service'
-      ),
-      checkedAt: Date.now(),
-    };
-  } catch (err) {
-    if (timedOut || err?.name === 'AbortError') {
-      return unavailableAll('ai_service_timeout', timeoutMessage(timeoutMs));
-    }
-    return unavailableAll('ai_service_unreachable', `AI service unreachable: ${err?.message || err}`);
+    return await Promise.race([operation(), timeoutResult]);
   } finally {
     clearTimeout(timeout);
+    // Ensure an already-started request does not keep doing work after caller receives timeout.
+    controller.abort();
   }
 }
 
