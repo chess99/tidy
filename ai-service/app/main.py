@@ -114,7 +114,9 @@ def _get_face_app() -> Any:
 def _import_clip_get_encoder():
     try:
         from app.clip_encoder import get_encoder  # type: ignore
-    except Exception:
+    except ModuleNotFoundError as exc:
+        if exc.name != "app":
+            raise
         app_dir = os.path.dirname(__file__)
         added_app_dir = app_dir not in sys.path
         if added_app_dir:
