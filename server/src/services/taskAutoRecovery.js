@@ -9,8 +9,18 @@ const { createQueuedJobIfNoActiveJob } = require('../jobs/store');
 const { getAiCapabilities } = require('./aiCapabilities');
 
 const CHECK_INTERVAL_MS = 60_000;
+const FACE_AUTO_FAILURE_BACKOFF_MS = 10 * 60_000;
 
 let lastCheckAt = 0;
+
+function safeParseParamsJson(paramsJson) {
+  if (paramsJson == null) return null;
+  try {
+    return JSON.parse(String(paramsJson));
+  } catch {
+    return null;
+  }
+}
 
 function hasActiveFaceJob(db) {
   const row = db.prepare(`
@@ -21,6 +31,39 @@ function hasActiveFaceJob(db) {
     LIMIT 1
   `).get();
   return !!row;
+}
+
+function hasRecentFailedAutoFaceRecoveryJob(db, { now, failureBackoffMs = FACE_AUTO_FAILURE_BACKOFF_MS } = {}) {
+  const windowMs = Math.max(0, Math.trunc(Number(failureBackoffMs) || 0));
+  if (windowMs <= 0) {
+    return false;
+  }
+
+  const rows = db.prepare(`
+    SELECT params_json, finished_at, updated_at, created_at
+    FROM jobs
+    WHERE type = 'faces_scan'
+      AND status = 'failed'
+    ORDER BY COALESCE(finished_at, updated_at, created_at, 0) DESC, id DESC
+    LIMIT 20
+  `).all();
+
+  for (const row of rows) {
+    const params = safeParseParamsJson(row?.params_json);
+    if (params?.auto !== true || params?.reason !== 'faces_capability_recovered') {
+      continue;
+    }
+
+    const lastTouchedAt = [row?.finished_at, row?.updated_at, row?.created_at]
+      .map((value) => Number(value))
+      .find((value) => Number.isFinite(value) && value > 0);
+
+    if (lastTouchedAt != null && now - lastTouchedAt <= windowMs) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function countMissingFaceAssets(db) {
@@ -42,7 +85,7 @@ function countMissingFaceAssets(db) {
   return Number(row?.count || 0);
 }
 
-async function runTaskAutoRecovery({ force = false } = {}) {
+async function runTaskAutoRecovery({ force = false, failureBackoffMs = FACE_AUTO_FAILURE_BACKOFF_MS } = {}) {
   const now = Date.now();
   if (!force && now - lastCheckAt < CHECK_INTERVAL_MS) {
     return { checked: false, reason: 'interval' };
@@ -61,6 +104,9 @@ async function runTaskAutoRecovery({ force = false } = {}) {
   const db = getDB();
   if (hasActiveFaceJob(db)) {
     return { checked: true, facesQueued: false, reason: 'faces_job_active' };
+  }
+  if (hasRecentFailedAutoFaceRecoveryJob(db, { now, failureBackoffMs })) {
+    return { checked: true, facesQueued: false, reason: 'recent_faces_auto_failure' };
   }
 
   const missingFaceAssets = countMissingFaceAssets(db);
@@ -85,4 +131,4 @@ async function runTaskAutoRecovery({ force = false } = {}) {
   return { checked: true, facesQueued: true, missingFaceAssets };
 }
 
-module.exports = { runTaskAutoRecovery, CHECK_INTERVAL_MS };
+module.exports = { runTaskAutoRecovery, CHECK_INTERVAL_MS, FACE_AUTO_FAILURE_BACKOFF_MS };
