@@ -32,15 +32,46 @@ function unavailableAll(code, message) {
   };
 }
 
-async function getAiCapabilities({ aiServiceUrl = AI_SERVICE_URL } = {}) {
+function unhealthyMessage(json) {
+  const detail = json?.message || json?.error || json?.status || '';
+  return detail
+    ? `AI service health reported ok=false: ${detail}`
+    : 'AI service health reported ok=false';
+}
+
+function timeoutMessage(timeoutMs) {
+  return `AI service health timed out after ${timeoutMs}ms`;
+}
+
+async function getAiCapabilities({ aiServiceUrl = AI_SERVICE_URL, timeoutMs = 3000 } = {}) {
   const url = joinUrl(aiServiceUrl, '/health');
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: controller.signal });
     if (!res.ok) {
       return unavailableAll('ai_service_unhealthy', `AI service health returned ${res.status}`);
     }
 
-    const json = await res.json();
+    let json;
+    try {
+      json = await res.json();
+    } catch (err) {
+      return unavailableAll(
+        'ai_service_invalid_response',
+        `AI service health returned invalid JSON: ${err?.message || err}`
+      );
+    }
+
+    if (json?.ok === false) {
+      return unavailableAll('ai_service_unhealthy', unhealthyMessage(json));
+    }
+
     const caps = json?.capabilities || {};
     return {
       ok: true,
@@ -58,7 +89,12 @@ async function getAiCapabilities({ aiServiceUrl = AI_SERVICE_URL } = {}) {
       checkedAt: Date.now(),
     };
   } catch (err) {
+    if (timedOut || err?.name === 'AbortError') {
+      return unavailableAll('ai_service_timeout', timeoutMessage(timeoutMs));
+    }
     return unavailableAll('ai_service_unreachable', `AI service unreachable: ${err?.message || err}`);
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

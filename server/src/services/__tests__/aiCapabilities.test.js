@@ -2,6 +2,7 @@ describe('aiCapabilities', () => {
   const originalFetch = global.fetch;
 
   afterEach(() => {
+    jest.useRealTimers();
     global.fetch = originalFetch;
     jest.resetModules();
     jest.restoreAllMocks();
@@ -27,7 +28,10 @@ describe('aiCapabilities', () => {
     const { getAiCapabilities } = require('../aiCapabilities');
     const out = await getAiCapabilities({ aiServiceUrl: 'http://ai.local' });
 
-    expect(global.fetch).toHaveBeenCalledWith('http://ai.local/health');
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://ai.local/health',
+      expect.objectContaining({ signal: expect.any(Object) })
+    );
     expect(out).toMatchObject({
       ok: true,
       service: 'tidy-ai-service',
@@ -77,7 +81,10 @@ describe('aiCapabilities', () => {
     const { getAiCapabilities } = require('../aiCapabilities');
     const out = await getAiCapabilities({ aiServiceUrl: 'http://ai.local/' });
 
-    expect(global.fetch).toHaveBeenCalledWith('http://ai.local/health');
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://ai.local/health',
+      expect.objectContaining({ signal: expect.any(Object) })
+    );
     expect(out).toMatchObject({
       ok: false,
       faces: { available: false, code: 'ai_service_unhealthy' },
@@ -108,5 +115,74 @@ describe('aiCapabilities', () => {
       code: 'clip_capability_missing',
       message: 'CLIP capability is not reported by AI service',
     });
+  });
+
+  test('returns service_timeout when AI health does not respond before timeout', async () => {
+    jest.useFakeTimers();
+    global.fetch = jest.fn((url, opts) => {
+      return new Promise((resolve, reject) => {
+        opts.signal.addEventListener('abort', () => {
+          const err = new Error('The operation was aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      });
+    });
+
+    const { getAiCapabilities } = require('../aiCapabilities');
+    const pending = getAiCapabilities({ aiServiceUrl: 'http://ai.local', timeoutMs: 25 });
+    await jest.advanceTimersByTimeAsync(25);
+    const out = await pending;
+
+    expect(out.faces).toEqual({
+      available: false,
+      code: 'ai_service_timeout',
+      message: expect.stringMatching(/^AI service health timed out/),
+    });
+    expect(out.clip).toEqual(out.faces);
+    expect(out.ok).toBe(false);
+  });
+
+  test('returns invalid_response when AI health JSON parsing fails', async () => {
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => {
+        throw new SyntaxError('Unexpected token < in JSON');
+      },
+    }));
+
+    const { getAiCapabilities } = require('../aiCapabilities');
+    const out = await getAiCapabilities({ aiServiceUrl: 'http://ai.local' });
+
+    expect(out.faces).toEqual({
+      available: false,
+      code: 'ai_service_invalid_response',
+      message: 'AI service health returned invalid JSON: Unexpected token < in JSON',
+    });
+    expect(out.clip).toEqual(out.faces);
+    expect(out.ok).toBe(false);
+  });
+
+  test('marks HTTP 200 health body with ok false as unhealthy', async () => {
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: false,
+        service: 'tidy-ai-service',
+        message: 'models not ready',
+      }),
+    }));
+
+    const { getAiCapabilities } = require('../aiCapabilities');
+    const out = await getAiCapabilities({ aiServiceUrl: 'http://ai.local' });
+
+    expect(out.faces).toEqual({
+      available: false,
+      code: 'ai_service_unhealthy',
+      message: 'AI service health reported ok=false: models not ready',
+    });
+    expect(out.clip).toEqual(out.faces);
+    expect(out.ok).toBe(false);
   });
 });
