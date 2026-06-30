@@ -25,6 +25,7 @@ function createApp({ includeConfig = true } = {}) {
   app.use('/api/tags', require('./routes/tags'));
   app.use('/api/faces', require('./routes/faces'));
   app.use('/api/duplicates', require('./routes/duplicates'));
+  app.use('/api/system', require('./routes/system'));
 
   return app;
 }
