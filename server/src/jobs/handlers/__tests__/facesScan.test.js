@@ -43,6 +43,7 @@ describe('faces scan job', () => {
   let harness;
 
   afterEach(async () => {
+    jest.dontMock('../../../services/aiCapabilities');
     jest.dontMock('../../../scanner/face');
     harness?.closeDB?.();
     if (harness?.root) await fs.remove(harness.root);
@@ -53,6 +54,12 @@ describe('faces scan job', () => {
 
   test('keeps an asset unscanned when face detection throws', async () => {
     harness = await makeHarness();
+    jest.doMock('../../../services/aiCapabilities', () => ({
+      getAiCapabilities: jest.fn(async () => ({
+        faces: { available: true, code: null, message: 'ok' },
+        clip: { available: true, code: null, message: 'ok' },
+      })),
+    }));
     jest.doMock('../../../scanner/face', () => ({
       processImageFaces: jest.fn(async () => {
         throw new Error('ai-service error 500');
@@ -75,5 +82,45 @@ describe('faces scan job', () => {
     expect(result.lastError).toBe('ai-service error 500');
     const asset = harness.db.prepare('SELECT face_scanned_at FROM assets WHERE hash = ?').get(hash);
     expect(asset.face_scanned_at).toBeNull();
+  });
+
+  test('blocks before selecting assets when face capability is unavailable', async () => {
+    jest.resetModules();
+    jest.doMock('../../../services/aiCapabilities', () => ({
+      getAiCapabilities: jest.fn(async () => ({
+        faces: {
+          available: false,
+          code: 'insightface_unavailable',
+          message: 'InsightFace unavailable: No module named insightface',
+        },
+        clip: { available: true, code: null, message: 'ok' },
+      })),
+    }));
+    const processImageFaces = jest.fn();
+    jest.doMock('../../../scanner/face', () => ({ processImageFaces }));
+
+    const prepare = jest.fn(() => {
+      throw new Error('DB should not be queried when preflight blocks');
+    });
+    jest.doMock('../../../db', () => ({ getDB: () => ({ prepare }) }));
+
+    const { handleFacesScan } = require('../facesScan');
+    const heartbeats = [];
+    const result = await handleFacesScan({
+      job: { id: 1, mode: 'missing' },
+      loadConfig: async () => ({ tasks: { concurrency: { faces: 1 } } }),
+      heartbeat: (patch) => heartbeats.push(patch),
+      isCancelRequested: () => false,
+      enqueue: jest.fn(),
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      blocked: true,
+      blockedReason: 'faces_unavailable',
+      capabilityCode: 'insightface_unavailable',
+    });
+    expect(processImageFaces).not.toHaveBeenCalled();
+    expect(heartbeats[0]).toMatchObject({ phase: 'faces_blocked' });
   });
 });

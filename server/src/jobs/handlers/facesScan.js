@@ -8,13 +8,40 @@ const fs = require('fs-extra');
 const fastq = require('fastq');
 const { getDB } = require('../../db');
 const { processImageFaces } = require('../../scanner/face');
+const { getAiCapabilities } = require('../../services/aiCapabilities');
 const { now } = require('./_util');
 
 async function handleFacesScan(ctx) {
-  const db = getDB();
   const mode = String(ctx.job?.mode || 'missing');
   const cfg = await ctx.loadConfig();
   const concurrency = Math.max(1, Math.min(16, Number(cfg?.tasks?.concurrency?.faces || 1)));
+
+  const capabilities = await getAiCapabilities();
+  if (capabilities?.faces?.available !== true) {
+    const message = capabilities?.faces?.message || 'Face recognition is unavailable';
+    const startedAt = now();
+    const result = {
+      ok: false,
+      blocked: true,
+      blockedReason: 'faces_unavailable',
+      capabilityCode: capabilities?.faces?.code || 'faces_unavailable',
+      message,
+      mode,
+      concurrency,
+      total: 0,
+      done: 0,
+      scanned: 0,
+      skipped: 0,
+      errors: 0,
+      lastError: message,
+      startedAt,
+      finishedAt: now(),
+    };
+    ctx.heartbeat({ phase: 'faces_blocked', ...result });
+    return result;
+  }
+
+  const db = getDB();
 
   // Select assets to scan
   // - missing: face_scanned_at IS NULL
