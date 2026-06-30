@@ -57,6 +57,11 @@ function getSuccessCount(result) {
 }
 
 function classifyJobResult(result) {
+  if (result?.blocked) {
+    const reason = String(result.blockedReason || 'job_blocked');
+    const message = String(result.message || result.lastError || reason);
+    return { status: 'failed', error: `${reason}: ${message}` };
+  }
   const total = numericValue(result?.total);
   const errors = numericValue(result?.errors);
   if (total > 0 && errors >= total && getSuccessCount(result) === 0) {

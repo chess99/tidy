@@ -15,4 +15,19 @@ describe('job runner result classification', () => {
 
     expect(classifyJobResult(result)).toEqual({ status: 'finished' });
   });
+
+  test('marks blocked job results as failed with actionable message', () => {
+    const result = {
+      ok: false,
+      blocked: true,
+      blockedReason: 'faces_unavailable',
+      capabilityCode: 'insightface_unavailable',
+      message: 'InsightFace unavailable: No module named insightface',
+    };
+
+    expect(classifyJobResult(result)).toEqual({
+      status: 'failed',
+      error: 'faces_unavailable: InsightFace unavailable: No module named insightface',
+    });
+  });
 });
