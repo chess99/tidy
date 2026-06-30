@@ -7,7 +7,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { AlertCircle, CheckCircle2, CircleHelp, Loader2, RefreshCw, ScanFace, Search } from 'lucide-react';
 import { getSystemStatus } from '../api/client';
-import { getCapabilityModel } from './systemHealthModel';
+import { getCapabilityModel, getTaskSummaryModel } from './systemHealthModel';
 import { Button } from './ui/button';
 
 const STATUS_META = {
@@ -33,8 +33,16 @@ const STATUS_META = {
   },
 };
 
-function HealthRow({ title, icon: Icon, capability, isLoading = false }) {
+const TASK_TONE_CLASS_NAME = {
+  neutral: 'text-gray-400',
+  running: 'text-blue-600',
+  ok: 'text-green-600',
+  issue: 'text-amber-700',
+};
+
+function HealthRow({ title, icon: Icon, capability, task, capabilityKey, isLoading = false }) {
   const model = getCapabilityModel(capability, { isLoading });
+  const taskSummary = getTaskSummaryModel(task, { capabilityKey });
   const meta = STATUS_META[model.kind];
   const StatusIcon = meta.icon;
 
@@ -52,6 +60,9 @@ function HealthRow({ title, icon: Icon, capability, isLoading = false }) {
           </span>
         </div>
         <div className="mt-1 break-words text-xs text-gray-500">{model.detail}</div>
+        <div className={`mt-1 break-words text-xs ${TASK_TONE_CLASS_NAME[taskSummary.tone] || TASK_TONE_CLASS_NAME.neutral}`}>
+          {taskSummary.text}
+        </div>
       </div>
     </div>
   );
@@ -76,7 +87,7 @@ export function SystemHealthSection() {
       : '系统会自动恢复可修复的问题';
 
   return (
-    <section className="bg-white border rounded-xl p-5 shadow-sm">
+    <section className="border rounded-xl bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-lg font-semibold text-gray-900">系统健康</div>
@@ -109,8 +120,22 @@ export function SystemHealthSection() {
           </div>
         ) : (
           <>
-            <HealthRow title="人脸识别" icon={ScanFace} capability={status?.ai?.faces} isLoading={isInitialLoading} />
-            <HealthRow title="智能搜索 / CLIP" icon={Search} capability={status?.ai?.clip} isLoading={isInitialLoading} />
+            <HealthRow
+              title="人脸识别"
+              icon={ScanFace}
+              capability={status?.ai?.faces}
+              task={status?.tasks?.faces}
+              capabilityKey="faces"
+              isLoading={isInitialLoading}
+            />
+            <HealthRow
+              title="智能搜索 / CLIP"
+              icon={Search}
+              capability={status?.ai?.clip}
+              task={status?.tasks?.clip}
+              capabilityKey="clip"
+              isLoading={isInitialLoading}
+            />
           </>
         )}
       </div>
