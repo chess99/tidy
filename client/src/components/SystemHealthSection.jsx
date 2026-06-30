@@ -5,46 +5,38 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { AlertCircle, CheckCircle2, Loader2, RefreshCw, ScanFace, Search } from 'lucide-react';
+import { AlertCircle, CheckCircle2, CircleHelp, Loader2, RefreshCw, ScanFace, Search } from 'lucide-react';
 import { getSystemStatus } from '../api/client';
+import { getCapabilityModel } from './systemHealthModel';
 import { Button } from './ui/button';
 
 const STATUS_META = {
+  loading: {
+    icon: Loader2,
+    iconClassName: 'text-gray-500 animate-spin',
+    badgeClassName: 'bg-gray-100 text-gray-700 border-gray-200',
+  },
+  unknown: {
+    icon: CircleHelp,
+    iconClassName: 'text-gray-500',
+    badgeClassName: 'bg-gray-100 text-gray-700 border-gray-200',
+  },
   ok: {
     icon: CheckCircle2,
     iconClassName: 'text-green-600',
     badgeClassName: 'bg-green-50 text-green-700 border-green-200',
-    label: '正常',
   },
   issue: {
     icon: AlertCircle,
     iconClassName: 'text-amber-600',
     badgeClassName: 'bg-amber-50 text-amber-700 border-amber-200',
-    label: '待恢复',
   },
 };
 
-function getCapabilityModel(capability) {
-  const available = capability?.available === true;
-  const code = String(capability?.code || '').trim();
-  const message = String(capability?.message || '').trim();
-
-  if (available) {
-    return {
-      ...STATUS_META.ok,
-      detail: message || '已可用，系统会自动继续处理。',
-    };
-  }
-
-  return {
-    ...STATUS_META.issue,
-    detail: message || code || '当前不可用，请检查依赖或等待系统自动恢复。',
-  };
-}
-
-function HealthRow({ title, icon: Icon, capability }) {
-  const model = getCapabilityModel(capability);
-  const StatusIcon = model.icon;
+function HealthRow({ title, icon: Icon, capability, isLoading = false }) {
+  const model = getCapabilityModel(capability, { isLoading });
+  const meta = STATUS_META[model.kind];
+  const StatusIcon = meta.icon;
 
   return (
     <div className="flex items-center gap-3 rounded-lg border bg-white px-4 py-3">
@@ -54,12 +46,12 @@ function HealthRow({ title, icon: Icon, capability }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <div className="text-sm font-medium text-gray-900">{title}</div>
-          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${model.badgeClassName}`}>
-            <StatusIcon className={`h-3.5 w-3.5 ${model.iconClassName}`} />
+          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${meta.badgeClassName}`}>
+            <StatusIcon className={`h-3.5 w-3.5 ${meta.iconClassName}`} />
             {model.label}
           </span>
         </div>
-        <div className="mt-1 text-xs text-gray-500">{model.detail}</div>
+        <div className="mt-1 break-words text-xs text-gray-500">{model.detail}</div>
       </div>
     </div>
   );
@@ -74,6 +66,14 @@ export function SystemHealthSection() {
 
   const status = query.data;
   const isBusy = query.isLoading || query.isFetching;
+  const isInitialLoading = query.isLoading && !status;
+  const FooterIcon = query.isError ? AlertCircle : isBusy ? Loader2 : CheckCircle2;
+  const footerIconClassName = query.isError ? 'text-red-500' : isBusy ? 'animate-spin' : '';
+  const footerMessage = query.isError
+    ? '状态获取失败，可手动刷新重试'
+    : query.isFetching
+      ? '正在更新状态...'
+      : '系统会自动恢复可修复的问题';
 
   return (
     <section className="bg-white border rounded-xl p-5 shadow-sm">
@@ -88,11 +88,11 @@ export function SystemHealthSection() {
           size="icon"
           className="shrink-0 text-gray-500"
           onClick={() => query.refetch()}
-          disabled={query.isRefetching}
+          disabled={query.isFetching}
           title="刷新状态"
           aria-label="刷新状态"
         >
-          <RefreshCw className={`h-4 w-4 ${query.isRefetching ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} />
         </Button>
       </div>
 
@@ -103,27 +103,21 @@ export function SystemHealthSection() {
               <AlertCircle className="h-4 w-4" />
               暂时无法读取系统状态
             </div>
-            <div className="mt-1 text-xs text-red-600">
+            <div className="mt-1 break-words text-xs text-red-600">
               {String(query.error?.response?.data?.error || query.error?.message || '请稍后重试，或检查后端服务是否正常。')}
             </div>
           </div>
         ) : (
           <>
-            <HealthRow title="人脸识别" icon={ScanFace} capability={status?.ai?.faces} />
-            <HealthRow title="智能搜索 / CLIP" icon={Search} capability={status?.ai?.clip} />
+            <HealthRow title="人脸识别" icon={ScanFace} capability={status?.ai?.faces} isLoading={isInitialLoading} />
+            <HealthRow title="智能搜索 / CLIP" icon={Search} capability={status?.ai?.clip} isLoading={isInitialLoading} />
           </>
         )}
       </div>
 
       <div className="mt-3 flex items-center gap-2 text-xs text-gray-400">
-        {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-        <span>
-          {query.isError
-            ? '状态获取失败，可手动刷新重试'
-            : query.isFetching
-              ? '正在更新状态...'
-              : '系统会自动恢复可修复的问题'}
-        </span>
+        <FooterIcon className={`h-3.5 w-3.5 ${footerIconClassName}`.trim()} />
+        <span>{footerMessage}</span>
       </div>
     </section>
   );
