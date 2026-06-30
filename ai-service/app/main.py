@@ -154,9 +154,54 @@ def _l2_normalize(vec: np.ndarray) -> np.ndarray:
     return v / n
 
 
+def _capability_error(exc: Optional[Exception]) -> Optional[str]:
+    if exc is None:
+        return None
+    return str(exc) or exc.__class__.__name__
+
+
+def _face_capability() -> Dict[str, Any]:
+    if FaceAnalysis is None:
+        return {
+            "available": False,
+            "code": "insightface_unavailable",
+            "message": f"InsightFace unavailable: {_capability_error(_face_import_error)}",
+        }
+    return {
+        "available": True,
+        "code": None,
+        "message": "InsightFace import is available",
+    }
+
+
+def _clip_capability() -> Dict[str, Any]:
+    try:
+        from app.clip_encoder import get_encoder  # type: ignore  # noqa: F401
+    except Exception as e:
+        return {
+            "available": False,
+            "code": "clip_encoder_unavailable",
+            "message": f"CLIP encoder import failed: {e}",
+        }
+    return {
+        "available": True,
+        "code": None,
+        "message": "CLIP encoder import is available",
+        "model": os.environ.get("TIDY_CLIP_MODEL_ID") or "default",
+    }
+
+
 @app.get("/health")
 def health() -> Dict[str, Any]:
-    return {"ok": True, "service": "tidy-ai-service"}
+    return {
+        "ok": True,
+        "service": "tidy-ai-service",
+        "capabilities": {
+            "faces": _face_capability(),
+            "clip": _clip_capability(),
+        },
+    }
+
 
 
 @app.post("/detect+embed")
