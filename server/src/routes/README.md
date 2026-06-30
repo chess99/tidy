@@ -5,6 +5,7 @@
 ### 文件
 
 - `health.js`：健康检查（桌面壳启动等待后端 ready 用）。
+- `system.js`：系统状态 API（`GET /api/system/status`）；对外暴露归一化后的 AI capabilities，以及 `faces_scan` / `clip_enrich` 的紧凑最近任务摘要，供设置页和运维状态展示使用。
 - `assets.js`：资产相关 API（查询、预览、标记；回收站语义：仅保留最后一份副本到配置的回收站目录）。
 - `files.js`：文件路径/文件实体相关 API（“全部文件”仅代表**现存物理实例**；缺失实例会从 `files` 删除；并排除 `assets.status='trash'`；支持相似(pHash/CLIP)与智能搜索（text→image，按相似度排序））。
 - `albums.js`：相册相关 API（相册内展示字段优先使用 `assets.target_path`，避免依赖 `files` 行）。
