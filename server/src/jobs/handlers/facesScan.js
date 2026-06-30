@@ -13,6 +13,23 @@ const { now } = require('./_util');
 
 async function handleFacesScan(ctx) {
   const mode = String(ctx.job?.mode || 'missing');
+  if (ctx.isCancelRequested()) {
+    const startedAt = now();
+    return {
+      ok: true,
+      mode,
+      concurrency: 1,
+      total: 0,
+      done: 0,
+      scanned: 0,
+      skipped: 0,
+      errors: 0,
+      lastError: null,
+      startedAt,
+      finishedAt: now(),
+    };
+  }
+
   const cfg = await ctx.loadConfig();
   const concurrency = Math.max(1, Math.min(16, Number(cfg?.tasks?.concurrency?.faces || 1)));
 

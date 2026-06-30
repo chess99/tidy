@@ -43,6 +43,7 @@ describe('faces scan job', () => {
   let harness;
 
   afterEach(async () => {
+    jest.dontMock('../../../db');
     jest.dontMock('../../../services/aiCapabilities');
     jest.dontMock('../../../scanner/face');
     harness?.closeDB?.();
@@ -84,6 +85,37 @@ describe('faces scan job', () => {
     expect(asset.face_scanned_at).toBeNull();
   });
 
+  test('scans an image and enqueues reclustering when face capability is available', async () => {
+    harness = await makeHarness();
+    jest.doMock('../../../services/aiCapabilities', () => ({
+      getAiCapabilities: jest.fn(async () => ({
+        faces: { available: true, code: null, message: 'ok' },
+        clip: { available: true, code: null, message: 'ok' },
+      })),
+    }));
+    const processImageFaces = jest.fn(async () => {});
+    jest.doMock('../../../scanner/face', () => ({ processImageFaces }));
+
+    const filePath = path.join(harness.root, 'photo.jpg');
+    const hash = seedImage(harness.db, filePath, 'hash-face-success');
+    const enqueue = jest.fn();
+    const { handleFacesScan } = require('../facesScan');
+
+    const result = await handleFacesScan({
+      job: { mode: 'missing' },
+      loadConfig: async () => ({ tasks: { concurrency: { faces: 1 } } }),
+      heartbeat: jest.fn(),
+      enqueue,
+      isCancelRequested: () => false,
+    });
+
+    expect(result).toMatchObject({ ok: true, total: 1, done: 1, scanned: 1, skipped: 0, errors: 0 });
+    expect(processImageFaces).toHaveBeenCalledWith(filePath, hash);
+    const asset = harness.db.prepare('SELECT face_scanned_at FROM assets WHERE hash = ?').get(hash);
+    expect(asset.face_scanned_at).not.toBeNull();
+    expect(enqueue).toHaveBeenCalledWith('faces_recluster', 'all', {});
+  });
+
   test('blocks before selecting assets when face capability is unavailable', async () => {
     jest.resetModules();
     jest.doMock('../../../services/aiCapabilities', () => ({
@@ -122,5 +154,35 @@ describe('faces scan job', () => {
     });
     expect(processImageFaces).not.toHaveBeenCalled();
     expect(heartbeats[0]).toMatchObject({ phase: 'faces_blocked' });
+  });
+
+  test('returns without config or capability checks when already cancelled', async () => {
+    jest.resetModules();
+    const getAiCapabilities = jest.fn(async () => ({
+      faces: { available: true, code: null, message: 'ok' },
+    }));
+    jest.doMock('../../../services/aiCapabilities', () => ({ getAiCapabilities }));
+    const loadConfig = jest.fn(async () => ({ tasks: { concurrency: { faces: 1 } } }));
+
+    const { handleFacesScan } = require('../facesScan');
+    const result = await handleFacesScan({
+      job: { mode: 'missing' },
+      loadConfig,
+      heartbeat: jest.fn(),
+      enqueue: jest.fn(),
+      isCancelRequested: () => true,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      mode: 'missing',
+      total: 0,
+      done: 0,
+      scanned: 0,
+      skipped: 0,
+      errors: 0,
+    });
+    expect(loadConfig).not.toHaveBeenCalled();
+    expect(getAiCapabilities).not.toHaveBeenCalled();
   });
 });
