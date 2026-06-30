@@ -5,6 +5,7 @@
  */
 
 const { loadConfig, getEnabledRoots } = require('../configStore');
+const { runTaskAutoRecovery } = require('../services/taskAutoRecovery');
 const { getHandler } = require('./handlers');
 const {
   interruptStaleRunningJobs,
@@ -136,6 +137,9 @@ async function tick() {
   if (_running) return;
   _running = true;
   try {
+    await runTaskAutoRecovery().catch((err) => {
+      console.warn('[jobs] auto-recovery skipped:', err?.message || err);
+    });
     // Jobs like CLIP embedding can spend minutes in one inference step (model warmup/download).
     // Stale interruption should be conservative to avoid killing healthy long-running jobs.
     interruptStaleRunningJobs({ staleAfterMs: 60 * 60_000 });
@@ -156,4 +160,4 @@ function startJobRunner({ pollIntervalMs = 500 } = {}) {
   tick().catch(() => {});
 }
 
-module.exports = { startJobRunner, classifyJobResult };
+module.exports = { startJobRunner, classifyJobResult, tick };

@@ -31,3 +31,32 @@ describe('job runner result classification', () => {
     });
   });
 });
+
+test('runner checks auto-recovery before picking the next queued job', async () => {
+  jest.resetModules();
+  const calls = [];
+
+  jest.doMock('../../services/taskAutoRecovery', () => ({
+    runTaskAutoRecovery: jest.fn(async () => calls.push('recovery')),
+  }));
+  jest.doMock('../store', () => ({
+    interruptStaleRunningJobs: jest.fn(() => calls.push('interrupt')),
+    pickNextQueuedJob: jest.fn(() => {
+      calls.push('pick');
+      return null;
+    }),
+    startJob: jest.fn(),
+    heartbeat: jest.fn(),
+    finishJob: jest.fn(),
+    failJob: jest.fn(),
+    isCancelRequested: jest.fn(),
+    setCheckpoint: jest.fn(),
+    getCheckpoint: jest.fn(),
+    createJob: jest.fn(),
+  }));
+
+  const { tick } = require('../runner');
+  await tick();
+
+  expect(calls).toEqual(['recovery', 'interrupt', 'pick']);
+});
