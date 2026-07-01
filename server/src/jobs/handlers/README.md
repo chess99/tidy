@@ -10,7 +10,7 @@
 - `discover.js`：发现/扫描类任务（库遍历、入库触发；重新发现已知 hash 时会清理 `assets.missing`）。
 - `enrich.js`：补全/丰富元信息类任务（hash/metadata/thumb/pHash + 基于文件路径重建 `sorted/trash` 与 album 映射；缺失路径会删除 `files` 行，并按 `assets.status` 决定 `assets.missing`/删除 `assets`）。
 - `thumbsRebuild.js`：缩略图重建任务。
-- `facesScan.js`：人脸扫描任务（检测/嵌入/写库）。
+- `facesScan.js`：人脸扫描任务（检测/嵌入/写库；不支持格式或永久解码失败会标记 `face_scanned_at` 并计入 skipped，避免 missing 任务反复失败）。
 - `facesReset.js`：人脸数据重置任务（清理/回收）。
 - `facesRecluster.js`：人脸重新聚类任务（人物分组重算）。
 - `clipEnrich.js`：CLIP embedding 补算任务（写入 `clip_embeddings`，用于智能搜索/找相似）。
@@ -23,4 +23,3 @@
 - **CLIP 全量**：`clipEnrich(mode=all)` 会强制重算可用图片的 embedding（模型切换/校准后使用）。
 - `sync.js`：同步/对账类任务。
 - `placeholder.js`：占位/示例任务（开发期或空实现）。
-

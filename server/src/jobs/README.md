@@ -13,5 +13,5 @@
 - `runner.js`：任务执行器（调度、并发/串行控制、生命周期）。
   - stale 判定阈值为小时级，避免误杀长推理任务（如首次加载/下载模型的 CLIP embedding 补算）。
   - 任务类型补充：`clip_enrich`（补算 CLIP embedding）、`clip_index`（重建 CLIP HNSW 索引）。
-
+  - `faces_scan` 的 skipped 可能代表该资产已被判定不适合做人脸检测（例如不支持格式或永久解码失败），会通过 `face_scanned_at` 避免后续 missing 任务重复处理。
 

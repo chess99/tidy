@@ -11,6 +11,33 @@ const { processImageFaces } = require('../../scanner/face');
 const { getAiCapabilities } = require('../../services/aiCapabilities');
 const { now } = require('./_util');
 
+const FACE_SUPPORTED_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/bmp',
+  'image/tiff',
+]);
+
+function normalizeMimeType(value) {
+  return String(value || '').trim().toLowerCase().split(';')[0];
+}
+
+function isSupportedFaceMimeType(value) {
+  const mimeType = normalizeMimeType(value);
+  return !mimeType || FACE_SUPPORTED_MIME_TYPES.has(mimeType);
+}
+
+function isPermanentDecodeFailure(error) {
+  const message = String(error?.message || error || '').toLowerCase();
+  return message.includes('ai-service error 400') && message.includes('cannot decode image');
+}
+
+function markFaceScanned(db, hash) {
+  db.prepare('UPDATE assets SET face_scanned_at = ? WHERE hash = ?').run(now(), hash);
+}
+
 async function handleFacesScan(ctx) {
   const mode = String(ctx.job?.mode || 'missing');
   if (ctx.isCancelRequested()) {
@@ -90,7 +117,7 @@ async function handleFacesScan(ctx) {
       `;
 
   const assets = db.prepare(`
-    SELECT a.hash, (
+    SELECT a.hash, a.mime_type, (
       SELECT f.path
       FROM files f
       WHERE f.hash = a.hash AND f.missing = 0 AND f.path IS NOT NULL
@@ -116,7 +143,7 @@ async function handleFacesScan(ctx) {
 
   ctx.heartbeat({ phase: 'faces', total: stats.total, done: 0 });
 
-  const worker = async ({ hash, path: filePath }) => {
+  const worker = async ({ hash, path: filePath, mime_type: mimeType }) => {
     if (ctx.isCancelRequested()) return;
     stats.done++;
     try {
@@ -124,18 +151,28 @@ async function handleFacesScan(ctx) {
         stats.skipped++;
         return;
       }
+      if (!isSupportedFaceMimeType(mimeType)) {
+        markFaceScanned(db, hash);
+        stats.skipped++;
+        return;
+      }
       // For safety (avoid duplicating/overwriting user assignments), do not rescan hashes that already have faces.
       const hasFaces = db.prepare('SELECT 1 AS ok FROM faces WHERE hash = ? LIMIT 1').get(hash);
       if (hasFaces) {
         stats.skipped++;
-        db.prepare('UPDATE assets SET face_scanned_at = ? WHERE hash = ?').run(now(), hash);
+        markFaceScanned(db, hash);
         return;
       }
 
       await processImageFaces(filePath, hash);
-      db.prepare('UPDATE assets SET face_scanned_at = ? WHERE hash = ?').run(now(), hash);
+      markFaceScanned(db, hash);
       stats.scanned++;
     } catch (e) {
+      if (isPermanentDecodeFailure(e)) {
+        markFaceScanned(db, hash);
+        stats.skipped++;
+        return;
+      }
       stats.errors++;
       stats.lastError = String(e?.message || e || 'face_scan_failed');
     }
@@ -161,7 +198,7 @@ async function handleFacesScan(ctx) {
     // ignore
   }
 
-  ctx.heartbeat({ phase: 'faces_done', done: stats.done, scanned: stats.scanned, errors: stats.errors, lastError: stats.lastError });
+  ctx.heartbeat({ phase: 'faces_done', done: stats.done, scanned: stats.scanned, skipped: stats.skipped, errors: stats.errors, lastError: stats.lastError });
   return { ok: true, ...stats, finishedAt: now() };
 }
 

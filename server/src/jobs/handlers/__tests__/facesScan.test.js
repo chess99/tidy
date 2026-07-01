@@ -24,18 +24,18 @@ async function makeHarness() {
   return { root, db, closeDB };
 }
 
-function seedImage(db, filePath, hash = 'hash-face-fail') {
+function seedImage(db, filePath, hash = 'hash-face-fail', mimeType = 'image/jpeg') {
   fs.ensureDirSync(path.dirname(filePath));
   fs.writeFileSync(filePath, 'not-real-image-bytes');
   const now = Date.now();
   db.prepare(`
     INSERT INTO assets (hash, hash_algo, mime_type, status, missing, updated_at, face_scanned_at)
-    VALUES (?, 'sha256', 'image/jpeg', 'inbox', 0, ?, NULL)
-  `).run(hash, now);
+    VALUES (?, 'sha256', ?, 'inbox', 0, ?, NULL)
+  `).run(hash, mimeType, now);
   db.prepare(`
     INSERT INTO files (path, hash, hash_algo, missing, updated_at, mime_guess)
-    VALUES (?, ?, 'sha256', 0, ?, 'image/jpeg')
-  `).run(filePath, hash, now);
+    VALUES (?, ?, 'sha256', 0, ?, ?)
+  `).run(filePath, hash, now, mimeType);
   return hash;
 }
 
@@ -83,6 +83,68 @@ describe('faces scan job', () => {
     expect(result.lastError).toBe('ai-service error 500');
     const asset = harness.db.prepare('SELECT face_scanned_at FROM assets WHERE hash = ?').get(hash);
     expect(asset.face_scanned_at).toBeNull();
+  });
+
+  test('marks unsupported image formats as skipped without calling face detection', async () => {
+    harness = await makeHarness();
+    jest.doMock('../../../services/aiCapabilities', () => ({
+      getAiCapabilities: jest.fn(async () => ({
+        faces: { available: true, code: null, message: 'ok' },
+        clip: { available: true, code: null, message: 'ok' },
+      })),
+    }));
+    const processImageFaces = jest.fn(async () => {
+      throw new Error('should not call face detector for gif');
+    });
+    jest.doMock('../../../scanner/face', () => ({ processImageFaces }));
+
+    const filePath = path.join(harness.root, 'animated.gif');
+    const hash = seedImage(harness.db, filePath, 'hash-face-gif', 'image/gif');
+    const { handleFacesScan } = require('../facesScan');
+
+    const result = await handleFacesScan({
+      job: { mode: 'missing' },
+      loadConfig: async () => ({ tasks: { concurrency: { faces: 1 } } }),
+      heartbeat: jest.fn(),
+      enqueue: jest.fn(),
+      isCancelRequested: () => false,
+    });
+
+    expect(result).toMatchObject({ total: 1, done: 1, scanned: 0, skipped: 1, errors: 0 });
+    expect(processImageFaces).not.toHaveBeenCalled();
+    const asset = harness.db.prepare('SELECT face_scanned_at FROM assets WHERE hash = ?').get(hash);
+    expect(asset.face_scanned_at).not.toBeNull();
+  });
+
+  test('marks permanent decode failures as skipped so missing scans do not repeat them', async () => {
+    harness = await makeHarness();
+    jest.doMock('../../../services/aiCapabilities', () => ({
+      getAiCapabilities: jest.fn(async () => ({
+        faces: { available: true, code: null, message: 'ok' },
+        clip: { available: true, code: null, message: 'ok' },
+      })),
+    }));
+    jest.doMock('../../../scanner/face', () => ({
+      processImageFaces: jest.fn(async () => {
+        throw new Error('ai-service error 400: {"detail":"cannot decode image"}');
+      }),
+    }));
+
+    const hash = seedImage(harness.db, path.join(harness.root, 'corrupt.jpg'), 'hash-face-corrupt');
+    const { handleFacesScan } = require('../facesScan');
+
+    const result = await handleFacesScan({
+      job: { mode: 'missing' },
+      loadConfig: async () => ({ tasks: { concurrency: { faces: 1 } } }),
+      heartbeat: jest.fn(),
+      enqueue: jest.fn(),
+      isCancelRequested: () => false,
+    });
+
+    expect(result).toMatchObject({ total: 1, done: 1, scanned: 0, skipped: 1, errors: 0 });
+    expect(result.lastError).toBeNull();
+    const asset = harness.db.prepare('SELECT face_scanned_at FROM assets WHERE hash = ?').get(hash);
+    expect(asset.face_scanned_at).not.toBeNull();
   });
 
   test('scans an image and enqueues reclustering when face capability is available', async () => {
