@@ -27,37 +27,6 @@ import { SystemAdminView } from './components/SystemAdminView';
 const queryClient = new QueryClient();
 const DEFAULT_SIMILAR_THRESHOLD = 10;
 
-// Component to handle video poster loading with error message
-function PosterImageWithError({ hash }) {
-  const [error, setError] = useState(false);
-  const posterUrl = apiUrl(`/assets/${hash}/poster?w=1280&q=4`);
-  
-  if (error) {
-    return (
-      <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center text-sm text-gray-700 z-10 bg-gray-50/50">
-        <div className="text-center px-4">
-          <div className="font-medium mb-1">无法生成视频缩略图</div>
-          <div className="text-xs text-gray-600 mt-2">
-            需要安装 ffmpeg 才能生成视频缩略图
-          </div>
-          <div className="text-xs text-gray-500 mt-1">
-            macOS: <span className="font-mono">brew install ffmpeg</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  
-  return (
-    <img
-      src={posterUrl}
-      className="absolute inset-0 w-full h-full object-contain z-10"
-      alt="poster"
-      onError={() => setError(true)}
-    />
-  );
-}
-
 function Main() {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -87,7 +56,6 @@ function Main() {
   }));
   const qc = useQueryClient();
   const selectedAssetRef = useRef(null);
-  const [detailThumbErrorHash, setDetailThumbErrorHash] = useState(null);
   const filesGridRef = useRef(null);
 
   const LIMIT = 50;

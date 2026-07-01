@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, ZoomIn, ZoomOut, RotateCcw, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiUrl, openFileLocation } from '../api/client';
 import clsx from 'clsx';
+import { VideoPosterFallback } from './VideoPosterFallback';
 
 function isVideoMime(mime) {
   return typeof mime === 'string' && mime.toLowerCase().startsWith('video/');
@@ -66,6 +67,10 @@ export function AssetViewer({ open, onOpenChange, asset, defaultMax = 4096, defa
   const videoUrl = useMemo(() => (hash ? apiUrl(`/assets/${hash}/video`) : null), [hash]);
   const posterUrl = useMemo(() => (hash ? apiUrl(`/assets/${hash}/poster?w=1280&q=4`) : null), [hash]);
   const [posterError, setPosterError] = useState(false);
+
+  useEffect(() => {
+    setPosterError(false);
+  }, [hash, posterUrl]);
 
   const [imgUrl, setImgUrl] = useState(null);
   useEffect(() => {
@@ -236,16 +241,13 @@ export function AssetViewer({ open, onOpenChange, asset, defaultMax = 4096, defa
               videoUrl ? (
                 <>
                   {posterError ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center text-sm text-white/70 bg-black/30">
-                      <div className="text-center px-4">
-                        <div className="mb-2">无法生成视频缩略图</div>
-                        <div className="text-xs text-white/60">
-                          需要安装 ffmpeg
-                        </div>
-                        <div className="text-xs text-white/50 mt-1 font-mono">
-                          macOS: brew install ffmpeg
-                        </div>
-                      </div>
+                    <div className="absolute inset-0 bg-black/30">
+                      <VideoPosterFallback
+                        topLabel="VIDEO"
+                        bottomText={hash}
+                        showInstallHint
+                        className="bg-transparent text-white"
+                      />
                     </div>
                   ) : null}
                   <video

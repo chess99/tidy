@@ -5,9 +5,11 @@
  */
 
 import clsx from 'clsx';
+import { useEffect, useState } from 'react';
 import { apiUrl } from '../api/client';
 import { fileNameFromPath } from '../utils/mediaLabel';
 import { ThumbPlaceholder } from './ThumbPlaceholder';
+import { VideoPosterFallback } from './VideoPosterFallback';
 
 /**
  * Shared thumbnail card used by both `FilesGrid` and album asset grids.
@@ -32,8 +34,11 @@ export function AssetThumbCard({
   bottomContent,
   onClick,
   isPlaceholder = false,
+  mediaKind = 'file',
 }) {
+  const [imageFailed, setImageFailed] = useState(false);
   const hasHash = !!hash;
+  const isVideo = mediaKind === 'video';
   const safeBottomPrimary =
     bottomPrimary != null ? bottomPrimary : (isPlaceholder ? '—' : fileNameFromPath(placeholderBottomText || '') || '—');
   const safeBottomSecondary = bottomSecondary != null ? bottomSecondary : (isPlaceholder ? null : placeholderBottomText);
@@ -41,6 +46,17 @@ export function AssetThumbCard({
 
   const showCursorRing = !!cursorFocused && !isPlaceholder;
   const showSelectedRing = !!selected && !isPlaceholder;
+  const resolvedImageUrl = hasHash
+    ? (imageUrl || apiUrl(
+        isVideo
+          ? `/assets/${hash}/poster?w=640&q=4`
+          : `/assets/${hash}/thumb?v=${thumbVersion || 0}`
+      ))
+    : null;
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [hash, imageUrl, thumbVersion]);
 
   return (
     <div
@@ -56,18 +72,21 @@ export function AssetThumbCard({
     >
       <div className="relative w-full h-40 bg-gray-100">
         <div className="absolute inset-0">
-          <ThumbPlaceholder topLabel={topLabel} bottomText={placeholderName} dateText={dateText} />
+          {isVideo ? (
+            <VideoPosterFallback topLabel={topLabel || 'VIDEO'} bottomText={placeholderName} showInstallHint={imageFailed} />
+          ) : (
+            <ThumbPlaceholder topLabel={topLabel} bottomText={placeholderName} dateText={dateText} />
+          )}
         </div>
 
-        {hasHash ? (
+        {hasHash && !imageFailed ? (
           <img
-            src={imageUrl || apiUrl(`/assets/${hash}/thumb?v=${thumbVersion || 0}`)}
+            src={resolvedImageUrl}
             alt={hash}
             className="relative z-10 w-full h-40 object-cover"
             loading="lazy"
-            onError={(e) => {
-              // Hide broken thumb and fall back to placeholder.
-              e.currentTarget.style.display = 'none';
+            onError={() => {
+              setImageFailed(true);
             }}
           />
         ) : null}
@@ -145,5 +164,3 @@ export function AssetThumbCard({
     </div>
   );
 }
-
-

@@ -96,11 +96,13 @@ export function TrashView({ onAssetClick }) {
                 {items.map((asset) => {
                   const hash = asset?.hash;
                   const disabled = !hash || loadingHash === hash;
+                  const isVideo = String(asset?.mime_type || '').toLowerCase().startsWith('video/');
                   return (
                     <AssetThumbCard
                       key={hash}
                       hash={hash}
                       thumbVersion={asset?.thumb_updated_at || asset?.updated_at || 0}
+                      mediaKind={isVideo ? 'video' : 'file'}
                       topLabel="TRASH"
                       placeholderBottomText={hash || '—'}
                       dateText={formatDate(asset?.taken_at)}

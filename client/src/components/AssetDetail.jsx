@@ -11,8 +11,9 @@ import {
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { apiUrl, openFileLocation } from '../api/client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AssetFacesPanel } from './AssetFacesPanel';
+import { VideoPosterFallback } from './VideoPosterFallback';
 
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes)) return '—';
@@ -72,6 +73,18 @@ export function AssetDetail({
   if (!asset) return null;
 
   const isVideo = String(asset.mime_type || '').toLowerCase().startsWith('video/');
+  const typeLabel = asset.ext?.toUpperCase() || asset.mime_type?.split('/')[1]?.toUpperCase() || 'UNKNOWN';
+  const previewSrc = apiUrl(
+    isVideo
+      ? `/assets/${asset.hash}/poster?w=1280&q=4`
+      : `/assets/${asset.hash}/preview?max=1024&q=80`
+  );
+  const previewBlurSrc = apiUrl(
+    isVideo
+      ? `/assets/${asset.hash}/poster?w=640&q=8`
+      : `/assets/${asset.hash}/preview?max=512&q=60`
+  );
+  const previewActionLabel = isVideo ? '播放视频' : '查看大图';
   const canFindSimilar = asset.phash && asset.phash_status === 'done';
   const canFindSimilarClip = asset.clip_status === 'ready';
   const fileCount = Array.isArray(asset.files) ? asset.files.length : 0;
@@ -101,6 +114,10 @@ export function AssetDetail({
     }
   };
 
+  useEffect(() => {
+    setThumbError(false);
+  }, [asset.hash]);
+
   return (
     <aside className="w-96 bg-white border-l shadow-xl z-20 flex flex-col h-full">
       {/* Header */}
@@ -124,47 +141,58 @@ export function AssetDetail({
           >
             {/* Background blur */}
             <img
-              src={apiUrl(`/assets/${asset.hash}/preview?max=512&q=60`)}
+              src={previewBlurSrc}
               className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-60"
               alt=""
               aria-hidden="true"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
             />
             <div className="absolute inset-0 bg-black/5" />
 
             {/* Main image */}
             {!thumbError ? (
               <img
-                src={apiUrl(`/assets/${asset.hash}/preview?max=1024&q=80`)}
+                src={previewSrc}
                 className="absolute inset-0 w-full h-full object-contain z-10"
                 alt={asset.file_name || 'preview'}
                 onError={() => setThumbError(true)}
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center z-10">
-                <div className="text-center text-gray-400">
-                  <ImageIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <span className="text-xs">无法加载预览</span>
-                </div>
+                {isVideo ? (
+                  <VideoPosterFallback topLabel={typeLabel} bottomText={asset.file_name || asset.hash} showInstallHint />
+                ) : (
+                  <div className="text-center text-gray-400">
+                    <ImageIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <span className="text-xs">无法加载预览</span>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Hover overlay */}
-            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors z-20 flex items-center justify-center opacity-0 group-hover:opacity-100">
+            <div
+              className={`absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors z-20 flex justify-center opacity-0 group-hover:opacity-100 ${
+                isVideo ? 'items-end pb-5' : 'items-center'
+              }`}
+            >
               <div className="bg-white/90 backdrop-blur-sm rounded-full px-4 py-2 flex items-center gap-2 shadow-lg">
                 <Maximize2 className="h-4 w-4" />
-                <span className="text-sm font-medium">查看大图</span>
+                <span className="text-sm font-medium">{previewActionLabel}</span>
               </div>
             </div>
 
             {/* Type badge */}
             <div className="absolute top-3 left-3 z-30">
               <Badge variant="secondary" className="bg-white/90 text-gray-700 text-[10px]">
-                {asset.ext?.toUpperCase() || asset.mime_type?.split('/')[1]?.toUpperCase() || 'UNKNOWN'}
+                {typeLabel}
               </Badge>
             </div>
 
             {/* Video indicator */}
-            {isVideo && (
+            {isVideo && !thumbError && (
               <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
                 <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
                   <div className="w-0 h-0 border-t-6 border-t-transparent border-l-10 border-l-gray-800 border-b-6 border-b-transparent ml-1" />
@@ -191,7 +219,7 @@ export function AssetDetail({
               onClick={onOpenViewer}
             >
               <Maximize2 className="h-3.5 w-3.5 mr-1.5" />
-              全屏查看
+              {isVideo ? '播放视频' : '全屏查看'}
             </Button>
           </div>
         </div>

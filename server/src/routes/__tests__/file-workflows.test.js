@@ -61,6 +61,21 @@ function seedAssetFile(db, { filePath, hash, content = 'same-bytes', hashAlgo = 
   `).run(filePath, hash, hashAlgo, st.size, st.mtimeMs, now).lastInsertRowid;
 }
 
+function seedVideoAssetFile(db, { filePath, hash }) {
+  fs.ensureDirSync(path.dirname(filePath));
+  fs.writeFileSync(filePath, Buffer.from('fake-video-bytes'));
+  const st = fs.statSync(filePath);
+  const now = Date.now();
+  db.prepare(`
+    INSERT OR IGNORE INTO assets (hash, hash_algo, mime_type, status, size, updated_at)
+    VALUES (?, 'sha256', 'video/mp4', 'inbox', ?, ?)
+  `).run(hash, st.size, now);
+  return db.prepare(`
+    INSERT INTO files (path, hash, hash_algo, size, mtime_ms, missing, ext, mime_guess, updated_at, hash_status)
+    VALUES (?, ?, 'sha256', ?, ?, 0, '.mp4', 'video/mp4', ?, 'done')
+  `).run(filePath, hash, st.size, st.mtimeMs, now).lastInsertRowid;
+}
+
 describe('file workflow routes', () => {
   let harness;
 
@@ -72,6 +87,8 @@ describe('file workflow routes', () => {
     delete process.env.THUMB_DIR;
     delete process.env.PREVIEW_DIR;
     delete process.env.POSTER_DIR;
+    jest.restoreAllMocks();
+    jest.dontMock('../../utils/findSystemCommand');
     harness = null;
   });
 
@@ -143,5 +160,32 @@ describe('file workflow routes', () => {
     expect(op.op).toBe('quarantine');
     expect(op.status).toBe('error');
     expect(op.error).toContain('not_regular_file');
+  });
+
+  test('GET /api/assets/:hash/poster generates and serves a cached video poster when ffmpeg is available', async () => {
+    jest.resetModules();
+    const childProcess = require('child_process');
+    const execFileSpy = jest.spyOn(childProcess, 'execFile').mockImplementation((cmd, args, options, callback) => {
+      const cb = typeof options === 'function' ? options : callback;
+      const outputPath = args[args.length - 1];
+      fs.ensureDirSync(path.dirname(outputPath));
+      fs.writeFileSync(outputPath, Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+      cb(null, '', '');
+      return { pid: 1, kill: jest.fn() };
+    });
+    jest.doMock(require.resolve('../../utils/findSystemCommand'), () => ({
+      findSystemCommand: jest.fn(async (cmd) => (cmd === 'ffmpeg' ? 'C:\\Tools\\ffmpeg.exe' : null)),
+    }));
+
+    harness = await makeHarness();
+    const hash = 'hash-video-poster';
+    const source = path.join(harness.sourceRoot, 'clip.mp4');
+    seedVideoAssetFile(harness.db, { filePath: source, hash });
+
+    const res = await request(harness.app).get(`/api/assets/${hash}/poster?w=640&q=4`).expect(200);
+
+    expect(res.headers['content-type']).toMatch(/image\/jpeg/);
+    expect(execFileSpy).toHaveBeenCalledTimes(1);
+    expect(await fs.pathExists(path.join(process.env.POSTER_DIR, `${hash}_640_q4.jpg`))).toBe(true);
   });
 });

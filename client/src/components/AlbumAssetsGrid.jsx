@@ -202,6 +202,7 @@ export function AlbumAssetsGrid({ albumId, onAssetClick, viewerOpen, onViewerNav
               {items.map((asset, idx) => {
                 const globalIndex = startIndex + idx;
                 const cursorFocused = !!cursorHash && asset?.hash === cursorHash;
+                const isVideo = String(asset?.mime_type || '').toLowerCase().startsWith('video/');
                 return (
                 <div
                   key={asset.hash}
@@ -210,6 +211,7 @@ export function AlbumAssetsGrid({ albumId, onAssetClick, viewerOpen, onViewerNav
                   <AssetThumbCard
                     hash={asset.hash}
                     thumbVersion={asset.thumb_updated_at || asset.updated_at || 0}
+                    mediaKind={isVideo ? 'video' : 'file'}
                     topLabel={preferredTopLabel({ ext: asset.sample_ext, path: asset.sample_path, mime: asset.mime_type })}
                     placeholderBottomText={asset.sample_path || asset.hash}
                     dateText={asset.taken_at ? new Date(asset.taken_at).toLocaleDateString() : null}
@@ -250,5 +252,4 @@ export function AlbumAssetsGrid({ albumId, onAssetClick, viewerOpen, onViewerNav
     </div>
   );
 }
-
 

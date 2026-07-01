@@ -588,6 +588,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
                     hash={file?.hash}
                     thumbVersion={thumbV}
                     imageUrl={overrideImageUrl}
+                    mediaKind={isVideo ? 'video' : 'file'}
                     topLabel={isPlaceholder ? 'FILE' : ((file.ext || '').replace('.', '').toUpperCase() || 'FILE')}
                     placeholderBottomText={name}
                     dateText={dateText}

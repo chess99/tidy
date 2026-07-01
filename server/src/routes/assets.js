@@ -11,7 +11,7 @@ const sharp = require('sharp');
 const { getThumbnailPath, RAW_EXTS, extractEmbeddedPreview } = require('../scanner/thumbnail');
 const fs = require('fs-extra');
 const mime = require('mime-types');
-const { spawn } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const { findSystemCommand } = require('../utils/findSystemCommand');
 const { PREVIEW_DIR, POSTER_DIR } = require('../config');
 const { loadConfig } = require('../configStore');
@@ -565,8 +565,8 @@ router.get('/:hash/poster', async (req, res) => {
     const installHint = process.platform === 'darwin' 
       ? 'brew install ffmpeg'
       : process.platform === 'win32'
-      ? 'choco install ffmpeg（或从 https://ffmpeg.org/download.html 下载）'
-      : 'sudo apt-get install ffmpeg（或使用对应发行版的包管理器）';
+      ? 'winget install --id Gyan.FFmpeg（或从 https://ffmpeg.org/download.html 下载）'
+      : 'sudo apt install ffmpeg（或使用对应发行版的包管理器）';
     return res.status(501).json({
       error: 'ffmpeg_not_installed',
       message: '需要安装 ffmpeg 才能生成视频缩略图。请安装 ffmpeg：https://ffmpeg.org/download.html',
