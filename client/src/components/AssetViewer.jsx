@@ -245,7 +245,6 @@ export function AssetViewer({ open, onOpenChange, asset, defaultMax = 4096, defa
                       <VideoPosterFallback
                         topLabel="VIDEO"
                         bottomText={hash}
-                        showInstallHint
                         className="bg-transparent text-white"
                       />
                     </div>

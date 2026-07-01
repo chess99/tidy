@@ -162,7 +162,7 @@ export function AssetDetail({
             ) : (
               <div className="absolute inset-0 flex items-center justify-center z-10">
                 {isVideo ? (
-                  <VideoPosterFallback topLabel={typeLabel} bottomText={asset.file_name || asset.hash} showInstallHint />
+                  <VideoPosterFallback topLabel={typeLabel} bottomText={asset.file_name || asset.hash} />
                 ) : (
                   <div className="text-center text-gray-400">
                     <ImageIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
