@@ -79,6 +79,60 @@ export function getCapabilityModel(capability, options = {}) {
   };
 }
 
+export function getWatcherSummaryModel(watcher) {
+  if (!watcher || typeof watcher !== 'object') {
+    return {
+      kind: 'unknown',
+      label: '未知',
+      detail: '文件监听状态暂不可用。',
+    };
+  }
+
+  if (watcher.mode === 'off' || watcher.state === 'disabled') {
+    return {
+      kind: 'unknown',
+      label: '已关闭',
+      detail: '文件监听已关闭，可通过手动扫描更新图库。',
+    };
+  }
+
+  if (watcher.state === 'watching') {
+    const count = Array.isArray(watcher.activeRoots) ? watcher.activeRoots.length : 0;
+    return {
+      kind: 'ok',
+      label: '实时监听',
+      detail: `正在监听 ${count} 个本地目录。`,
+    };
+  }
+
+  if (watcher.state === 'fallback') {
+    const hasNetworkRoot = Array.isArray(watcher.roots)
+      ? watcher.roots.some((root) => root?.reason === 'network_drive' || root?.reason === 'unc_path')
+      : false;
+    return {
+      kind: 'unknown',
+      label: '降级扫描',
+      detail: hasNetworkRoot
+        ? '网络盘已关闭实时监听，系统会定期补扫。'
+        : '当前目录不适合实时监听，系统会定期补扫。',
+    };
+  }
+
+  if (watcher.state === 'error') {
+    return {
+      kind: 'issue',
+      label: '监听异常',
+      detail: asTrimmedString(watcher.lastError) || '文件监听遇到异常。',
+    };
+  }
+
+  return {
+    kind: 'unknown',
+    label: '检查中',
+    detail: '正在判断目录监听方式。',
+  };
+}
+
 export function getTaskSummaryModel(taskState, options = {}) {
   const { capabilityKey } = options;
   const latest = taskState?.latest;

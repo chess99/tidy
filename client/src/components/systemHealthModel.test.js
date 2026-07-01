@@ -1,7 +1,56 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { getCapabilityModel, getTaskSummaryModel } from './systemHealthModel.js';
+import { getCapabilityModel, getTaskSummaryModel, getWatcherSummaryModel } from './systemHealthModel.js';
+
+test('returns watcher fallback summary for network roots', () => {
+  const model = getWatcherSummaryModel({
+    mode: 'auto',
+    state: 'fallback',
+    roots: [
+      {
+        root: 'Z:\\_document\\photos',
+        action: 'skip',
+        reason: 'network_drive',
+        message: 'Network drive uses fallback scanning in auto mode',
+      },
+    ],
+    activeRoots: [],
+    fallbackIntervalMs: 3600000,
+  });
+
+  assert.equal(model.kind, 'unknown');
+  assert.equal(model.label, '降级扫描');
+  assert.equal(model.detail, '网络盘已关闭实时监听，系统会定期补扫。');
+});
+
+test('returns watcher ok summary when local roots are watched', () => {
+  const model = getWatcherSummaryModel({
+    mode: 'auto',
+    state: 'watching',
+    roots: [
+      { root: 'C:\\Users\\me\\Pictures', action: 'watch', reason: 'local_fixed_drive' },
+    ],
+    activeRoots: ['C:\\Users\\me\\Pictures'],
+  });
+
+  assert.equal(model.kind, 'ok');
+  assert.equal(model.label, '实时监听');
+  assert.equal(model.detail, '正在监听 1 个本地目录。');
+});
+
+test('returns watcher disabled summary when watcher is off', () => {
+  const model = getWatcherSummaryModel({
+    mode: 'off',
+    state: 'disabled',
+    roots: [],
+    activeRoots: [],
+  });
+
+  assert.equal(model.kind, 'unknown');
+  assert.equal(model.label, '已关闭');
+  assert.equal(model.detail, '文件监听已关闭，可通过手动扫描更新图库。');
+});
 
 test('returns loading model when status data has not arrived yet', () => {
   const model = getCapabilityModel(undefined, { isLoading: true });

@@ -5,9 +5,9 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { AlertCircle, CheckCircle2, CircleHelp, Loader2, RefreshCw, ScanFace, Search } from 'lucide-react';
+import { AlertCircle, CheckCircle2, CircleHelp, FolderSync, Loader2, RefreshCw, ScanFace, Search } from 'lucide-react';
 import { getSystemStatus } from '../api/client';
-import { getCapabilityModel, getTaskSummaryModel } from './systemHealthModel';
+import { getCapabilityModel, getTaskSummaryModel, getWatcherSummaryModel } from './systemHealthModel';
 import { Button } from './ui/button';
 
 const STATUS_META = {
@@ -63,6 +63,32 @@ function HealthRow({ title, icon: Icon, capability, task, capabilityKey, isLoadi
         <div className={`mt-1 break-words text-xs ${TASK_TONE_CLASS_NAME[taskSummary.tone] || TASK_TONE_CLASS_NAME.neutral}`}>
           {taskSummary.text}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function WatcherRow({ watcher, isLoading = false }) {
+  const model = isLoading
+    ? { kind: 'loading', label: '检查中', detail: '正在判断目录监听方式。' }
+    : getWatcherSummaryModel(watcher);
+  const meta = STATUS_META[model.kind] || STATUS_META.unknown;
+  const StatusIcon = meta.icon;
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg border bg-white px-4 py-3">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-50 text-gray-600">
+        <FolderSync className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <div className="text-sm font-medium text-gray-900">文件监听</div>
+          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${meta.badgeClassName}`}>
+            <StatusIcon className={`h-3.5 w-3.5 ${meta.iconClassName}`} />
+            {model.label}
+          </span>
+        </div>
+        <div className="mt-1 break-words text-xs text-gray-500">{model.detail}</div>
       </div>
     </div>
   );
@@ -136,6 +162,7 @@ export function SystemHealthSection() {
               capabilityKey="clip"
               isLoading={isInitialLoading}
             />
+            <WatcherRow watcher={status?.watcher} isLoading={isInitialLoading} />
           </>
         )}
       </div>
