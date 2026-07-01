@@ -73,7 +73,7 @@ export function AssetThumbCard({
       <div className="relative w-full h-40 bg-gray-100">
         <div className="absolute inset-0">
           {isVideo ? (
-            <VideoPosterFallback topLabel={topLabel || 'VIDEO'} bottomText={placeholderName} showInstallHint={imageFailed} />
+            <VideoPosterFallback topLabel={topLabel || 'VIDEO'} bottomText={placeholderName} />
           ) : (
             <ThumbPlaceholder topLabel={topLabel} bottomText={placeholderName} dateText={dateText} />
           )}
