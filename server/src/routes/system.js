@@ -7,6 +7,7 @@
 const express = require('express');
 const { getAiCapabilities } = require('../services/aiCapabilities');
 const { listJobs } = require('../jobs/store');
+const { getWatcherStatus } = require('../watcher');
 
 const router = express.Router();
 const PUBLIC_JOB_FIELDS = [
@@ -51,6 +52,7 @@ router.get('/status', async (_req, res) => {
   res.json({
     ok: true,
     ai,
+    watcher: getWatcherStatus(),
     tasks: {
       faces: latestTask('faces_scan'),
       clip: latestTask('clip_enrich'),

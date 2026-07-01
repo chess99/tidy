@@ -44,6 +44,17 @@ describe('system status route', () => {
     jest.doMock('../../jobs/store', () => ({
       listJobs,
     }));
+    jest.doMock('../../watcher', () => ({
+      getWatcherStatus: jest.fn(() => ({
+        mode: 'auto',
+        state: 'watching',
+        roots: [],
+        activeRoots: ['C:\\Photos'],
+        fallbackIntervalMs: null,
+        lastError: null,
+        updatedAt: 1000,
+      })),
+    }));
 
     const { createApp } = require('../../app');
     const app = createApp({ includeConfig: false });
@@ -58,6 +69,15 @@ describe('system status route', () => {
         faces: { available: false, code: 'insightface_unavailable', message: 'InsightFace unavailable' },
         clip: { available: true, code: null, message: 'ok' },
         checkedAt: 123,
+      },
+      watcher: {
+        mode: 'auto',
+        state: 'watching',
+        roots: [],
+        activeRoots: ['C:\\Photos'],
+        fallbackIntervalMs: null,
+        lastError: null,
+        updatedAt: 1000,
       },
       tasks: {
         faces: {
@@ -115,6 +135,17 @@ describe('system status route', () => {
     jest.doMock('../../jobs/store', () => ({
       listJobs,
     }));
+    jest.doMock('../../watcher', () => ({
+      getWatcherStatus: jest.fn(() => ({
+        mode: 'auto',
+        state: 'watching',
+        roots: [],
+        activeRoots: ['C:\\Photos'],
+        fallbackIntervalMs: null,
+        lastError: null,
+        updatedAt: 1000,
+      })),
+    }));
 
     const { createApp } = require('../../app');
     const app = createApp({ includeConfig: false });
@@ -129,6 +160,15 @@ describe('system status route', () => {
         faces: { available: true, code: null, message: 'ok' },
         clip: { available: true, code: null, message: 'ok' },
         checkedAt: 456,
+      },
+      watcher: {
+        mode: 'auto',
+        state: 'watching',
+        roots: [],
+        activeRoots: ['C:\\Photos'],
+        fallbackIntervalMs: null,
+        lastError: null,
+        updatedAt: 1000,
       },
       tasks: {
         faces: {
@@ -149,6 +189,59 @@ describe('system status route', () => {
           },
         },
       },
+    });
+  });
+
+  test('returns watcher status with AI and task status', async () => {
+    jest.doMock('../../services/aiCapabilities', () => ({
+      getAiCapabilities: jest.fn(async () => ({
+        ok: true,
+        faces: { available: true, code: null, message: 'ok' },
+        clip: { available: true, code: null, message: 'ok' },
+        checkedAt: 789,
+      })),
+    }));
+    jest.doMock('../../jobs/store', () => ({
+      listJobs: jest.fn(() => []),
+    }));
+    jest.doMock('../../watcher', () => ({
+      getWatcherStatus: jest.fn(() => ({
+        mode: 'auto',
+        state: 'fallback',
+        roots: [
+          {
+            root: 'Z:\\_document\\photos',
+            action: 'skip',
+            reason: 'network_drive',
+            message: 'Network drive uses fallback scanning in auto mode',
+          },
+        ],
+        activeRoots: [],
+        fallbackIntervalMs: 3600000,
+        lastError: null,
+        updatedAt: 1000,
+      })),
+    }));
+
+    const { createApp } = require('../../app');
+    const app = createApp({ includeConfig: false });
+    const res = await request(app).get('/api/system/status').expect(200);
+
+    expect(res.body.watcher).toEqual({
+      mode: 'auto',
+      state: 'fallback',
+      roots: [
+        {
+          root: 'Z:\\_document\\photos',
+          action: 'skip',
+          reason: 'network_drive',
+          message: 'Network drive uses fallback scanning in auto mode',
+        },
+      ],
+      activeRoots: [],
+      fallbackIntervalMs: 3600000,
+      lastError: null,
+      updatedAt: 1000,
     });
   });
 });
