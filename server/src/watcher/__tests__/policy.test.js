@@ -59,6 +59,24 @@ describe('watcher policy', () => {
     });
   });
 
+  test('uses valid PowerShell if else syntax when probing Windows drives', () => {
+    const execFileSync = jest.fn(() => JSON.stringify({ driveType: 3, providerName: null }));
+    jest.doMock('fs', () => ({
+      existsSync: jest.fn(() => true),
+      statSync: jest.fn(() => ({
+        isDirectory: () => true,
+      })),
+    }));
+    jest.doMock('child_process', () => ({ execFileSync }));
+    const { decideWatcherRoots } = require('../policy');
+
+    decideWatcherRoots(['Z:\\_document\\photos'], { mode: 'auto', platform: 'win32' });
+
+    const script = execFileSync.mock.calls[0][1][2];
+    expect(script).toContain('} else {');
+    expect(script).not.toContain('}; else');
+  });
+
   test('watches Windows fixed local drive in auto mode', () => {
     const { decideWatcherRoots } = loadPolicy({
       driveInfo: { driveType: 3, providerName: null },

@@ -48,8 +48,7 @@ function getWindowsDriveInfo(root) {
   try {
     const script = [
       `$d = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='${letter}'"`,
-      'if ($null -eq $d) { "{}" }',
-      'else { @{ driveType = [int]$d.DriveType; providerName = [string]$d.ProviderName } | ConvertTo-Json -Compress }',
+      'if ($null -eq $d) { "{}" } else { @{ driveType = [int]$d.DriveType; providerName = [string]$d.ProviderName } | ConvertTo-Json -Compress }',
     ].join('; ');
     const stdout = execFileSync('powershell', ['-NoProfile', '-Command', script], {
       encoding: 'utf8',
