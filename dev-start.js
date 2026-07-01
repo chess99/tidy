@@ -5,7 +5,7 @@
  * pos: 开发辅助脚本：提升本地开发体验（变更需同步更新本头注释与所属目录 README）
  */
 
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -41,10 +41,10 @@ function loadPids() {
 
 function killProcess(pid) {
   try {
+    if (!pid || pid === process.pid) return;
     if (process.platform === 'win32') {
-      spawn('taskkill', ['/F', '/PID', pid.toString()], { 
-        stdio: 'ignore',
-        shell: true 
+      spawnSync('taskkill', ['/F', '/T', '/PID', pid.toString()], {
+        stdio: 'ignore'
       });
     } else {
       process.kill(pid, 'SIGTERM');
@@ -52,6 +52,23 @@ function killProcess(pid) {
   } catch (e) {
     // Process might already be dead
   }
+}
+
+function stopServers({ missingMessage = true } = {}) {
+  const pids = loadPids();
+  if (!pids) {
+    if (missingMessage) {
+      log(colors.yellow, 'STOP', 'No running servers found.');
+    }
+    return false;
+  }
+
+  if (pids.backend) killProcess(pids.backend);
+  if (pids.frontend) killProcess(pids.frontend);
+  if (pids.ai) killProcess(pids.ai);
+  if (pids.manager) killProcess(pids.manager);
+  if (fs.existsSync(PID_FILE)) fs.unlinkSync(PID_FILE);
+  return true;
 }
 
 function exists(p) {
@@ -62,12 +79,13 @@ function exists(p) {
   }
 }
 
-function startServer(name, cwd) {
+function startServer(name, cwd, env = {}) {
   log(colors.blue, name, 'Starting...');
   
   const isWindows = process.platform === 'win32';
   const proc = spawn('npm', ['run', 'dev'], {
     cwd: path.join(__dirname, cwd),
+    env: { ...process.env, ...env },
     shell: true,
     stdio: 'inherit',
     detached: false,
@@ -162,18 +180,12 @@ async function startAiService() {
 
 function main() {
   const command = process.argv[2];
+  const noWatcher = process.argv.includes('--no-watcher');
 
   if (command === 'stop') {
     log(colors.yellow, 'STOP', 'Stopping all development servers...');
-    const pids = loadPids();
-    if (pids) {
-      if (pids.backend) killProcess(pids.backend);
-      if (pids.frontend) killProcess(pids.frontend);
-      if (pids.ai) killProcess(pids.ai);
-      fs.unlinkSync(PID_FILE);
+    if (stopServers()) {
       log(colors.green, 'STOP', 'All servers stopped.');
-    } else {
-      log(colors.yellow, 'STOP', 'No running servers found.');
     }
     return;
   }
@@ -181,32 +193,32 @@ function main() {
   // Check if already running
   const existingPids = loadPids();
   if (existingPids) {
-    log(colors.yellow, 'WARN', 'Servers might already be running. Use "node dev-start.js stop" to stop them first.');
+    log(colors.yellow, 'WARN', 'Existing servers found; stopping them before restart...');
+    stopServers({ missingMessage: false });
   }
 
   log(colors.green, 'START', 'Starting development servers...');
+  if (noWatcher) {
+    log(colors.yellow, 'WATCHER', 'Disabled for this dev session.');
+  }
   console.log('');
 
   // Start backend
-  const backendPid = startServer('BACKEND', 'server');
+  const backendEnv = noWatcher ? { TIDY_DISABLE_WATCHER: '1' } : {};
+  const backendPid = startServer('BACKEND', 'server', backendEnv);
 
   // Wait a bit before starting frontend
   setTimeout(async () => {
     const aiPid = await startAiService();
     const frontendPid = startServer('FRONTEND', 'client');
-    savePids({ backend: backendPid, frontend: frontendPid, ai: aiPid });
+    savePids({ manager: process.pid, backend: backendPid, frontend: frontendPid, ai: aiPid });
   }, 1000);
 
   // Handle cleanup on exit
   process.on('SIGINT', () => {
     log(colors.yellow, 'STOP', 'Stopping servers...');
     const pids = loadPids();
-    if (pids) {
-      if (pids.backend) killProcess(pids.backend);
-      if (pids.frontend) killProcess(pids.frontend);
-      if (pids.ai) killProcess(pids.ai);
-      fs.unlinkSync(PID_FILE);
-    }
+    if (pids) stopServers({ missingMessage: false });
     process.exit(0);
   });
 
@@ -214,4 +226,3 @@ function main() {
 }
 
 main();
-

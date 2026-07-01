@@ -5,11 +5,13 @@
   "scripts": {
     "install:all": "npm install && cd client && npm install && cd ../server && npm install",
     "dev": "node dev-start.js",
+    "dev:no-watch": "node dev-start.js --no-watcher",
     "dev:stop": "node dev-start.js stop",
     "desktop:dev": "cd desktop && npm run dev",
     "desktop:dist": "cd desktop && npm run dist",
     "doc:add-headers": "node scripts/fractal-docs.mjs add-headers",
     "doc:check": "node scripts/fractal-docs.mjs check",
+    "test:dev-start": "node scripts/test-dev-start.mjs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
