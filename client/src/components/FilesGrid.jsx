@@ -47,7 +47,8 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
   const filter = filesQueryOpts.filter || 'all';
   const smartQuery = String(filesQueryOpts.smartQuery || '').trim();
   const smartActive = !!smartQuery;
-  const similarityOrderActive = filesQueryOpts.similarKind === 'clip';
+  const imageSearchActive = !!String(filesQueryOpts.imageSearchId || '').trim();
+  const similarityOrderActive = filesQueryOpts.similarKind === 'clip' || imageSearchActive;
 
   // Always fetch page 1 to learn total and confirm applied filter.
   const page1 = useQuery({
@@ -472,6 +473,14 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
 
   return (
     <div ref={parentRef} className="h-full w-full overflow-auto bg-gray-100 p-4">
+      {page1.isError ? (
+        <div role="alert" className="sticky top-2 z-50 mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
+          <div className="font-semibold">搜索失败</div>
+          <div className="mt-0.5 text-xs leading-5">
+            {page1.error?.response?.data?.error || page1.error?.message || '请稍后重试。'}
+          </div>
+        </div>
+      ) : null}
       <div className="sticky top-2 z-40 pointer-events-none">
         <div ref={overlayRef} className="relative inline-flex items-start gap-2 pointer-events-auto">
           <button

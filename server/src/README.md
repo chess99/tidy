@@ -17,12 +17,11 @@
 ### 约定（高层语义）
 
 - **缺失语义**：`files` 仅代表**现存物理实例**；当磁盘缺失时会删除对应 `files` 行。若 `assets.status != 'inbox'`（用户显式整理/删除/忽略），则保留 `assets` 并用 `assets.missing=1` 表达“语义保留但无实例”。否则删除 `assets`。
-- **智能搜索（CLIP）**：`POST /api/files`（`smartQuery`）会做 text embedding + ANN 检索；text embedding 在服务端有“进程内 LRU + SQLite 持久缓存”（以 `CLIP_MODEL_ID+normalize+text` 作为去重键），避免分页/交互导致重复推理。
+- **智能搜索（CLIP）**：`POST /api/files` 支持文字 `smartQuery` 和临时参考图 `imageSearchId` 两种向量来源。文字 embedding 使用进程内 LRU + SQLite 持久缓存；参考图上传后只在内存保存短期 embedding 会话，图片本身不落盘、不入数据库或索引。
 
 ### 文件
 
 - `config.js`：配置读取与默认值（运行时参数入口）。
 - `configStore.js`：配置持久化（读写/变更通知；任务并发仅支持 enrich/thumbs/faces/clip；thumbs 默认并发为 4）。
 - `__tests__/`：单元测试（见 `__tests__/README.md`）。
-
 

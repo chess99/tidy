@@ -1,6 +1,6 @@
 /**
  * input: AI_SERVICE_URL（环境变量）+ HTTP fetch + SQLite(getDB) + 进程内内存缓存 + 文件系统
- * output: 调用 ai-service 的推理结果（人脸检测/embedding、CLIP 文本/图片 embedding；text 支持缓存/并发去重/落盘）
+ * output: 调用 ai-service 的推理结果（人脸检测/embedding、CLIP 文本/图片 embedding；支持路径或临时图片字节）
  * pos: 服务端服务层：跨路由/任务复用的 AI 推理客户端（变更需同步更新本头注释与所属目录 README）
  */
 
@@ -260,6 +260,22 @@ async function clipImageEmbed({ imagePath, normalize = true, profile = null } = 
   };
 }
 
+async function clipImageEmbedBuffer({ imageBuffer, normalize = true, profile = null } = {}) {
+  const buffer = Buffer.isBuffer(imageBuffer) ? imageBuffer : Buffer.from(imageBuffer || []);
+  if (!buffer.length) throw new Error('imageBuffer required');
+  const url = ensureUrl(AI_SERVICE_URL, '/clip/image-embed');
+  const out = await postJson(url, { image_base64: buffer.toString('base64'), normalize }, { profile });
+  const emb = Array.isArray(out?.embeddings) ? out.embeddings[0] : null;
+  if (!Array.isArray(emb)) throw new Error('invalid clip/image-embed response');
+  return {
+    model: String(out.model || CLIP_MODEL_ID),
+    dim: Number(out.dim),
+    normalized: !!out.normalized,
+    embedding: emb,
+    profile: out?.profile || null,
+  };
+}
+
 async function detectFaces({ imagePath, profile = null } = {}) {
   const p = String(imagePath || '').trim();
   if (!p) throw new Error('imagePath required');
@@ -294,6 +310,5 @@ async function detectFaces({ imagePath, profile = null } = {}) {
   });
 }
 
-module.exports = { clipTextEmbed, clipImageEmbed, detectFaces };
-
+module.exports = { clipTextEmbed, clipImageEmbed, clipImageEmbedBuffer, detectFaces };
 

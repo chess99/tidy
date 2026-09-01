@@ -46,6 +46,7 @@ function buildFilesParams(opts = {}) {
     similarTopK,
     similarMinScore,
     smartQuery,
+    imageSearchId,
     smartTopK,
     smartMinScore,
   } = opts || {};
@@ -85,6 +86,10 @@ function buildFilesParams(opts = {}) {
     const q = String(smartQuery || '').trim();
     if (q) params.smartQuery = q;
   }
+  if (imageSearchId != null) {
+    const id = String(imageSearchId || '').trim();
+    if (id) params.imageSearchId = id;
+  }
   if (smartTopK != null && Number.isFinite(Number(smartTopK))) {
     params.smartTopK = Math.max(1, Math.min(5000, Math.trunc(Number(smartTopK))));
   }
@@ -120,11 +125,21 @@ export const getFiles = (page = 1, limit = 50, opts = {}, { signal } = {}) => {
 // - smart search: POST /files (ranked)
 export const getFilesUnified = (page = 1, limit = 50, opts = {}, { signal } = {}) => {
   const q = String(opts?.smartQuery || '').trim();
-  if (q) {
+  const imageSearchId = String(opts?.imageSearchId || '').trim();
+  if (q || imageSearchId) {
     const body = { page, limit, ...buildFilesParams(opts) };
     return api.post('/files', body, { signal }).then((res) => res.data);
   }
   return getFiles(page, limit, opts, { signal });
+};
+export const createImageSearch = (file) =>
+  api.post('/files/image-search', file, {
+    headers: { 'Content-Type': file?.type || 'application/octet-stream' },
+  }).then((res) => res.data);
+export const deleteImageSearch = (id) => {
+  const key = String(id || '').trim();
+  if (!key) return Promise.resolve();
+  return api.delete(`/files/image-search/${encodeURIComponent(key)}`).then(() => undefined);
 };
 export const getFilesDateIndex = (filter = 'all', granularity = 'month', opts = {}) => {
   const {

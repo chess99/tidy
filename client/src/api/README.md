@@ -7,6 +7,5 @@
 - `client.js`：HTTP 客户端封装（baseURL、headers、错误处理等）。
   - 含：`duplicates` 工具接口封装（groups/apply）。
   - 含：`files` 相似筛选参数（`similarKind/similarToFileId/similarThreshold`，用于详情面板“找相似(pHash)”）。
-  - 含：智能搜索（`POST /files` + `smartQuery`）与统一列表 fetch（`getFilesUnified`：smartQuery 时走 `POST /files`，否则走 `GET /files`；支持传入 `AbortSignal` 以便 React Query 取消 in-flight 请求）。
-
+  - 含：文字智能搜索与临时参考图以图搜图。`createImageSearch` 只上传一次参考图换取短期会话，`getFilesUnified` 在 `smartQuery` 或 `imageSearchId` 存在时走 `POST /files`，并支持传入 `AbortSignal` 取消进行中的列表请求。
 

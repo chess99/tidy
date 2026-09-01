@@ -1,19 +1,31 @@
 /**
  * input: Express req/res + DB + CLIP/相似检索服务
  * output: Express Router（HTTP API）
- * pos: 服务端路由层：列表/筛选/CLIP 智能检索入口（变更需同步更新本头注释与所属目录 README）
+ * pos: 服务端路由层：列表/筛选/文字与临时参考图 CLIP 检索入口（变更需同步更新本头注释与所属目录 README）
  */
 
 const express = require('express');
 const path = require('path');
 const { getDB } = require('../db');
 const { hamming64 } = require('../scanner/phash');
-const { clipTextEmbed } = require('../services/aiClient');
+const { clipTextEmbed, clipImageEmbedBuffer } = require('../services/aiClient');
 const { queryTopKByFileId, queryTopKByVector } = require('../services/clipIndex');
+const { createImageSearchSession, getImageSearchSession, deleteImageSearchSession } = require('../services/imageSearchSessions');
 const { createProfiler } = require('../utils/profiler');
 
 const router = express.Router();
 let smartSearchInflight = 0;
+const IMAGE_SEARCH_UPLOAD_LIMIT = 20 * 1024 * 1024;
+const parseImageUpload = express.raw({ type: () => true, limit: IMAGE_SEARCH_UPLOAD_LIMIT });
+
+function imageUploadBody(req, res, next) {
+  parseImageUpload(req, res, (error) => {
+    if (error?.type === 'entity.too.large') {
+      return res.status(413).json({ error: '参考图片不能超过 20 MB。', code: 'IMAGE_TOO_LARGE' });
+    }
+    return error ? next(error) : next();
+  });
+}
 
 function makeWhere(filter) {
   let where = '';
@@ -230,6 +242,48 @@ function toFileRow(r) {
   };
 }
 
+router.post(
+  '/image-search',
+  imageUploadBody,
+  async (req, res) => {
+    const imageBuffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+    const contentType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    if (!imageBuffer.length) {
+      return res.status(400).json({ error: '请选择一张参考图片。', code: 'IMAGE_REQUIRED' });
+    }
+    if (imageBuffer.length > IMAGE_SEARCH_UPLOAD_LIMIT) {
+      return res.status(413).json({ error: '参考图片不能超过 20 MB。', code: 'IMAGE_TOO_LARGE' });
+    }
+    if (contentType && !contentType.startsWith('image/') && contentType !== 'application/octet-stream') {
+      return res.status(415).json({ error: '仅支持图片文件。', code: 'UNSUPPORTED_IMAGE_TYPE' });
+    }
+
+    try {
+      const embedded = await clipImageEmbedBuffer({ imageBuffer, normalize: true });
+      const session = createImageSearchSession(embedded);
+      return res.status(201).json({
+        imageSearchId: session.id,
+        expiresAt: session.expiresAt,
+      });
+    } catch (error) {
+      const message = String(error?.message || error);
+      const serviceUnavailable = /AI_SERVICE_URL|fetch failed|ECONNREFUSED|ai-service error 5\d\d/i.test(message);
+      console.warn('[image-search] failed to embed temporary reference image:', message);
+      return res.status(serviceUnavailable ? 503 : 422).json({
+        error: serviceUnavailable
+          ? '智能搜索服务暂不可用，请到系统管理中检查 AI 服务后重试。'
+          : '无法读取这张参考图，请换用 JPG、PNG、WebP 或其他常见图片格式。',
+        code: serviceUnavailable ? 'IMAGE_SEARCH_UNAVAILABLE' : 'IMAGE_EMBED_FAILED',
+      });
+    }
+  }
+);
+
+router.delete('/image-search/:id', (req, res) => {
+  deleteImageSearchSession(req.params.id);
+  res.status(204).end();
+});
+
 // Date index: build quick lookup points for month/day -> start index in the sorted list
 router.get('/date-index', async (req, res) => {
   const db = getDB();
@@ -440,13 +494,14 @@ async function handleFilesList(req, res) {
   const similarMinScore = source.similarMinScore != null && source.similarMinScore !== '' ? Number(source.similarMinScore) : null;
   const smartQueryRaw = source.smartQuery != null ? String(source.smartQuery) : '';
   const smartQuery = smartQueryRaw.trim();
+  const imageSearchId = source.imageSearchId != null ? String(source.imageSearchId).trim() : '';
   const smartTopK = clampIntParam(source.smartTopK, { min: 1, max: 5000, fallback: 1000 });
   const smartMinScore = source.smartMinScore != null && source.smartMinScore !== '' ? Number(source.smartMinScore) : null;
   if (similarKind && similarKind !== 'phash' && similarKind !== 'clip') {
     return res.status(400).json({ error: 'Invalid similarKind' });
   }
-  if (smartQuery && similarKind) {
-    return res.status(400).json({ error: 'smartQuery cannot be combined with similarKind' });
+  if ([!!smartQuery, !!imageSearchId, !!similarKind].filter(Boolean).length > 1) {
+    return res.status(400).json({ error: 'Only one semantic search source can be active at a time' });
   }
   if ((similarKind === 'phash' || similarKind === 'clip') && !Number.isFinite(similarToFileId)) {
     return res.status(400).json({ error: 'similarToFileId is required for similarKind' });
@@ -552,7 +607,7 @@ async function handleFilesList(req, res) {
     whereParams.push(pid);
   }
 
-  if (smartQuery) {
+  if (smartQuery || imageSearchId) {
     const wantProfile =
       String(req.query?.profile || '').trim() === '1' ||
       String(req.headers['x-tidy-profile'] || '').trim() === '1';
@@ -569,13 +624,25 @@ async function handleFilesList(req, res) {
     profiler.mark('inflight', { smartSearchInflight: inflightAtStart });
 
     try {
-      const embedOut = await clipTextEmbed({ query: smartQuery, normalize: true, profile: profiler });
+      let embedOut;
+      if (smartQuery) {
+        embedOut = await clipTextEmbed({ query: smartQuery, normalize: true, profile: profiler });
+      } else {
+        const session = getImageSearchSession(imageSearchId);
+        if (!session) {
+          const error = new Error('参考图搜索已过期，请重新选择图片。');
+          error.statusCode = 410;
+          error.code = 'IMAGE_SEARCH_EXPIRED';
+          throw error;
+        }
+        embedOut = session;
+      }
       const embedding = embedOut?.embedding;
       const aiServiceProfile = embedOut?.profile || null;
-      profiler.mark('clip.text.embed.done', { queryLen: smartQuery.length, minScore, topK });
+      profiler.mark('clip.query.embed.done', { source: smartQuery ? 'text' : 'image', queryLen: smartQuery.length, minScore, topK });
 
       while (true) {
-        const r = await queryTopKByVector(embedding, { topK, minScore, profile: profiler });
+        const r = await queryTopKByVector(embedding, { model: embedOut?.model || undefined, topK, minScore, profile: profiler });
         const matches = Array.isArray(r.matches) ? r.matches : [];
         profiler.mark('clip.ann.done', { model: r.model, got: matches.length });
 
@@ -585,7 +652,7 @@ async function handleFilesList(req, res) {
           return res.json({
             data: [],
             pagination: { page, limit, total: 0 },
-            applied: { filter, smartQuery, minScore, model: r.model },
+            applied: { filter, searchKind: smartQuery ? 'text' : 'image', smartQuery: smartQuery || undefined, minScore, model: r.model },
             ...(profile ? { profile } : {}),
           });
         }
@@ -645,13 +712,13 @@ async function handleFilesList(req, res) {
         return res.json({
           data: rows.map(toFileRow),
           pagination: { page, limit, total },
-          applied: { filter, smartQuery, minScore, model: r.model },
+          applied: { filter, searchKind: smartQuery ? 'text' : 'image', smartQuery: smartQuery || undefined, minScore, model: r.model },
           ...(profile ? { profile } : {}),
         });
       }
     } catch (e) {
       const profile = profiler.end({ error: String(e?.message || e), smartSearchInflight: inflightAtStart });
-      return res.status(e?.statusCode || 500).json({ error: String(e?.message || e), ...(profile ? { profile } : {}) });
+      return res.status(e?.statusCode || 500).json({ error: String(e?.message || e), ...(e?.code ? { code: e.code } : {}), ...(profile ? { profile } : {}) });
     } finally {
       smartSearchInflight = Math.max(0, smartSearchInflight - 1);
     }
@@ -799,5 +866,3 @@ router.get('/batch', (req, res) => {
 });
 
 module.exports = router;
-
-

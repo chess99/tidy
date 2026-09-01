@@ -51,6 +51,8 @@ function Main() {
     similarTopK: 500, // clip only
     similarMinScore: 0.25, // clip only (cosine similarity)
     smartQuery: '',
+    imageSearchId: undefined,
+    imageSearchName: undefined,
     smartTopK: 1000,
     smartMinScore: 0.25,
   }));
@@ -264,6 +266,9 @@ function Main() {
         : DEFAULT_SIMILAR_THRESHOLD,
       // Similar search and hash-exact are mutually exclusive in practice.
       hash: '',
+      smartQuery: '',
+      imageSearchId: undefined,
+      imageSearchName: undefined,
     }));
   };
 
@@ -283,6 +288,8 @@ function Main() {
     setFilesQuery((prev) => ({
       ...prev,
       smartQuery: '',
+      imageSearchId: undefined,
+      imageSearchName: undefined,
       similarKind: 'clip',
       similarToFileId: seedFileId,
       similarTopK: Number.isFinite(Number(prev?.similarTopK)) ? Math.max(1, Math.min(5000, Math.floor(Number(prev.similarTopK)))) : 500,

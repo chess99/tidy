@@ -1,13 +1,13 @@
 /**
  * input: props + API 数据 + 本地状态
- * output: 美观易用的筛选面板
- * pos: 客户端视图层：重新设计的筛选面板（变更需同步更新本头注释与所属目录 README）
+ * output: 含文字/临时参考图智能搜索的筛选面板
+ * pos: 客户端视图层：统一搜索与筛选交互（变更需同步更新本头注释与所属目录 README）
  */
 
-import { Search, X, Filter, Image, Video, Calendar, Users, Folder, Hash, Sparkles, Trash2, CheckCircle2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Search, X, Filter, Image, Video, Calendar, Users, Folder, Hash, Sparkles, Trash2, CheckCircle2, ImagePlus, Type, LoaderCircle, Upload } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getPeople } from '../api/client';
+import { createImageSearch, deleteImageSearch, getPeople } from '../api/client';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { DateRangePicker } from './ui/date-range-picker';
@@ -27,6 +27,25 @@ const STATUS_OPTIONS = [
 export function FilesFilters({ value, onChange }) {
   const v = value || {};
   const [smartInput, setSmartInput] = useState(() => String(v.smartQuery || ''));
+  const [searchMode, setSearchMode] = useState(() => (v.imageSearchId ? 'image' : 'text'));
+  const [imagePreviewUrl, setImagePreviewUrl] = useState('');
+  const [imageName, setImageName] = useState(() => String(v.imageSearchName || ''));
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageError, setImageError] = useState('');
+  const imageInputRef = useRef(null);
+  const imagePreviewUrlRef = useRef('');
+  const uploadSequenceRef = useRef(0);
+
+  useEffect(() => () => {
+    uploadSequenceRef.current += 1;
+    if (imagePreviewUrlRef.current) URL.revokeObjectURL(imagePreviewUrlRef.current);
+  }, []);
+
+  const releaseImagePreview = () => {
+    if (imagePreviewUrlRef.current) URL.revokeObjectURL(imagePreviewUrlRef.current);
+    imagePreviewUrlRef.current = '';
+    setImagePreviewUrl('');
+  };
 
   // 语义相似和智能搜索冲突：当有语义相似筛选时，禁用智能搜索
   const isClipSimilarActive = v.similarKind === 'clip' && v.similarToFileId;
@@ -49,6 +68,7 @@ export function FilesFilters({ value, onChange }) {
   // 计算激活的筛选条件数
   const activeFilters = [
     v.smartQuery,
+    v.imageSearchId,
     v.from || v.to,
     selectedExts.length > 0,
     selectedPeopleIds.length > 0,
@@ -61,9 +81,17 @@ export function FilesFilters({ value, onChange }) {
   ].filter(Boolean).length;
 
   const clearAll = () => {
+    uploadSequenceRef.current += 1;
+    if (v.imageSearchId) deleteImageSearch(v.imageSearchId).catch(() => {});
     setSmartInput('');
+    releaseImagePreview();
+    setImageName('');
+    setImageError('');
+    setImageUploading(false);
     onChange({
       smartQuery: '',
+      imageSearchId: undefined,
+      imageSearchName: undefined,
       from: undefined,
       to: undefined,
       exts: [],
@@ -92,7 +120,97 @@ export function FilesFilters({ value, onChange }) {
   };
 
   const applySmartSearch = () => {
-    onChange({ ...v, smartQuery: smartInput.trim() });
+    const query = smartInput.trim();
+    if (!query) return;
+    uploadSequenceRef.current += 1;
+    if (v.imageSearchId) deleteImageSearch(v.imageSearchId).catch(() => {});
+    releaseImagePreview();
+    setImageName('');
+    setImageUploading(false);
+    setImageError('');
+    onChange({
+      ...v,
+      smartQuery: query,
+      imageSearchId: undefined,
+      imageSearchName: undefined,
+      similarKind: null,
+      similarToFileId: null,
+    });
+  };
+
+  const clearImageSearch = () => {
+    uploadSequenceRef.current += 1;
+    if (v.imageSearchId) deleteImageSearch(v.imageSearchId).catch(() => {});
+    releaseImagePreview();
+    setImageName('');
+    setImageError('');
+    setImageUploading(false);
+    onChange({
+      ...v,
+      imageSearchId: undefined,
+      imageSearchName: undefined,
+    });
+  };
+
+  const processReferenceImage = async (file) => {
+    if (!file) return;
+    const looksLikeImage = String(file.type || '').startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|tiff?|heic|heif)$/i.test(file.name || '');
+    if (!looksLikeImage) {
+      setImageError('请选择图片文件。');
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setImageError('图片不能超过 20 MB。');
+      return;
+    }
+
+    const sequence = uploadSequenceRef.current + 1;
+    uploadSequenceRef.current = sequence;
+    const nextPreviewUrl = URL.createObjectURL(file);
+    if (imagePreviewUrlRef.current) URL.revokeObjectURL(imagePreviewUrlRef.current);
+    imagePreviewUrlRef.current = nextPreviewUrl;
+    setImagePreviewUrl(nextPreviewUrl);
+    setImageName(file.name || '参考图');
+    setImageError('');
+    setImageUploading(true);
+
+    try {
+      const result = await createImageSearch(file);
+      if (uploadSequenceRef.current !== sequence) {
+        deleteImageSearch(result?.imageSearchId).catch(() => {});
+        return;
+      }
+      if (v.imageSearchId && v.imageSearchId !== result.imageSearchId) {
+        deleteImageSearch(v.imageSearchId).catch(() => {});
+      }
+      setSmartInput('');
+      onChange({
+        ...v,
+        smartQuery: '',
+        imageSearchId: result.imageSearchId,
+        imageSearchName: file.name || '参考图',
+        similarKind: null,
+        similarToFileId: null,
+      });
+    } catch (error) {
+      if (uploadSequenceRef.current !== sequence) return;
+      const message = error?.response?.data?.error || '无法使用这张图片，请换一张再试。';
+      setImageError(String(message));
+      if (v.imageSearchId) {
+        releaseImagePreview();
+        setImageName(String(v.imageSearchName || ''));
+      }
+    } finally {
+      if (uploadSequenceRef.current === sequence) setImageUploading(false);
+    }
+  };
+
+  const pickPastedImage = (event) => {
+    const item = Array.from(event.clipboardData?.items || []).find((candidate) => candidate.type?.startsWith('image/'));
+    const file = item?.getAsFile?.();
+    if (!file) return;
+    event.preventDefault();
+    processReferenceImage(file);
   };
 
   return (
@@ -121,36 +239,138 @@ export function FilesFilters({ value, onChange }) {
       {/* Content */}
       <div className="flex-1 overflow-auto">
         {/* Smart Search */}
-        <div className="p-4 border-b">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              value={smartInput}
-              onChange={(e) => setSmartInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && applySmartSearch()}
-              placeholder={isClipSimilarActive ? '语义相似筛选中...' : '智能搜索...'}
-              disabled={isClipSimilarActive}
-              className={`w-full pl-9 pr-16 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${isClipSimilarActive ? 'bg-gray-100 text-gray-500' : ''}`}
-            />
-            <Button
-              size="sm"
-              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 text-xs"
-              disabled={!smartInput.trim() || smartInput.trim() === v.smartQuery || isClipSimilarActive}
-              onClick={applySmartSearch}
-            >
-              搜索
-            </Button>
+        <div className="p-4 border-b" onPaste={searchMode === 'image' ? pickPastedImage : undefined}>
+          <div className="flex items-center justify-between mb-2.5">
+            <div className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-blue-500" />
+              智能搜索
+            </div>
+            <div className="inline-flex rounded-md bg-gray-100 p-0.5" role="tablist" aria-label="智能搜索方式">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={searchMode === 'text'}
+                onClick={() => setSearchMode('text')}
+                className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${searchMode === 'text' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                <Type className="h-3 w-3" />
+                文字
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={searchMode === 'image'}
+                onClick={() => setSearchMode('image')}
+                className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${searchMode === 'image' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                <ImagePlus className="h-3 w-3" />
+                图片
+              </button>
+            </div>
           </div>
 
-          {/* Smart Query Tag */}
+          {searchMode === 'text' ? (
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                value={smartInput}
+                onChange={(e) => setSmartInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && applySmartSearch()}
+                placeholder={isClipSimilarActive ? '语义相似筛选中...' : '描述想找的画面...'}
+                disabled={isClipSimilarActive}
+                className={`w-full pl-9 pr-16 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${isClipSimilarActive ? 'bg-gray-100 text-gray-500' : ''}`}
+              />
+              <Button
+                size="sm"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 text-xs"
+                disabled={!smartInput.trim() || smartInput.trim() === v.smartQuery || isClipSimilarActive}
+                onClick={applySmartSearch}
+              >
+                搜索
+              </Button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={imageUploading}
+              onClick={() => imageInputRef.current?.click()}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'copy';
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                processReferenceImage(event.dataTransfer.files?.[0]);
+              }}
+              className="group w-full min-h-20 overflow-hidden rounded-lg border border-dashed border-blue-200 bg-blue-50/50 text-left transition-colors hover:border-blue-400 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-wait"
+            >
+              {(imagePreviewUrl || v.imageSearchId) ? (
+                <div className="flex items-center gap-3 p-2.5">
+                  {imagePreviewUrl ? (
+                    <img src={imagePreviewUrl} alt="临时参考图预览" className="h-14 w-14 shrink-0 rounded-md object-cover bg-white" />
+                  ) : (
+                    <div className="h-14 w-14 shrink-0 rounded-md bg-blue-100 flex items-center justify-center">
+                      <ImagePlus className="h-6 w-6 text-blue-500" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs font-semibold text-gray-800">{imageName || v.imageSearchName || '临时参考图'}</div>
+                    <div className="mt-1 text-[11px] text-blue-600">
+                      {imageUploading ? '正在理解图片…' : '点击、拖放或粘贴可换图'}
+                    </div>
+                    <div className="mt-1 text-[10px] text-gray-500">只用于本次搜索，不会加入图库</div>
+                  </div>
+                  {imageUploading ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-blue-500" /> : <Upload className="h-4 w-4 shrink-0 text-blue-400 opacity-0 group-hover:opacity-100" />}
+                </div>
+              ) : (
+                <div className="flex min-h-20 flex-col items-center justify-center px-3 py-3 text-center">
+                  {imageUploading ? <LoaderCircle className="h-5 w-5 animate-spin text-blue-500" /> : <ImagePlus className="h-5 w-5 text-blue-500" />}
+                  <div className="mt-1.5 text-xs font-medium text-gray-700">选择、拖放或粘贴参考图</div>
+                  <div className="mt-0.5 text-[10px] text-gray-500">不入库 · 最大 20 MB</div>
+                </div>
+              )}
+            </button>
+          )}
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*,.heic,.heif"
+            className="hidden"
+            onChange={(event) => {
+              processReferenceImage(event.target.files?.[0]);
+              event.target.value = '';
+            }}
+          />
+
+          {imageError ? (
+            <div role="alert" className="mt-2 text-[11px] leading-4 text-red-600">{imageError}</div>
+          ) : null}
+
           {v.smartQuery && (
             <div className="flex items-center gap-2 mt-2">
-              <Badge className="bg-blue-100 text-blue-700 text-xs">
+              <Badge className="max-w-[210px] truncate bg-blue-100 text-blue-700 text-xs" title={v.smartQuery}>
                 {v.smartQuery}
               </Badge>
               <button
                 onClick={() => { setSmartInput(''); onChange({ ...v, smartQuery: '' }); }}
+                className="text-gray-400 hover:text-gray-600 cursor-pointer"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )}
+
+          {v.imageSearchId && (
+            <div className="flex items-center gap-2 mt-2">
+              <Badge className="max-w-[210px] gap-1.5 truncate bg-indigo-100 text-indigo-700 text-xs" title={v.imageSearchName || '临时参考图'}>
+                <ImagePlus className="h-3 w-3 shrink-0" />
+                <span className="truncate">以图搜图：{v.imageSearchName || '参考图'}</span>
+              </Badge>
+              <button
+                type="button"
+                aria-label="清除以图搜图"
+                onClick={clearImageSearch}
                 className="text-gray-400 hover:text-gray-600 cursor-pointer"
               >
                 <X className="h-3 w-3" />
