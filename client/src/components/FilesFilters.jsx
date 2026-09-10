@@ -11,6 +11,7 @@ import { createImageSearch, deleteImageSearch, getPeople } from '../api/client';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { DateFilterPicker } from './ui/date-filter-picker';
+import { PeopleFilterDialog } from './PeopleFilterDialog';
 
 const FILE_TYPE_GROUPS = [
   { key: 'image', label: '图片', icon: Image, exts: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'tif', 'tiff', 'bmp'] },
@@ -557,34 +558,11 @@ export function FilesFilters({ value, onChange }) {
               </div>
             </div>
 
-            {/* People tags */}
-            <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
-              {people.map((p) => {
-                const active = selectedPeopleIds.includes(p.id);
-                // 兜底显示：没有名字时显示 ID:xx
-                const displayName = p.name?.trim() || `ID:${p.id}`;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => {
-                      const next = active
-                        ? selectedPeopleIds.filter(id => id !== p.id)
-                        : [...selectedPeopleIds, p.id];
-                      onChange({ ...v, people: next.length ? next : undefined });
-                    }}
-                    className={`
-                      px-2.5 py-1 rounded-full text-xs transition-colors cursor-pointer
-                      ${active
-                        ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                        : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
-                      }
-                    `}
-                  >
-                    {displayName}
-                  </button>
-                );
-              })}
-            </div>
+            <PeopleFilterDialog
+              people={people}
+              selectedIds={selectedPeopleIds}
+              onApply={(next) => onChange({ ...v, people: next.length ? next : undefined })}
+            />
           </div>
         )}
 
