@@ -95,4 +95,28 @@ describe('temporary reference image search routes', () => {
       .send('not an image')
       .expect(415);
   });
+
+  test('returns a stable migration code without exposing index filesystem paths', async () => {
+    const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const upload = await request(app)
+      .post('/api/files/image-search')
+      .set('content-type', 'image/jpeg')
+      .send(bytes)
+      .expect(201);
+    const error = new Error('智能搜索索引正在迁移到当前模型。完成 CLIP 处理和索引重建后将自动恢复。');
+    error.statusCode = 409;
+    error.code = 'CLIP_INDEX_MODEL_MISMATCH';
+    mockQueryTopKByVector.mockRejectedValueOnce(error);
+
+    const search = await request(app)
+      .post('/api/files')
+      .send({ imageSearchId: upload.body.imageSearchId, page: 1, limit: 50 })
+      .expect(409);
+
+    expect(search.body).toEqual({
+      code: 'CLIP_INDEX_MODEL_MISMATCH',
+      error: '智能搜索索引正在迁移到当前模型。完成 CLIP 处理和索引重建后将自动恢复。',
+    });
+    expect(JSON.stringify(search.body)).not.toContain('D:\\');
+  });
 });

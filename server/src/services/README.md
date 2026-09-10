@@ -9,6 +9,6 @@
 - `aiClient.js`：AI 服务客户端（调用 `ai-service` 的人脸检测与 CLIP 推理接口；`clipTextEmbed` 带进程内缓存 + 并发去重 + SQLite 持久缓存；临时参考图可直接以内存字节推理，不需要落盘；支持可选 `profile` 埋点）。
 - `aiCapabilities.js`：读取 AI 健康状态，并校验 AI 服务报告的 CLIP 模型与 server 期望值一致。
 - `imageSearchSessions.js`：以图搜图的短期内存会话；只保存参考图 embedding 以支持结果翻页，不写数据库、图片文件或 CLIP 索引，并在超时或容量淘汰后失效。
-- `clipIndex.js`：CLIP 向量索引（HNSW）构建/加载/查询（智能搜索/相似检索；索引未就绪会返回 409，需先跑 `clip_index` 任务；支持可选 `profile` 埋点）。
+- `clipIndex.js`：CLIP 向量索引（HNSW）构建/加载/查询；索引迁移、缺失或损坏以不暴露本机路径的 409 错误码区分；支持可选 `profile` 埋点。
 - `faceClustering.js`：人脸聚类算法/流程封装。
 - `reclusterPeople.js`：人物重聚类的高层编排（可能组合 DB + clustering + job）。

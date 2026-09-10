@@ -111,10 +111,10 @@ function listEmbeddings(db, { model }) {
 let _index = null; // hnsw index instance
 let _indexInfo = null; // { model, dim, normalized, path, builtAt, fileCount }
 
-function makeIndexNotReadyError(message) {
+function makeIndexNotReadyError(code, message) {
   const e = new Error(String(message || 'CLIP index not ready'));
   e.statusCode = 409;
-  e.code = 'CLIP_INDEX_NOT_READY';
+  e.code = code;
   return e;
 }
 
@@ -172,17 +172,29 @@ async function ensureIndexLoaded({ model = CLIP_MODEL_ID } = {}) {
   const metaModel = meta?.model ? String(meta.model) : null;
 
   if (!meta) {
-    throw makeIndexNotReadyError('CLIP index not built. Run task: clip_index (rebuild).');
+    throw makeIndexNotReadyError(
+      'CLIP_INDEX_MISSING',
+      '智能搜索索引尚未建立。完成 CLIP 处理和索引重建后将自动恢复。'
+    );
   }
   if (metaModel !== model) {
-    throw makeIndexNotReadyError(`CLIP index model mismatch (index=${metaModel || 'unknown'}, expected=${model}). Run task: clip_index (rebuild).`);
+    throw makeIndexNotReadyError(
+      'CLIP_INDEX_MODEL_MISMATCH',
+      '智能搜索索引正在迁移到当前模型。完成 CLIP 处理和索引重建后将自动恢复。'
+    );
   }
   if (!Number.isFinite(dim) || dim <= 0) {
-    throw makeIndexNotReadyError('CLIP index meta invalid. Run task: clip_index (rebuild).');
+    throw makeIndexNotReadyError(
+      'CLIP_INDEX_INVALID',
+      '智能搜索索引元数据无效，请在系统管理中重建 CLIP 索引。'
+    );
   }
 
   if (!(await fs.pathExists(indexPath))) {
-    throw makeIndexNotReadyError(`CLIP index file missing: ${indexPath}. Run task: clip_index (rebuild).`);
+    throw makeIndexNotReadyError(
+      'CLIP_INDEX_FILE_MISSING',
+      '智能搜索索引文件缺失，请在系统管理中重建 CLIP 索引。'
+    );
   }
 
   const { HNSW } = await loadHnsw();

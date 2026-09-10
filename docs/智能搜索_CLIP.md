@@ -94,7 +94,7 @@ $$
 2. 跑 `clip_index`（rebuild）
 3. 前端可用智能搜索与 CLIP 相似
 
-> 重要：`POST /api/files`（`smartQuery` / `imageSearchId`）与 `similarKind=clip` 不会在请求路径自动重建索引；如果索引未就绪，会返回 **409** 并提示先跑 `clip_index`。
+> 重要：`POST /api/files`（`smartQuery` / `imageSearchId`）与 `similarKind=clip` 不会在请求路径自动重建索引；迁移期间返回可识别的 **409** 状态，前端显示等待提示并定期检查。补算结束后会自动排队重建索引。
 
 ## 4. API 形态
 

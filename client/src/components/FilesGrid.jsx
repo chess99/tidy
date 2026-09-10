@@ -54,7 +54,11 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
   const page1 = useQuery({
     queryKey: ['files', filesQueryOpts, 1],
     queryFn: ({ signal }) => getFilesUnified(1, LIMIT, filesQueryOpts, { signal }),
+    refetchInterval: (query) => String(query.state.error?.response?.data?.code || '').startsWith('CLIP_INDEX_') ? 30_000 : false,
   });
+
+  const pageErrorCode = String(page1.error?.response?.data?.code || '');
+  const clipIndexPending = page1.isError && pageErrorCode.startsWith('CLIP_INDEX_');
 
   const total = page1.data?.pagination?.total ?? 0;
   const appliedFilter = page1.data?.applied?.filter ?? null;
@@ -474,11 +478,15 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
   return (
     <div ref={parentRef} className="h-full w-full overflow-auto bg-gray-100 p-4">
       {page1.isError ? (
-        <div role="alert" className="sticky top-2 z-50 mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
-          <div className="font-semibold">搜索失败</div>
+        <div role="alert" className={clsx(
+          'sticky top-2 z-50 mb-3 rounded-lg px-4 py-3 text-sm shadow-sm',
+          clipIndexPending ? 'border border-amber-200 bg-amber-50 text-amber-800' : 'border border-red-200 bg-red-50 text-red-700'
+        )}>
+          <div className="font-semibold">{clipIndexPending ? '智能搜索暂不可用' : '搜索失败'}</div>
           <div className="mt-0.5 text-xs leading-5">
             {page1.error?.response?.data?.error || page1.error?.message || '请稍后重试。'}
           </div>
+          {clipIndexPending ? <div className="mt-1 text-xs">Tidy 会每 30 秒自动检查一次。</div> : null}
         </div>
       ) : null}
       <div className="sticky top-2 z-40 pointer-events-none">

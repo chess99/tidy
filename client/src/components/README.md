@@ -10,7 +10,7 @@
 
 - `AlbumsView.jsx`：相册视图（列表/选择/导航等）。
 - `AlbumAssetsGrid.jsx`：相册内资产网格视图与虚拟化渲染编排（基于 `assets.missing` 置灰缺失项）。
-- `FilesGrid.jsx`：文件/资产浏览网格（虚拟化 + 选择；viewport 会并行拉多页，已避免重复拉第 1 页以减少重请求）。
+- `FilesGrid.jsx`：文件/资产浏览网格（虚拟化 + 选择；CLIP 索引迁移期间显示可恢复提示并定期检查，避免把正常迁移渲染成搜索失败）。
 - `FilesFilters.jsx`：文件筛选与左上角智能搜索入口。智能搜索可在文字描述和临时参考图之间切换；参考图支持选择、拖放、粘贴及预览，上传后不进入图库，清除或替换时释放短期搜索会话。文字搜索仍采用输入草稿后手动应用，避免输入期间反复触发推理。
 - `TrashView.jsx`：回收站视图（`assets.status='trash'` 列表 + 点击查看；若 `assets.missing=1` 则置灰提示缺失）。
 - `DuplicatesToolView.jsx`：实用工具：检查重复项（hash/pHash 分组 + 逐组保留/删除副本）。
