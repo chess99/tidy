@@ -82,25 +82,15 @@ export function AssetThumbCard({
         </div>
 
         {hasHash && !imageFailed ? (
-          <>
-            <img
-              src={resolvedImageUrl}
-              alt=""
-              aria-hidden="true"
-              className="absolute inset-0 z-10 h-full w-full scale-110 object-cover opacity-30 blur-lg"
-              loading="lazy"
-            />
-            <div className="absolute inset-0 z-10 bg-black/5" aria-hidden="true" />
-            <img
-              src={resolvedImageUrl}
-              alt={placeholderName || hash}
-              className="relative z-10 h-full w-full object-contain"
-              loading="lazy"
-              onError={() => {
-                setFailedImageKey(imageKey);
-              }}
-            />
-          </>
+          <img
+            src={resolvedImageUrl}
+            alt={placeholderName || hash}
+            className="relative z-10 h-full w-full object-contain"
+            loading="lazy"
+            onError={() => {
+              setFailedImageKey(imageKey);
+            }}
+          />
         ) : null}
 
         {/* Always-visible type/ext badge (so cards remain distinguishable even with thumbs). */}
@@ -146,10 +136,19 @@ export function AssetThumbCard({
           : null}
       </div>
 
-      <div className="h-16 p-2 text-xs flex flex-col justify-between">
-        <div className="flex items-center justify-between gap-2">
+      <div className="h-20 p-2 text-xs flex flex-col justify-between">
+        <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <div className="text-[11px] text-gray-900 truncate" title={safeBottomPrimary || ''}>
+            <div
+              className="text-[11px] leading-4 text-gray-900 break-all"
+              title={safeBottomPrimary || ''}
+              style={{
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }}
+            >
               {safeBottomPrimary || '—'}
             </div>
           </div>
@@ -167,6 +166,7 @@ export function AssetThumbCard({
               WebkitLineClamp: 2,
               WebkitBoxOrient: 'vertical',
               overflow: 'hidden',
+              overflowWrap: 'anywhere',
             }}
           >
             {safeBottomSecondary}

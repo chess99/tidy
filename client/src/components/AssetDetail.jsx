@@ -1,7 +1,7 @@
 /**
- * input: selectedAsset + API 数据
- * output: 美观且功能完整的详情面板
- * pos: 客户端视图层：美观的详情面板，支持各种筛选联动（变更需同步更新本头注释与所属目录 README）
+ * input: 可为空的 selectedAsset + API 数据
+ * output: 宽屏常驻、窄屏覆盖的详情侧栏及资产详情
+ * pos: 客户端视图层：不触发网格重排的详情侧栏，支持各种筛选联动（变更需同步更新本头注释与所属目录 README）
  */
 
 import {
@@ -11,7 +11,7 @@ import {
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { apiUrl, openFileLocation } from '../api/client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { AssetFacesPanel } from './AssetFacesPanel';
 import { VideoPosterFallback } from './VideoPosterFallback';
 
@@ -42,11 +42,12 @@ function dirPrefixOf(filePath) {
   return lastSep > 0 ? filePath.slice(0, lastSep) : '';
 }
 
-function InfoRow({ icon: Icon, label, value, children }) {
+function InfoRow({ icon, label, value, children }) {
+  const IconComponent = icon;
   return (
     <div className="flex items-start gap-3 py-2">
       <div className="mt-0.5 text-gray-400">
-        <Icon className="h-4 w-4" />
+        <IconComponent className="h-4 w-4" />
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-xs text-gray-500 mb-0.5">{label}</div>
@@ -67,10 +68,21 @@ export function AssetDetail({
   onStatusChange,
   onFilterByPerson
 }) {
-  const [thumbError, setThumbError] = useState(false);
+  const [failedPreviewKey, setFailedPreviewKey] = useState(null);
   const [showMetadata, setShowMetadata] = useState(false);
 
-  if (!asset) return null;
+  if (!asset) {
+    return (
+      <aside className="w-96 bg-white border-l shadow-xl z-20 flex flex-col h-full">
+        <div className="px-4 py-3 border-b bg-gray-50 shrink-0">
+          <h2 className="font-semibold text-gray-900">详情</h2>
+        </div>
+        <div className="flex flex-1 items-center justify-center px-8 text-center text-sm leading-6 text-gray-500">
+          选择一个文件查看详情
+        </div>
+      </aside>
+    );
+  }
 
   const isVideo = String(asset.mime_type || '').toLowerCase().startsWith('video/');
   const typeLabel = asset.ext?.toUpperCase() || asset.mime_type?.split('/')[1]?.toUpperCase() || 'UNKNOWN';
@@ -85,6 +97,7 @@ export function AssetDetail({
       : `/assets/${asset.hash}/preview?max=512&q=60`
   );
   const previewActionLabel = isVideo ? '播放视频' : '查看大图';
+  const thumbError = failedPreviewKey === previewSrc;
   const canFindSimilar = asset.phash && asset.phash_status === 'done';
   const canFindSimilarClip = asset.clip_status === 'ready';
   const fileCount = Array.isArray(asset.files) ? asset.files.length : 0;
@@ -106,10 +119,6 @@ export function AssetDetail({
       onApplyFilter?.({ to: d.setHours(23, 59, 59, 999) });
     }
   };
-
-  useEffect(() => {
-    setThumbError(false);
-  }, [asset.hash]);
 
   return (
     <aside className="w-96 bg-white border-l shadow-xl z-20 flex flex-col h-full">
@@ -150,7 +159,7 @@ export function AssetDetail({
                 src={previewSrc}
                 className="absolute inset-0 w-full h-full object-contain z-10"
                 alt={asset.file_name || 'preview'}
-                onError={() => setThumbError(true)}
+                onError={() => setFailedPreviewKey(previewSrc)}
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center z-10">

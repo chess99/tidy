@@ -11,6 +11,7 @@ import { Check, ChevronsUpDown } from 'lucide-react';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { apiUrl, createAlbum, getAlbums, getFilesUnified, getFilesBatch, getFilesDateIndex, organizeAssets, updateAssetsStatusBatch } from '../api/client';
 import { useResponsiveGridMetrics } from '../hooks/useResponsiveGridMetrics';
+import { GRID_PAGE_SIZE } from '../utils/gridLayout';
 import { AssetThumbCard } from './AssetThumbCard';
 import { SelectedDrawer } from './SelectedDrawer';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command';
@@ -22,7 +23,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
   const parentRef = useRef(null);
   const overlayRef = useRef(null);
   const qc = useQueryClient();
-  const LIMIT = 50;
+  const LIMIT = GRID_PAGE_SIZE;
   const SELECT_ALL_LIMIT = 500;
   const { columns: COLUMNS, thumbnailHeight, rowHeight } = useResponsiveGridMetrics(parentRef, {
     horizontalPadding: 32,
@@ -667,6 +668,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
                               WebkitLineClamp: 2,
                               WebkitBoxOrient: 'vertical',
                               overflow: 'hidden',
+                              overflowWrap: 'anywhere',
                             }}
                           >
                             {file.path}

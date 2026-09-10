@@ -13,7 +13,7 @@ test('falls back to stable metrics before the container is measured', () => {
 
   assert.equal(metrics.columns, DEFAULT_GRID_COLUMNS);
   assert.equal(metrics.thumbnailHeight, 216);
-  assert.equal(metrics.rowHeight, 296);
+  assert.equal(metrics.rowHeight, 312);
 });
 
 test('adds and removes columns while keeping cards above the preferred minimum width', () => {
@@ -23,9 +23,11 @@ test('adds and removes columns while keeping cards above the preferred minimum w
   assert.equal(wide.columns, 5);
   assert.equal(wide.cardWidth, 256);
   assert.equal(wide.thumbnailHeight, 192);
+  assert.equal(wide.rowHeight, 288);
   assert.equal(narrow.columns, 4);
   assert.equal(narrow.cardWidth, 292);
   assert.equal(narrow.thumbnailHeight, 219);
+  assert.equal(narrow.rowHeight, 315);
 });
 
 test('uses a single column when the content area is narrower than one preferred card', () => {

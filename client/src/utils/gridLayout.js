@@ -6,10 +6,11 @@
 
 // Shared layout constants for virtual thumbnail grids.
 export const DEFAULT_GRID_COLUMNS = 4;
+export const GRID_PAGE_SIZE = 200;
 export const GRID_GAP_PX = 16;
 export const GRID_MIN_CARD_WIDTH_PX = 232;
 export const GRID_THUMB_ASPECT_RATIO = 4 / 3;
-export const GRID_CARD_META_HEIGHT_PX = 64;
+export const GRID_CARD_META_HEIGHT_PX = 80;
 export const DEFAULT_GRID_CARD_WIDTH_PX = 288;
 
 export function getGridMetrics(availableWidth) {
@@ -30,4 +31,3 @@ export function getGridMetrics(availableWidth) {
     rowHeight: thumbnailHeight + GRID_CARD_META_HEIGHT_PX + GRID_GAP_PX,
   };
 }
-

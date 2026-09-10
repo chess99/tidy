@@ -22,6 +22,7 @@ import { Popover, PopoverContent, PopoverTrigger } from './components/ui/popover
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
 import { useFilesGridController } from './hooks/useFilesGridController';
 import { SystemAdminView } from './components/SystemAdminView';
+import { GRID_PAGE_SIZE } from './utils/gridLayout';
 
 const queryClient = new QueryClient();
 const DEFAULT_SIMILAR_THRESHOLD = 10;
@@ -59,13 +60,11 @@ function Main() {
   const selectedAssetRef = useRef(null);
   const filesGridRef = useRef(null);
 
-  const LIMIT = 50;
-
   const filesCtrl = useFilesGridController({
     active: activeTab === 'files',
     viewerOpen,
     filesQuery,
-    limit: LIMIT,
+    limit: GRID_PAGE_SIZE,
     filesGridRef,
     getFiles: getFilesUnified,
     getAsset,
@@ -295,65 +294,6 @@ function Main() {
     }));
   };
 
-  const dirPrefixOf = (p) => {
-    if (!p) return '';
-    const s = String(p);
-    const idx = Math.max(s.lastIndexOf('\\'), s.lastIndexOf('/'));
-    if (idx <= 0) return s;
-    return s.slice(0, idx + 1);
-  };
-
-  const detailTypeLabel = (() => {
-    try {
-      const extFrom = (raw) => {
-        if (!raw) return '';
-        const s = String(raw).trim().toLowerCase().replace(/^\./, '');
-        return s;
-      };
-
-      // Prefer album asset list fields (so Albums tab is consistent without extra API calls).
-      const sampleExt = extFrom(selectedAsset?.sample_ext);
-      if (sampleExt) return sampleExt.toUpperCase();
-      const samplePath = selectedAsset?.sample_path;
-      const sampleFromPath = samplePath ? extFrom(String(samplePath).split('.').pop()) : '';
-      if (sampleFromPath) return sampleFromPath.toUpperCase();
-
-      // Otherwise, pick a representative file from asset.files (best-effort).
-      const files = Array.isArray(selectedAsset?.files) ? selectedAsset.files : [];
-      let best = null;
-      let bestScore = -Infinity;
-      for (const f of files) {
-        const t = Number(
-          f?.mtime_ms ??
-          f?.updated_at ??
-          f?.discovered_at ??
-          f?.scanned_at ??
-          0
-        );
-        const score = (Number.isFinite(t) ? t : 0) * 10 + (Number.isFinite(Number(f?.id)) ? Number(f.id) : 0);
-        if (!best || score > bestScore) {
-          best = f;
-          bestScore = score;
-        }
-      }
-
-      const extRaw = best?.ext || (best?.path ? String(best.path).split('.').pop() : null);
-      const ext = extFrom(extRaw);
-      if (ext) return ext.toUpperCase();
-      const mt = String(selectedAsset?.mime_type || '').toLowerCase();
-      if (mt.startsWith('video/')) return 'VIDEO';
-      if (mt.startsWith('image/')) return 'IMAGE';
-      return null;
-    } catch {
-      return null;
-    }
-  })();
-
-  const similarSeedFileId = pickSimilarSeedFileId(selectedAsset);
-  const canFindSimilar = Number.isFinite(similarSeedFileId);
-  const canFindSimilarClip =
-    String(selectedAsset?.mime_type || '').toLowerCase().startsWith('image/') && Number.isFinite(pickClipSeedFileId(selectedAsset));
-
   const goHome = () => {
     setActiveTabSafe('files');
     setSelectedAsset(null);
@@ -471,18 +411,24 @@ function Main() {
           )}
         </div>
 
-        {selectedAsset && activeTab !== 'admin' && (
-          <AssetDetail
-            asset={selectedAsset}
-            onClose={() => setSelectedAsset(null)}
-            onOpenViewer={() => setViewerOpen(true)}
-            onApplyFilter={applyFilter}
-            onApplySimilarPhash={applySimilarPhash}
-            onApplySimilarClip={applySimilarClip}
-            onStatusChange={handleStatusChange}
-            onFilterByPerson={handleFilterByPerson}
-          />
-        )}
+        {activeTab !== 'admin' ? (
+          <div
+            className={`inset-y-0 right-0 z-30 2xl:shrink-0 ${
+              selectedAsset ? 'absolute 2xl:static' : 'hidden 2xl:block'
+            }`}
+          >
+            <AssetDetail
+              asset={selectedAsset}
+              onClose={() => setSelectedAsset(null)}
+              onOpenViewer={() => setViewerOpen(true)}
+              onApplyFilter={applyFilter}
+              onApplySimilarPhash={applySimilarPhash}
+              onApplySimilarClip={applySimilarClip}
+              onStatusChange={handleStatusChange}
+              onFilterByPerson={handleFilterByPerson}
+            />
+          </div>
+        ) : null}
 
       </div>
 
