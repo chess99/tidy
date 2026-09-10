@@ -91,14 +91,7 @@ export function AssetDetail({
 
   const handleOpenLocation = async () => {
     try {
-      if (window.electronAPI?.showInFolder) {
-        const res = await openFileLocation(asset.hash);
-        if (res?.path) {
-          window.electronAPI.showInFolder(res.path);
-        }
-      } else {
-        await openFileLocation(asset.hash);
-      }
+      await openFileLocation(asset.hash);
     } catch (err) {
       console.error('Failed to open file location:', err);
     }

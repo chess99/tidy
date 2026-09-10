@@ -14,7 +14,7 @@
 - `FilesFilters.jsx`：文件筛选与左上角智能搜索入口。日期筛选的开始与结束日期可独立设置、清空和回显；智能搜索可在文字描述和临时参考图之间切换，参考图支持选择、拖放、粘贴及预览，上传后不进入图库，清除或替换时释放短期搜索会话。文字搜索仍采用输入草稿后手动应用，避免输入期间反复触发推理。
 - `TrashView.jsx`：回收站视图（`assets.status='trash'` 列表 + 点击查看；若 `assets.missing=1` 则置灰提示缺失）。
 - `DuplicatesToolView.jsx`：实用工具：检查重复项（hash/pHash 分组 + 逐组保留/删除副本）。
-- `AssetViewer.jsx`：单资产查看（图片/视频）与操作入口。
+- `AssetViewer.jsx`：单资产查看（图片/视频）与操作入口；“在文件夹中显示”统一由后端执行一次系统定位。
 - `AssetThumbCard.jsx`：网格缩略卡片（预览、选择态、标记等）。
 - `ThumbPlaceholder.jsx`：缩略图占位与加载态表现。
 - `SelectedDrawer.jsx`：已选资产抽屉（批量操作入口）。

@@ -130,14 +130,7 @@ export function AssetViewer({ open, onOpenChange, asset, defaultMax = 4096, defa
                 title="在文件夹中显示"
                 onClick={async () => {
                   try {
-                    if (window.electronAPI?.showInFolder) {
-                      const res = await openFileLocation(hash);
-                      if (res?.path) {
-                        window.electronAPI.showInFolder(res.path);
-                      }
-                    } else {
-                      await openFileLocation(hash);
-                    }
+                    await openFileLocation(hash);
                   } catch (err) {
                     console.error('Failed to open file location:', err);
                   }

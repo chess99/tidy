@@ -7,7 +7,7 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { apiUrl, getAsset, getAssets, openFileLocation } from '../api/client';
+import { getAsset, getAssets, openFileLocation } from '../api/client';
 import { AssetThumbCard } from './AssetThumbCard';
 
 function formatDate(ms) {
@@ -126,14 +126,7 @@ export function TrashView({ onAssetClick }) {
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
-                                  if (window.electronAPI?.showInFolder) {
-                                    const res = await openFileLocation(hash);
-                                    if (res?.path) {
-                                      window.electronAPI.showInFolder(res.path);
-                                    }
-                                  } else {
-                                    await openFileLocation(hash);
-                                  }
+                                  await openFileLocation(hash);
                                 } catch (err) {
                                   console.error('Failed to open file location:', err);
                                 }

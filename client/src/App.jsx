@@ -7,7 +7,7 @@
 import { QueryClient, QueryClientProvider, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2, X, FolderCheck, Briefcase, Copy } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { apiUrl, getAsset, getAssetsBatch, getFilesUnified, getFilesBatch, updateAssetStatus, openFileLocation } from './api/client';
+import { apiUrl, getAsset, getAssetsBatch, getFilesUnified, getFilesBatch, updateAssetStatus } from './api/client';
 import { MinimalScanStatus } from './components/MinimalScanStatus';
 import { FilesFilters } from './components/FilesFilters';
 import { FilesGrid } from './components/FilesGrid';

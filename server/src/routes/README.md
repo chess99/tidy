@@ -6,7 +6,7 @@
 
 - `system.js`：系统状态 API（`GET /api/system/status`）；聚合 AI capabilities、`faces_scan` / `clip_enrich` 最近任务摘要，以及 watcher 策略/降级状态，供简化设置页和运维状态展示使用。
 - `health.js`：健康检查（桌面壳启动等待后端 ready 用）。
-- `assets.js`：资产相关 API（查询、预览、标记；回收站语义：仅保留最后一份副本到配置的回收站目录）。
+- `assets.js`：资产相关 API（查询、预览、标记，并负责“在文件夹中显示”的单次系统定位；回收站语义：仅保留最后一份副本到配置的回收站目录）。
 - `files.js`：文件路径/文件实体相关 API（“全部文件”仅代表**现存物理实例**；缺失实例会从 `files` 删除；并排除 `assets.status='trash'`；支持相似 pHash/CLIP、文字智能搜索与临时参考图以图搜图，CLIP 结果按相似度排序）。参考图上传后只生成短期内存 embedding 会话，不进入图库、数据库或索引。
 - `albums.js`：相册相关 API（相册内展示字段优先使用 `assets.target_path`，避免依赖 `files` 行）。
 - `faces.js`：人脸检测/聚类/人物相关 API。
