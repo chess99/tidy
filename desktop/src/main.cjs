@@ -96,27 +96,15 @@ function isDev() {
   return String(process.env.NODE_ENV || '').trim() === 'development' || !!process.env.TIDY_DEV;
 }
 
-async function initUserDataLayout() {
-  const root = app.getPath('userData');
-  const dataDir = path.join(root, 'data');
+async function initDataLayout({ repoRoot, packaged }) {
+  const configured = String(process.env.DATA_DIR || '').trim();
+  const dataDir = configured
+    ? path.resolve(configured)
+    : packaged
+      ? path.join(app.getPath('userData'), 'data')
+      : path.join(repoRoot, 'data');
   await fs.ensureDir(dataDir);
-  return { userDataRoot: root, dataDir };
-}
-
-async function bestEffortMigrateRepoData({ repoRoot, dataDir }) {
-  // Dev convenience: if repo has `data/` and userData is empty, copy it once.
-  try {
-    const repoData = path.join(repoRoot, 'data');
-    const srcDb = path.join(repoData, 'tidy.db');
-    const dstDb = path.join(dataDir, 'tidy.db');
-    const dstExists = await fs.pathExists(dstDb);
-    const srcExists = await fs.pathExists(srcDb);
-    if (dstExists || !srcExists) return { migrated: false };
-    await fs.copy(repoData, dataDir, { overwrite: false, errorOnExist: false });
-    return { migrated: true };
-  } catch {
-    return { migrated: false };
-  }
+  return { dataDir };
 }
 
 function bootHtml({ serverPort } = {}) {
@@ -203,25 +191,25 @@ async function main() {
   // Make repo/resources root explicit for sidecars (avoid relying on __dirname in app.asar).
   process.env.TIDY_REPO_ROOT = String(resourcesRoot);
   const uiDir = path.join(resourcesRoot, 'client', 'dist');
-  const { dataDir } = await initUserDataLayout();
+  const { dataDir } = await initDataLayout({ repoRoot: devRepoRoot, packaged: app.isPackaged });
   const logs = initLogs({ userDataRoot: app.getPath('userData'), appName: app.getName() });
   logDir = logs.logsDir;
   installConsoleTee({ dir: logDir });
   installMenu();
-  if (!app.isPackaged) {
-    await bestEffortMigrateRepoData({ repoRoot: devRepoRoot, dataDir });
-  }
 
   const serverPort = await pickPort({ preferred: process.env.TIDY_SERVER_PORT || 3001 });
   const aiPort = await pickPort({ preferred: process.env.TIDY_AI_PORT || 8002 });
   ports = { serverPort, aiPort };
   process.env.TIDY_AI_PORT = String(aiPort);
+  const clipModelId = String(process.env.TIDY_CLIP_MODEL_ID || 'jinaai/jina-clip-v2').trim();
+  process.env.TIDY_CLIP_MODEL_ID = clipModelId;
 
   aiProc = startAiService({
     port: aiPort,
     repoRoot: resourcesRoot,
-    clipModelId: process.env.TIDY_CLIP_MODEL_ID || undefined,
+    clipModelId,
     clipConcurrency: process.env.TIDY_CLIP_CONCURRENCY || undefined,
+    isPackaged: app.isPackaged,
   });
 
   serverProc = startServer({
@@ -229,6 +217,8 @@ async function main() {
     dataDir,
     uiDir,
     repoRoot: resourcesRoot,
+    clipModelId,
+    isPackaged: app.isPackaged,
   });
 
   await createWindow();
@@ -270,7 +260,7 @@ async function main() {
       currentVersion: app.getVersion(),
       manifestUrl,
       parentWindow: win,
-    }).catch(() => {});
+    }).catch((error) => console.warn('[desktop] update check failed:', error?.message || error));
   }
 }
 
@@ -331,10 +321,20 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
-app.whenReady().then(main).catch((e) => {
-  // eslint-disable-next-line no-console
-  console.error('[desktop] failed to start:', e);
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
   app.quit();
-});
+} else {
+  app.on('second-instance', () => {
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  });
+  app.whenReady().then(main).catch((e) => {
+    // eslint-disable-next-line no-console
+    console.error('[desktop] failed to start:', e);
+    app.quit();
+  });
+}
 
 

@@ -5,8 +5,8 @@ describe('db migration shape', () => {
   test('file_ops supports quarantine and retry metadata', () => {
     const db = new Database(':memory:');
     db.exec(`
-      CREATE TABLE assets (hash TEXT PRIMARY KEY);
-      CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, hash TEXT);
+      CREATE TABLE assets (hash TEXT PRIMARY KEY, metadata TEXT, taken_at INTEGER);
+      CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, hash TEXT, scanned_at INTEGER);
       CREATE TABLE albums (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL);
       CREATE TABLE file_ops (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,13 +37,14 @@ describe('db migration shape', () => {
   test('assets and files get hash_algo defaults for legacy rows', () => {
     const db = new Database(':memory:');
     db.exec(`
-      CREATE TABLE assets (hash TEXT PRIMARY KEY);
-      CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, hash TEXT);
+      CREATE TABLE assets (hash TEXT PRIMARY KEY, metadata TEXT, taken_at INTEGER);
+      CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, hash TEXT, scanned_at INTEGER);
       CREATE TABLE albums (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL);
       CREATE TABLE file_ops (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         op TEXT NOT NULL CHECK(op IN ('move', 'trash', 'delete', 'quarantine')),
-        status TEXT NOT NULL CHECK(status IN ('pending', 'done', 'error')) DEFAULT 'pending'
+        status TEXT NOT NULL CHECK(status IN ('pending', 'done', 'error')) DEFAULT 'pending',
+        created_at INTEGER
       );
       INSERT INTO assets (hash) VALUES ('legacy-md5');
       INSERT INTO files (path, hash) VALUES ('/tmp/a.jpg', 'legacy-md5');

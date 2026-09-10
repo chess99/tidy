@@ -10,14 +10,31 @@ const { getDB } = require('../../db');
 const { CLIP_MODEL_ID } = require('../../config');
 const { now } = require('./_util');
 const { clipImageEmbed } = require('../../services/aiClient');
+const { getAiCapabilities } = require('../../services/aiCapabilities');
 const { packF32 } = require('../../services/clipIndex');
 
 async function handleClipEnrich(ctx) {
-  const db = getDB();
   const mode = String(ctx.job?.mode || 'missing'); // missing | all
   const model = CLIP_MODEL_ID;
   const cfg = await ctx.loadConfig();
   const concurrency = Math.max(1, Math.min(32, Number(cfg?.tasks?.concurrency?.clip || 1)));
+
+  const capabilities = await getAiCapabilities();
+  if (!capabilities.clip.available) {
+    return {
+      ok: false,
+      blocked: true,
+      blockedReason: capabilities.clip.code || 'clip_unavailable',
+      message: capabilities.clip.message || 'CLIP capability is unavailable',
+      total: 0,
+      done: 0,
+      embedded: 0,
+      skipped: 0,
+      errors: 0,
+      lastError: capabilities.clip.message || null,
+    };
+  }
+  const db = getDB();
 
   // Pick one representative file per asset (stable) to avoid storing duplicate embeddings for duplicates.
   const where =

@@ -35,11 +35,11 @@ def _pick_device(torch_mod: Any) -> str:
     return "cpu"
 
 
-def _default_model_id() -> str:
-    local_model = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models", "openai-clip-vit-base-patch32"))
-    if os.path.isdir(local_model):
-        return local_model
-    return "jinaai/jina-clip-v2"
+DEFAULT_MODEL_ID = "jinaai/jina-clip-v2"
+
+
+def selected_model_id(model_id: Optional[str] = None) -> str:
+    return (model_id or os.environ.get("TIDY_CLIP_MODEL_ID") or DEFAULT_MODEL_ID).strip() or DEFAULT_MODEL_ID
 
 
 @dataclass(frozen=True)
@@ -64,9 +64,7 @@ class ClipEncoder:
         import torch  # type: ignore
         from transformers import AutoModel, AutoProcessor  # type: ignore
 
-        mid = (model_id or os.environ.get("TIDY_CLIP_MODEL_ID") or _default_model_id()).strip()
-        if not mid:
-            mid = _default_model_id()
+        mid = selected_model_id(model_id)
 
         device = _pick_device(torch)
 

@@ -391,7 +391,7 @@ function ExcludeRulesSection({ config }) {
 }
 
 export function SettingsViewSimple() {
-  const { data: config, isLoading } = useQuery({
+  const { data: config, isLoading, isError, error } = useQuery({
     queryKey: ['config'],
     queryFn: getConfig,
   });
@@ -400,6 +400,23 @@ export function SettingsViewSimple() {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="max-w-2xl mx-auto py-6 px-4">
+        <Card title="配置读取失败" icon={Settings2}>
+          <div className="space-y-2">
+            <p className="text-sm text-red-800">
+              Tidy 没有用默认值覆盖原配置。请检查配置文件内容或从备份恢复后重启应用。
+            </p>
+            <pre className="text-xs text-red-900 whitespace-pre-wrap break-all">
+              {String(error?.response?.data?.error || error?.message || error)}
+            </pre>
+          </div>
+        </Card>
       </div>
     );
   }

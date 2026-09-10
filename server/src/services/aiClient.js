@@ -5,6 +5,7 @@
  */
 
 const fs = require('fs');
+const path = require('path');
 const { AI_SERVICE_URL, CLIP_MODEL_ID } = require('../config');
 
 const CLIP_TEXT_EMBED_CACHE_MAX = Math.max(0, Math.trunc(Number(process.env.TIDY_CLIP_TEXT_EMBED_CACHE_MAX) || 200));
@@ -17,6 +18,23 @@ const CLIP_TEXT_EMBED_DB_CACHE_MAX = Math.max(0, Math.trunc(Number(process.env.T
 // LRU-ish cache: Map preserves insertion order; we refresh by delete+set on get.
 const _clipTextCache = new Map(); // key -> { value, expiresAt, cachedAt }
 const _clipTextInflight = new Map(); // key -> Promise<value>
+
+function normalizeModelId(modelId) {
+  const value = String(modelId || '').trim();
+  if (!value) return '';
+  if (!path.isAbsolute(value)) return value;
+  const resolved = path.resolve(value);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function requireExpectedClipModel(rawModel) {
+  const actual = String(rawModel || '').trim();
+  if (!actual) throw new Error(`ai-service CLIP response did not report a model; expected ${CLIP_MODEL_ID}`);
+  if (normalizeModelId(actual) !== normalizeModelId(CLIP_MODEL_ID)) {
+    throw new Error(`CLIP model mismatch: server expects ${CLIP_MODEL_ID}, AI service returned ${actual}`);
+  }
+  return actual;
+}
 
 function _cacheGet(map, key) {
   const e = map.get(key);
@@ -215,8 +233,9 @@ async function clipTextEmbed({ query, normalize = true, profile = null } = {}) {
     const out = await postJson(url, payload, { profile });
     const emb = Array.isArray(out?.embeddings) ? out.embeddings[0] : null;
     if (!Array.isArray(emb)) throw new Error('invalid clip/text-embed response');
+    const responseModel = requireExpectedClipModel(out.model);
     const v = {
-      model: String(out.model || CLIP_MODEL_ID),
+      model: responseModel,
       dim: Number(out.dim),
       normalized: !!out.normalized,
       embedding: emb,
@@ -251,8 +270,9 @@ async function clipImageEmbed({ imagePath, normalize = true, profile = null } = 
   const out = await postJson(url, { image_path: p, normalize }, { profile });
   const emb = Array.isArray(out?.embeddings) ? out.embeddings[0] : null;
   if (!Array.isArray(emb)) throw new Error('invalid clip/image-embed response');
+  const responseModel = requireExpectedClipModel(out.model);
   return {
-    model: String(out.model || CLIP_MODEL_ID),
+    model: responseModel,
     dim: Number(out.dim),
     normalized: !!out.normalized,
     embedding: emb,
@@ -267,8 +287,9 @@ async function clipImageEmbedBuffer({ imageBuffer, normalize = true, profile = n
   const out = await postJson(url, { image_base64: buffer.toString('base64'), normalize }, { profile });
   const emb = Array.isArray(out?.embeddings) ? out.embeddings[0] : null;
   if (!Array.isArray(emb)) throw new Error('invalid clip/image-embed response');
+  const responseModel = requireExpectedClipModel(out.model);
   return {
-    model: String(out.model || CLIP_MODEL_ID),
+    model: responseModel,
     dim: Number(out.dim),
     normalized: !!out.normalized,
     embedding: emb,
@@ -311,4 +332,3 @@ async function detectFaces({ imagePath, profile = null } = {}) {
 }
 
 module.exports = { clipTextEmbed, clipImageEmbed, clipImageEmbedBuffer, detectFaces };
-

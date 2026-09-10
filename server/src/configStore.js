@@ -100,30 +100,26 @@ function isUnder(parent, child) {
 }
 
 function validateRootOrThrow(root) {
-  const r = stripTrailingSep(abs(root));
-  if (!r) {
+  const raw = typeof root === 'string' ? root.trim() : '';
+  if (!raw) {
     const e = new Error('root is required');
     e.statusCode = 400;
     throw e;
   }
-  if (!path.isAbsolute(r)) {
+  if (!path.isAbsolute(raw)) {
     const e = new Error('root must be an absolute path');
     e.statusCode = 400;
     throw e;
   }
-  return r;
+  return stripTrailingSep(abs(raw));
 }
 
 function normalizeWorkspacePath(raw, defaultVal) {
-  const s = typeof raw === 'string' ? raw.trim() : '';
-  if (!s) return defaultVal;
-  try {
-    const r = stripTrailingSep(abs(s));
-    if (!r || !path.isAbsolute(r)) return defaultVal;
-    return r;
-  } catch {
-    return defaultVal;
-  }
+  if (raw == null || raw === '') return defaultVal;
+  if (typeof raw !== 'string' || !raw.trim()) return defaultVal;
+  const s = raw.trim();
+  if (!path.isAbsolute(s)) throw new Error('workspace paths must be absolute');
+  return stripTrailingSep(abs(s));
 }
 
 function normalizeWorkspace(workspace) {
@@ -228,38 +224,29 @@ function normalizeTasks(tasks) {
 }
 
 async function loadConfig() {
+  const exists = await fs.pathExists(CONFIG_FILE);
+  if (!exists) {
+    await saveConfig(DEFAULT_CONFIG);
+    return { ...DEFAULT_CONFIG };
+  }
+
+  let raw;
   try {
-    const exists = await fs.pathExists(CONFIG_FILE);
-    if (!exists) {
-      // initialize
-      await saveConfig(DEFAULT_CONFIG);
-      return { ...DEFAULT_CONFIG };
-    }
-    const raw = await fs.readFile(CONFIG_FILE, 'utf8');
+    raw = await fs.readFile(CONFIG_FILE, 'utf8');
+  } catch (error) {
+    throw new Error(`Unable to read Tidy config at ${CONFIG_FILE}: ${error?.message || error}`, { cause: error });
+  }
+
+  try {
     const json = JSON.parse(raw);
-    // No legacy compat: validate strictly. If invalid, reset to defaults (demo-stage safety).
     const scanRoots = dedupeRoots(json?.scanRoots);
     const scanType = normalizeScanType(json?.scanType);
     const scan = normalizeScanOptions(json?.scan || DEFAULT_CONFIG.scan);
     const tasks = normalizeTasks(json?.tasks || DEFAULT_CONFIG.tasks);
     const workspace = normalizeWorkspace(json?.workspace);
-    const normalized = { scanRoots, scanType, scan, tasks, workspace };
-
-    // One-time auto-fix: when schema evolves (e.g. removing non-configurable concurrency keys),
-    // persist the normalized config to strip unknown fields.
-    try {
-      const nextRaw = JSON.stringify(normalized, null, 2);
-      if (String(raw || '').trim() !== String(nextRaw || '').trim()) {
-        await saveConfig(normalized);
-      }
-    } catch {
-      // ignore auto-fix errors; returning normalized config is still correct.
-    }
-
-    return normalized;
-  } catch {
-    await saveConfig(DEFAULT_CONFIG);
-    return { ...DEFAULT_CONFIG };
+    return { scanRoots, scanType, scan, tasks, workspace };
+  } catch (error) {
+    throw new Error(`Invalid Tidy config at ${CONFIG_FILE}: ${error?.message || error}`, { cause: error });
   }
 }
 
@@ -370,6 +357,7 @@ module.exports = {
   getEnabledRoots,
   validateRootOrThrow,
   normalizeExt,
+  normalizeWorkspacePath,
 };
 
 

@@ -8,6 +8,7 @@
   "main": "src/main.cjs",
   "scripts": {
     "dev": "electron .",
+    "test": "node --test src/*.test.cjs scripts/*.test.mjs",
     "generate:icons": "node scripts/generate-icons.mjs",
     "test:icons": "node --test scripts/generate-icons.test.mjs",
     "prepare:resources": "node scripts/prepare-resources.mjs",

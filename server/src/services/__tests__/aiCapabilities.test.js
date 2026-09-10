@@ -20,7 +20,7 @@ describe('aiCapabilities', () => {
             code: 'insightface_unavailable',
             message: 'InsightFace unavailable: No module named insightface',
           },
-          clip: { available: true, code: null, message: 'CLIP encoder import is available' },
+          clip: { available: true, code: null, message: 'CLIP encoder import is available', model: 'jinaai/jina-clip-v2' },
         },
       }),
     }));
@@ -44,6 +44,7 @@ describe('aiCapabilities', () => {
         available: true,
         code: null,
         message: 'CLIP encoder import is available',
+        model: 'jinaai/jina-clip-v2',
       },
     });
     expect(typeof out.checkedAt).toBe('number');
@@ -114,6 +115,53 @@ describe('aiCapabilities', () => {
       available: false,
       code: 'clip_capability_missing',
       message: 'CLIP capability is not reported by AI service',
+    });
+  });
+
+  test('rejects an AI service that silently selected a different CLIP model', async () => {
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        service: 'tidy-ai-service',
+        capabilities: {
+          faces: { available: true, code: null, message: 'ok' },
+          clip: { available: true, code: null, message: 'ok', model: 'openai/clip-vit-base-patch32' },
+        },
+      }),
+    }));
+
+    const { getAiCapabilities } = require('../aiCapabilities');
+    const out = await getAiCapabilities({ aiServiceUrl: 'http://ai.local' });
+
+    expect(out.clip).toEqual({
+      available: false,
+      code: 'clip_model_mismatch',
+      message: 'CLIP model mismatch: server expects jinaai/jina-clip-v2, AI service reports openai/clip-vit-base-patch32',
+      model: 'openai/clip-vit-base-patch32',
+    });
+  });
+
+  test('rejects an AI service that does not report its CLIP model', async () => {
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        service: 'tidy-ai-service',
+        capabilities: {
+          faces: { available: true, code: null, message: 'ok' },
+          clip: { available: true, code: null, message: 'ok' },
+        },
+      }),
+    }));
+
+    const { getAiCapabilities } = require('../aiCapabilities');
+    const out = await getAiCapabilities({ aiServiceUrl: 'http://ai.local' });
+
+    expect(out.clip).toEqual({
+      available: false,
+      code: 'clip_model_missing',
+      message: 'AI service did not report its CLIP model; expected jinaai/jina-clip-v2',
     });
   });
 
@@ -252,7 +300,7 @@ describe('aiCapabilities', () => {
               service: 'tidy-ai-service',
               capabilities: {
                 faces: { available: true, code: null, message: 'InsightFace import is available' },
-                clip: { available: true, code: null, message: 'CLIP encoder import is available' },
+                clip: { available: true, code: null, message: 'CLIP encoder import is available', model: 'jinaai/jina-clip-v2' },
               },
             }),
           });

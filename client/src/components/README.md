@@ -19,6 +19,7 @@
 - `ThumbPlaceholder.jsx`：缩略图占位与加载态表现。
 - `SelectedDrawer.jsx`：已选资产抽屉（批量操作入口）。
 - `SystemAdminView.jsx`：系统管理入口（左：配置；右：任务队列，immich 风格）。
+- `SettingsViewSimple.jsx`：核心配置页；配置读取失败时显示原始错误，禁止伪装为空白首次使用状态。
 - `TasksView.jsx`：任务队列面板（immich 风格：显示并发“正在处理”与剩余“准备处理”，并展示标准化进度/错误）。
 - `SettingsView.jsx`：配置面板（扫描目录/类型/排除规则/任务并发等）。
 - `MinimalScanStatus.jsx`：Header 内的任务状态 chip（运行/等待/失败聚合展示，点击 popover 查看进度与进入任务队列）。

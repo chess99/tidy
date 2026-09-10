@@ -21,7 +21,6 @@
 
 ### 文件
 
-- `config.js`：配置读取与默认值（运行时参数入口）。
-- `configStore.js`：配置持久化（读写/变更通知；任务并发仅支持 enrich/thumbs/faces/clip；thumbs 默认并发为 4）。
+- `config.js`：运行时参数入口；CLIP 固定默认 Jina v2，并与 AI 服务共用 `TIDY_CLIP_MODEL_ID`。
+- `configStore.js`：配置持久化（读写/变更通知；损坏配置明确报错且不覆盖；任务并发仅支持 enrich/thumbs/faces/clip）。
 - `__tests__/`：单元测试（见 `__tests__/README.md`）。
-

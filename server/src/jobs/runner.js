@@ -155,9 +155,9 @@ async function tick() {
 function startJobRunner({ pollIntervalMs = 500 } = {}) {
   if (_timer) return;
   _timer = setInterval(() => {
-    tick().catch(() => {});
+    tick().catch((error) => console.error('[jobs] runner tick failed:', error));
   }, Math.max(200, Number(pollIntervalMs) || 500));
-  tick().catch(() => {});
+  tick().catch((error) => console.error('[jobs] initial runner tick failed:', error));
 }
 
 module.exports = { startJobRunner, classifyJobResult, tick };

@@ -4,7 +4,8 @@
  * pos: server service boundary for AI availability checks
  */
 
-const { AI_SERVICE_URL } = require('../config');
+const path = require('path');
+const { AI_SERVICE_URL, CLIP_MODEL_ID } = require('../config');
 
 function joinUrl(base, p) {
   const b = String(base || '').replace(/\/+$/, '');
@@ -15,11 +16,43 @@ function joinUrl(base, p) {
 
 function normalizeCapability(raw, fallbackCode, fallbackMessage) {
   const available = raw?.available === true;
-  return {
+  const capability = {
     available,
     code: available ? null : String(raw?.code || fallbackCode),
     message: String(raw?.message || fallbackMessage),
   };
+  if (raw?.model) capability.model = String(raw.model);
+  return capability;
+}
+
+function normalizeModelId(modelId) {
+  const value = String(modelId || '').trim();
+  if (!value) return '';
+  if (!path.isAbsolute(value)) return value;
+  const resolved = path.resolve(value);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function validateClipModel(capability) {
+  if (!capability.available) return capability;
+  const actual = normalizeModelId(capability.model);
+  const expected = normalizeModelId(CLIP_MODEL_ID);
+  if (!actual) {
+    return {
+      available: false,
+      code: 'clip_model_missing',
+      message: `AI service did not report its CLIP model; expected ${CLIP_MODEL_ID}`,
+    };
+  }
+  if (actual !== expected) {
+    return {
+      available: false,
+      code: 'clip_model_mismatch',
+      message: `CLIP model mismatch: server expects ${CLIP_MODEL_ID}, AI service reports ${capability.model}`,
+      model: capability.model,
+    };
+  }
+  return capability;
 }
 
 function unavailableAll(code, message) {
@@ -91,6 +124,11 @@ async function getAiCapabilities({ aiServiceUrl = AI_SERVICE_URL, timeoutMs = 30
       }
 
       const caps = json?.capabilities || {};
+      const clip = validateClipModel(normalizeCapability(
+        caps.clip,
+        'clip_capability_missing',
+        'CLIP capability is not reported by AI service'
+      ));
       return {
         ok: true,
         service: String(json?.service || 'tidy-ai-service'),
@@ -99,11 +137,7 @@ async function getAiCapabilities({ aiServiceUrl = AI_SERVICE_URL, timeoutMs = 30
           'faces_capability_missing',
           'Face recognition capability is not reported by AI service'
         ),
-        clip: normalizeCapability(
-          caps.clip,
-          'clip_capability_missing',
-          'CLIP capability is not reported by AI service'
-        ),
+        clip,
         checkedAt: Date.now(),
       };
     } catch (err) {

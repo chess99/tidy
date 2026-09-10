@@ -13,7 +13,7 @@
 - `facesScan.js`：人脸扫描任务（检测/嵌入/写库；不支持格式或永久解码失败会标记 `face_scanned_at` 并计入 skipped，避免 missing 任务反复失败）。
 - `facesReset.js`：人脸数据重置任务（清理/回收）。
 - `facesRecluster.js`：人脸重新聚类任务（人物分组重算）。
-- `clipEnrich.js`：CLIP embedding 补算任务（写入 `clip_embeddings`，用于智能搜索/找相似）。
+- `clipEnrich.js`：CLIP embedding 补算任务（写入 `clip_embeddings`；补算前校验 AI 能力与模型标识，防止混写向量空间）。
 - `clipIndex.js`：CLIP 索引重建任务（构建 HNSW 索引文件，用于 ANN 近邻检索）。
 
 ### 重要约定

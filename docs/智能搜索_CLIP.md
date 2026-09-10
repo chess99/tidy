@@ -72,7 +72,7 @@ $$
 
 模型由 `TIDY_CLIP_MODEL_ID` 控制（默认 `jinaai/jina-clip-v2`）。
 
-> 约束：server 侧 `CLIP_MODEL_ID` 需要与 ai-service 侧模型一致（否则 embedding/索引语义不一致）。
+> 约束：server 与 ai-service 共用 `TIDY_CLIP_MODEL_ID`。健康检查会校验两端模型标识；不一致时阻止补算，避免混写向量空间。
 
 ### 3.2 server：持久化 + 检索
 目录：`server/`
@@ -134,8 +134,7 @@ $$
 ## 6. 配置（env）
 
 - `AI_SERVICE_URL`：server 调用 ai-service 的 baseURL（默认 `http://localhost:8002`）
-- `CLIP_MODEL_ID`：server 侧期望的模型 id
-- `TIDY_CLIP_MODEL_ID`：ai-service 侧 CLIP 模型 id 或本地路径
+- `TIDY_CLIP_MODEL_ID`：server 与 ai-service 共用的模型 id 或本地绝对路径；未提供时固定使用 `jinaai/jina-clip-v2`，不会根据本机残留目录自动切换模型
 - `TIDY_CLIP_TEXT_EMBED_CACHE_MAX`：server 侧 `clipTextEmbed` 进程内缓存条目上限（默认 `200`）
 - `TIDY_CLIP_TEXT_EMBED_CACHE_TTL_MS`：server 侧 `clipTextEmbed` 缓存 TTL（默认 `300000`，即 5 分钟）
 - `TIDY_CLIP_TEXT_EMBED_DB_CACHE_MAX`：server 侧 `clipTextEmbed` SQLite 持久缓存条目上限（默认 `20000`；按 `model+normalize+text` 去重，跨重启生效）
@@ -146,4 +145,3 @@ $$
 ---
 
 文字搜索和以图搜图均已与 `/api/files` 的筛选语义合并；普通过滤条件会在相似度排序结果上继续生效。
-

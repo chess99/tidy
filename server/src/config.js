@@ -5,8 +5,6 @@
  */
 
 const path = require('path');
-const os = require('os');
-const fs = require('fs');
 
 function abs(p) {
   if (!p) return p;
@@ -45,14 +43,9 @@ const FACE_MIN_PX = numEnv('FACE_MIN_PX', 40);
 
 // AI service (Python) for face/CLIP inference
 const AI_SERVICE_URL = String(process.env.AI_SERVICE_URL || 'http://localhost:8002').trim();
-// CLIP model id (must match ai-service TIDY_CLIP_MODEL_ID for consistent indexing)
-function defaultClipModelId() {
-  const localModel = path.join(__dirname, '..', '..', 'ai-service', 'models', 'openai-clip-vit-base-patch32');
-  if (fs.existsSync(localModel)) return localModel;
-  return 'jinaai/jina-clip-v2';
-}
-
-const CLIP_MODEL_ID = String(process.env.CLIP_MODEL_ID || defaultClipModelId()).trim();
+// One canonical setting is shared with ai-service. Model selection must never
+// depend on unrelated files left on a developer machine.
+const CLIP_MODEL_ID = String(process.env.TIDY_CLIP_MODEL_ID || 'jinaai/jina-clip-v2').trim();
 
 module.exports = {
   DATA_DIR,

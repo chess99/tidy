@@ -232,6 +232,10 @@ def _clip_capability() -> Dict[str, Any]:
         }
     try:
         _import_clip_get_encoder()
+        try:
+            from app.clip_encoder import selected_model_id
+        except ModuleNotFoundError:
+            from clip_encoder import selected_model_id
     except Exception as e:
         return {
             "available": False,
@@ -242,7 +246,7 @@ def _clip_capability() -> Dict[str, Any]:
         "available": True,
         "code": None,
         "message": "CLIP encoder import is available",
-        "model": os.environ.get("TIDY_CLIP_MODEL_ID") or "default",
+        "model": selected_model_id(),
     }
 
 

@@ -13,12 +13,8 @@ const { DB_PATH } = require('../config');
 let db;
 
 function getExistingColumns(dbConn, tableName) {
-  try {
-    const rows = dbConn.prepare(`PRAGMA table_info(${tableName})`).all();
-    return new Set(rows.map(r => r.name));
-  } catch {
-    return new Set();
-  }
+  const rows = dbConn.prepare(`PRAGMA table_info(${tableName})`).all();
+  return new Set(rows.map(r => r.name));
 }
 
 function ensureColumns(dbConn, tableName, columns) {
@@ -63,69 +59,47 @@ function migrateDB(dbConn) {
     { name: 'last_attempt_at', type: 'INTEGER' },
   ]);
 
-  try {
-    dbConn.exec(`
-      UPDATE assets SET hash_algo = COALESCE(hash_algo, 'md5') WHERE hash_algo IS NULL;
-      UPDATE files SET hash_algo = COALESCE(hash_algo, 'md5') WHERE hash_algo IS NULL;
-      UPDATE file_ops SET attempts = COALESCE(attempts, 0) WHERE attempts IS NULL;
-    `);
-  } catch {
-    // ignore
-  }
+  dbConn.exec(`
+    UPDATE assets SET hash_algo = COALESCE(hash_algo, 'md5') WHERE hash_algo IS NULL;
+    UPDATE files SET hash_algo = COALESCE(hash_algo, 'md5') WHERE hash_algo IS NULL;
+    UPDATE file_ops SET attempts = COALESCE(attempts, 0) WHERE attempts IS NULL;
+  `);
 
-  // Basic backfill for timestamps (best-effort, safe if columns already populated).
-  try {
-    dbConn.exec(`
-      UPDATE files
-      SET discovered_at = COALESCE(discovered_at, scanned_at),
-          updated_at    = COALESCE(updated_at, scanned_at)
-      WHERE discovered_at IS NULL OR updated_at IS NULL;
-    `);
-  } catch {
-    // ignore
-  }
+  dbConn.exec(`
+    UPDATE files
+    SET discovered_at = COALESCE(discovered_at, scanned_at),
+        updated_at    = COALESCE(updated_at, scanned_at)
+    WHERE discovered_at IS NULL OR updated_at IS NULL;
+  `);
 
-  try {
-    dbConn.exec(`
-      UPDATE assets
-      SET updated_at = COALESCE(updated_at, taken_at)
-      WHERE updated_at IS NULL;
-    `);
-  } catch {
-    // ignore
-  }
+  dbConn.exec(`
+    UPDATE assets
+    SET updated_at = COALESCE(updated_at, taken_at)
+    WHERE updated_at IS NULL;
+  `);
 
-  // Best-effort backfill camera_* from metadata JSON (only if JSON functions available).
-  try {
-    dbConn.exec(`
-      UPDATE assets
-      SET camera_make = COALESCE(camera_make, json_extract(metadata, '$.camera_make')),
-          camera_model = COALESCE(camera_model, json_extract(metadata, '$.camera_model')),
-          is_camera = CASE
-            WHEN COALESCE(is_camera, 0) = 1 THEN 1
-            WHEN json_extract(metadata, '$.camera_make') IS NOT NULL THEN 1
-            WHEN json_extract(metadata, '$.camera_model') IS NOT NULL THEN 1
-            ELSE 0
-          END
-      WHERE metadata IS NOT NULL;
-    `);
-  } catch {
-    // ignore (json_extract may be unavailable)
-  }
+  dbConn.exec(`
+    UPDATE assets
+    SET camera_make = COALESCE(camera_make, json_extract(metadata, '$.camera_make')),
+        camera_model = COALESCE(camera_model, json_extract(metadata, '$.camera_model')),
+        is_camera = CASE
+          WHEN COALESCE(is_camera, 0) = 1 THEN 1
+          WHEN json_extract(metadata, '$.camera_make') IS NOT NULL THEN 1
+          WHEN json_extract(metadata, '$.camera_model') IS NOT NULL THEN 1
+          ELSE 0
+        END
+    WHERE metadata IS NOT NULL;
+  `);
 
   // Indexes that depend on newly added columns must be created after ALTER TABLE.
-  try {
-    dbConn.exec(`
-      CREATE INDEX IF NOT EXISTS idx_assets_updated_at ON assets(updated_at);
-      CREATE INDEX IF NOT EXISTS idx_assets_is_camera ON assets(is_camera);
-      CREATE INDEX IF NOT EXISTS idx_assets_missing ON assets(missing);
-      CREATE INDEX IF NOT EXISTS idx_files_discovered_at ON files(discovered_at);
-      CREATE INDEX IF NOT EXISTS idx_files_updated_at ON files(updated_at);
-      CREATE INDEX IF NOT EXISTS idx_files_phash ON files(phash);
-    `);
-  } catch {
-    // ignore
-  }
+  dbConn.exec(`
+    CREATE INDEX IF NOT EXISTS idx_assets_updated_at ON assets(updated_at);
+    CREATE INDEX IF NOT EXISTS idx_assets_is_camera ON assets(is_camera);
+    CREATE INDEX IF NOT EXISTS idx_assets_missing ON assets(missing);
+    CREATE INDEX IF NOT EXISTS idx_files_discovered_at ON files(discovered_at);
+    CREATE INDEX IF NOT EXISTS idx_files_updated_at ON files(updated_at);
+    CREATE INDEX IF NOT EXISTS idx_files_phash ON files(phash);
+  `);
 
   // Migrate CHECK constraints that cannot be ALTERed (SQLite): file_ops.op must include 'quarantine'.
   try {
@@ -179,12 +153,13 @@ function migrateDB(dbConn) {
         CREATE INDEX IF NOT EXISTS idx_file_ops_created_at ON file_ops(created_at);
       `);
     }
-  } catch {
+  } catch (error) {
     try {
       dbConn.exec('ROLLBACK');
     } catch {
-      // ignore
+      // The original migration error is more actionable than a no-active-transaction rollback error.
     }
+    throw error;
   }
 }
 
@@ -195,12 +170,16 @@ function initDB() {
   fs.ensureDirSync(path.dirname(dbPath));
   
   db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  
-  db.exec(schema);
-  migrateDB(db);
-  
-  return db;
+  try {
+    db.pragma('journal_mode = WAL');
+    db.exec(schema);
+    migrateDB(db);
+    return db;
+  } catch (error) {
+    db.close();
+    db = null;
+    throw new Error(`Failed to initialize Tidy database at ${dbPath}: ${error?.message || error}`, { cause: error });
+  }
 }
 
 function getDB() {
