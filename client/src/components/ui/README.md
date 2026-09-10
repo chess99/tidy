@@ -18,6 +18,6 @@
 - `tooltip.jsx`：提示气泡组件。
 - `command.jsx`：命令面板/可搜索列表组件。
 - `calendar.jsx`：日历组件（日期选择基础）。
-- `date-range-picker.jsx`：日期范围选择组合组件。
+- `date-filter-picker.jsx`：开始日期与结束日期可独立设置、清空的筛选组合组件，支持单边日期回显。
 - `separator.jsx`：分隔线组件。
 - `badge.jsx`：徽标/标签组件。

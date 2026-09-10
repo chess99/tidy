@@ -1,0 +1,134 @@
+/**
+ * input: 起止时间戳 + 变更回调 + 样式类名
+ * output: 可独立选择、清空的开始日期与结束日期控件
+ * pos: 客户端 UI 组合层：为文件日期筛选提供清晰的单边/双边回显（变更需同步更新本头注释与所属目录 README）
+ */
+
+import { format } from "date-fns"
+import { CalendarIcon, X } from "lucide-react"
+import { useState } from "react"
+
+import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { cn } from "@/lib/utils"
+
+function validDate(value) {
+  if (value === undefined || value === null) return undefined
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? undefined : date
+}
+
+function SingleDatePicker({ label, value, placeholder, clearLabel, dayBoundary, onChange }) {
+  "use no memo"
+  const [open, setOpen] = useState(false)
+  const date = validDate(value)
+
+  const selectDate = (nextDate) => {
+    if (!nextDate) return
+    const normalized = new Date(nextDate)
+    if (dayBoundary === "start") {
+      normalized.setHours(0, 0, 0, 0)
+    } else {
+      normalized.setHours(23, 59, 59, 999)
+    }
+    onChange?.(normalized.getTime())
+    setOpen(false)
+  }
+
+  return (
+    <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-2">
+      <span className="text-xs text-gray-500">{label}</span>
+      <div className="relative min-w-0">
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              className={cn(
+                "h-9 w-full min-w-0 justify-start px-2.5 text-left font-normal",
+                date && "pr-9",
+                !date && "text-muted-foreground"
+              )}
+            >
+              <CalendarIcon className="mr-1.5 h-4 w-4 shrink-0" />
+              <span className="truncate">{date ? format(date, "yyyy/MM/dd") : placeholder}</span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              initialFocus
+              mode="single"
+              defaultMonth={date}
+              selected={date}
+              onSelect={selectDate}
+            />
+            <div className="flex justify-end gap-2 border-t p-2">
+              {date ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    onChange?.(undefined)
+                    setOpen(false)
+                  }}
+                >
+                  清空
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => selectDate(new Date())}
+              >
+                今天
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
+        {date ? (
+          <button
+            type="button"
+            className="absolute right-1 top-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            title={clearLabel}
+            aria-label={clearLabel}
+            onClick={() => {
+              onChange?.(undefined)
+              setOpen(false)
+            }}
+          >
+            <X className="h-4 w-4 opacity-70" />
+          </button>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+export function DateFilterPicker({ value, onChange, className }) {
+  const from = value?.from
+  const to = value?.to
+
+  return (
+    <div className={cn("space-y-2", className)}>
+      <SingleDatePicker
+        label="开始"
+        value={from}
+        placeholder="不限开始日期"
+        clearLabel="清空开始日期"
+        dayBoundary="start"
+        onChange={(nextFrom) => onChange?.({ from: nextFrom, to })}
+      />
+      <SingleDatePicker
+        label="结束"
+        value={to}
+        placeholder="不限结束日期"
+        clearLabel="清空结束日期"
+        dayBoundary="end"
+        onChange={(nextTo) => onChange?.({ from, to: nextTo })}
+      />
+    </div>
+  )
+}

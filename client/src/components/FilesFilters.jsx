@@ -10,7 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { createImageSearch, deleteImageSearch, getPeople } from '../api/client';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { DateRangePicker } from './ui/date-range-picker';
+import { DateFilterPicker } from './ui/date-filter-picker';
 
 const FILE_TYPE_GROUPS = [
   { key: 'image', label: '图片', icon: Image, exts: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'tif', 'tiff', 'bmp'] },
@@ -431,14 +431,14 @@ export function FilesFilters({ value, onChange }) {
           )}
         </div>
 
-        {/* Date Range - 使用 min-w-0 防止撑大 */}
+        {/* Date filters */}
         <div className="p-4 border-b">
           <div className="text-xs font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
             <Calendar className="h-3.5 w-3.5" />
             日期
           </div>
           <div className="min-w-0">
-            <DateRangePicker
+            <DateFilterPicker
               value={{ from: v.from, to: v.to }}
               onChange={(range) => onChange({ ...v, from: range?.from, to: range?.to })}
             />
