@@ -55,12 +55,19 @@ function SingleDatePicker({ label, value, placeholder, clearLabel, dayBoundary, 
               <span className="truncate">{date ? format(date, "yyyy/MM/dd") : placeholder}</span>
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
+          <PopoverContent className="w-[320px] max-w-[calc(100vw-2rem)] p-0" align="start">
             <Calendar
               initialFocus
               mode="single"
               defaultMonth={date}
               selected={date}
+              // DayPicker's flex rows have no intrinsic width; keep the seven columns from
+              // collapsing to the narrow sidebar trigger.
+              classNames={{
+                root: "w-full",
+                months: "relative flex w-full flex-col gap-4",
+                month: "flex w-full flex-col gap-4",
+              }}
               onSelect={selectDate}
             />
             <div className="flex justify-end gap-2 border-t p-2">
