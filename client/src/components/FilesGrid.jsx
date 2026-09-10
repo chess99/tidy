@@ -10,7 +10,7 @@ import clsx from 'clsx';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { apiUrl, createAlbum, getAlbums, getFilesUnified, getFilesBatch, getFilesDateIndex, organizeAssets, updateAssetsStatusBatch } from '../api/client';
-import { GRID_COLUMNS, ROW_HEIGHT_PX } from '../utils/gridLayout';
+import { useResponsiveGridMetrics } from '../hooks/useResponsiveGridMetrics';
 import { AssetThumbCard } from './AssetThumbCard';
 import { SelectedDrawer } from './SelectedDrawer';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command';
@@ -23,8 +23,10 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
   const overlayRef = useRef(null);
   const qc = useQueryClient();
   const LIMIT = 50;
-  const COLUMNS = GRID_COLUMNS;
   const SELECT_ALL_LIMIT = 500;
+  const { columns: COLUMNS, thumbnailHeight, rowHeight } = useResponsiveGridMetrics(parentRef, {
+    horizontalPadding: 32,
+  });
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const selectedIdsRef = useRef(selectedIds);
@@ -67,10 +69,13 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
   const rowVirtualizer = useVirtualizer({
     count: rowCount || 0,
     getScrollElement: () => parentRef.current,
-    // Keep a stable row height; we show two lines of path text under the thumbnail.
-    estimateSize: () => ROW_HEIGHT_PX,
+    estimateSize: () => rowHeight,
     overscan: 5,
   });
+
+  useEffect(() => {
+    rowVirtualizer.measure();
+  }, [rowVirtualizer, rowHeight, COLUMNS]);
 
   useEffect(() => {
     selectedIdsRef.current = selectedIds;
@@ -606,6 +611,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
                     thumbVersion={thumbV}
                     imageUrl={overrideImageUrl}
                     mediaKind={isVideo ? 'video' : 'file'}
+                    thumbnailHeight={thumbnailHeight}
                     topLabel={isPlaceholder ? 'FILE' : ((file.ext || '').replace('.', '').toUpperCase() || 'FILE')}
                     placeholderBottomText={name}
                     dateText={dateText}

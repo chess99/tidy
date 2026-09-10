@@ -80,11 +80,13 @@ async function extractEmbeddedPreview(filePath) {
   return null;
 }
 
+const THUMB_MAX_EDGE_PX = 640;
+
 async function trySharpToThumb({ input, thumbPath }) {
   await sharp(input)
     .rotate()
-    .resize(300, 300, { fit: 'cover' })
-    .jpeg({ quality: 70 })
+    .resize(THUMB_MAX_EDGE_PX, THUMB_MAX_EDGE_PX, { fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 78, progressive: true })
     .toFile(thumbPath);
 }
 
@@ -132,5 +134,4 @@ function getThumbnailPath(hash) {
   return path.join(THUMB_DIR, `${hash}.jpg`);
 }
 
-module.exports = { generateThumbnail, getThumbnailPath, RAW_EXTS, extractEmbeddedPreview };
-
+module.exports = { generateThumbnail, getThumbnailPath, RAW_EXTS, extractEmbeddedPreview, THUMB_MAX_EDGE_PX };

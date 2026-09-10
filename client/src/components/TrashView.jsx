@@ -8,6 +8,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { getAsset, getAssets, openFileLocation } from '../api/client';
+import { useResponsiveGridMetrics } from '../hooks/useResponsiveGridMetrics';
 import { AssetThumbCard } from './AssetThumbCard';
 
 function formatDate(ms) {
@@ -23,6 +24,9 @@ export function TrashView({ onAssetClick }) {
   "use no memo";
   const parentRef = useRef(null);
   const [loadingHash, setLoadingHash] = useState(null);
+  const { columns: COLUMNS, thumbnailHeight, rowHeight } = useResponsiveGridMetrics(parentRef, {
+    horizontalPadding: 32,
+  });
 
   const query = useInfiniteQuery({
     queryKey: ['assets', { status: 'trash' }],
@@ -39,15 +43,18 @@ export function TrashView({ onAssetClick }) {
   const isFetchingNextPage = !!query.isFetchingNextPage;
   const fetchNextPage = query.fetchNextPage;
 
-  const COLUMNS = 4;
   const rowCount = Math.ceil(all.length / COLUMNS);
 
   const rowVirtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 220,
+    estimateSize: () => rowHeight,
     overscan: 6,
   });
+
+  useEffect(() => {
+    rowVirtualizer.measure();
+  }, [rowVirtualizer, rowHeight, COLUMNS]);
 
   const virtualItems = rowVirtualizer.getVirtualItems();
 
@@ -103,6 +110,7 @@ export function TrashView({ onAssetClick }) {
                       hash={hash}
                       thumbVersion={asset?.thumb_updated_at || asset?.updated_at || 0}
                       mediaKind={isVideo ? 'video' : 'file'}
+                      thumbnailHeight={thumbnailHeight}
                       topLabel="TRASH"
                       placeholderBottomText={hash || '—'}
                       dateText={formatDate(asset?.taken_at)}

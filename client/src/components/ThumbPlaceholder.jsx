@@ -18,12 +18,11 @@ export function ThumbPlaceholder({ topLabel, bottomText, dateText }) {
   const bottom = (bottomText || '').toString();
 
   return (
-    <div className="w-full h-40 bg-gray-100 flex flex-col items-center justify-center text-center px-2">
+    <div className="w-full h-full bg-gray-100 flex flex-col items-center justify-center text-center px-2">
       <div className="text-2xl font-extrabold tracking-wider text-gray-600">{top}</div>
       <div className="mt-1 text-[11px] text-gray-500 truncate w-full">{bottom}</div>
       {dateText ? <div className="mt-1 text-[10px] text-gray-400">{dateText}</div> : null}
     </div>
   );
 }
-
 

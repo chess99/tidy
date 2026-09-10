@@ -9,7 +9,7 @@
 - `routes/`：HTTP 路由层（见 `routes/README.md`）。
 - `db/`：数据库访问与 schema（见 `db/README.md`）。
 - `jobs/`：后台任务系统（见 `jobs/README.md`）。
-- `scanner/`：扫描/哈希/元信息/缩略图/人脸扫描等管线（见 `scanner/README.md`）。
+- `scanner/`：扫描/哈希/元信息/保持原比例的缩略图/人脸扫描等管线（见 `scanner/README.md`）。
 - `services/`：领域服务（高层业务动作的复用实现）（见 `services/README.md`）。
 - `sync/`：同步/变更流相关能力（见 `sync/README.md`）。
 - `utils/`：通用工具（见 `utils/README.md`）。

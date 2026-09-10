@@ -11,7 +11,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import { getAlbumAssets } from '../api/client';
-import { GRID_COLUMNS, ROW_HEIGHT_PX } from '../utils/gridLayout';
+import { useResponsiveGridMetrics } from '../hooks/useResponsiveGridMetrics';
 import { fileNameFromPath, preferredTopLabel } from '../utils/mediaLabel';
 import { AssetThumbCard } from './AssetThumbCard';
 
@@ -28,6 +28,9 @@ export function AlbumAssetsGrid({ albumId, onAssetClick, viewerOpen, onViewerNav
   const pendingIndexRef = useRef(null);
   const [cursorIndex, setCursorIndex] = useState(null);
   const [cursorHash, setCursorHash] = useState(null);
+  const { columns: COLUMNS, thumbnailHeight, rowHeight } = useResponsiveGridMetrics(parentRef, {
+    horizontalPadding: 32,
+  });
 
   const {
     data,
@@ -46,15 +49,18 @@ export function AlbumAssetsGrid({ albumId, onAssetClick, viewerOpen, onViewerNav
 
   const allRows = data ? data.pages.flatMap((d) => d.data) : [];
 
-  const COLUMNS = GRID_COLUMNS;
   const count = Math.ceil(allRows.length / COLUMNS);
 
   const rowVirtualizer = useVirtualizer({
     count,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => ROW_HEIGHT_PX,
+    estimateSize: () => rowHeight,
     overscan: 5,
   });
+
+  useEffect(() => {
+    rowVirtualizer.measure();
+  }, [rowVirtualizer, rowHeight, COLUMNS]);
 
   const virtualItems = rowVirtualizer.getVirtualItems();
 
@@ -177,7 +183,7 @@ export function AlbumAssetsGrid({ albumId, onAssetClick, viewerOpen, onViewerNav
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [albumId, viewerOpen, cursorIndex, allRows.length, hasNextPage, isFetchingNextPage, fetchNextPage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [albumId, viewerOpen, cursorIndex, allRows.length, hasNextPage, isFetchingNextPage, fetchNextPage, COLUMNS]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div ref={parentRef} className="h-full w-full overflow-auto bg-gray-100 p-4">
@@ -212,6 +218,7 @@ export function AlbumAssetsGrid({ albumId, onAssetClick, viewerOpen, onViewerNav
                     hash={asset.hash}
                     thumbVersion={asset.thumb_updated_at || asset.updated_at || 0}
                     mediaKind={isVideo ? 'video' : 'file'}
+                    thumbnailHeight={thumbnailHeight}
                     topLabel={preferredTopLabel({ ext: asset.sample_ext, path: asset.sample_path, mime: asset.mime_type })}
                     placeholderBottomText={asset.sample_path || asset.hash}
                     dateText={asset.taken_at ? new Date(asset.taken_at).toLocaleDateString() : null}
@@ -252,4 +259,3 @@ export function AlbumAssetsGrid({ albumId, onAssetClick, viewerOpen, onViewerNav
     </div>
   );
 }
-

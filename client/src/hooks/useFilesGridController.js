@@ -6,6 +6,7 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DEFAULT_GRID_COLUMNS } from '../utils/gridLayout';
 
 function isEditableTarget(el) {
   if (!el) return false;
@@ -27,7 +28,6 @@ export function useFilesGridController({
   active,
   viewerOpen,
   filesQuery,
-  columns,
   limit,
   filesGridRef,
   getFiles,
@@ -38,6 +38,7 @@ export function useFilesGridController({
   const [cursorIndex, setCursorIndex] = useState(null);
   const [cursorFileId, setCursorFileId] = useState(null);
   const [cursorTotal, setCursorTotal] = useState(null);
+  const [columns, setColumns] = useState(DEFAULT_GRID_COLUMNS);
 
   const navRequestIdRef = useRef(0);
   const resyncRequestIdRef = useRef(0);
@@ -300,6 +301,8 @@ export function useFilesGridController({
   const onMetaChange = (meta) => {
     const total = meta?.total;
     if (Number.isFinite(total)) setCursorTotal(total);
+    const nextColumns = Number(meta?.columns);
+    if (Number.isInteger(nextColumns) && nextColumns > 0) setColumns(nextColumns);
   };
 
   const onFileClick = async (file, globalIndex) => {
@@ -340,5 +343,4 @@ export function useFilesGridController({
     reset,
   };
 }
-
 

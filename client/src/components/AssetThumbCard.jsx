@@ -5,7 +5,7 @@
  */
 
 import clsx from 'clsx';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { apiUrl } from '../api/client';
 import { fileNameFromPath } from '../utils/mediaLabel';
 import { ThumbPlaceholder } from './ThumbPlaceholder';
@@ -35,8 +35,8 @@ export function AssetThumbCard({
   onClick,
   isPlaceholder = false,
   mediaKind = 'file',
+  thumbnailHeight,
 }) {
-  const [imageFailed, setImageFailed] = useState(false);
   const hasHash = !!hash;
   const isVideo = mediaKind === 'video';
   const safeBottomPrimary =
@@ -53,10 +53,12 @@ export function AssetThumbCard({
           : `/assets/${hash}/thumb?v=${thumbVersion || 0}`
       ))
     : null;
-
-  useEffect(() => {
-    setImageFailed(false);
-  }, [hash, imageUrl, thumbVersion]);
+  const imageKey = resolvedImageUrl || '';
+  const [failedImageKey, setFailedImageKey] = useState(null);
+  const imageFailed = !!imageKey && failedImageKey === imageKey;
+  const thumbnailStyle = Number.isFinite(Number(thumbnailHeight))
+    ? { height: `${Math.max(1, Number(thumbnailHeight))}px` }
+    : { aspectRatio: '4 / 3' };
 
   return (
     <div
@@ -70,7 +72,7 @@ export function AssetThumbCard({
       )}
       onClick={() => (isPlaceholder ? null : onClick?.())}
     >
-      <div className="relative w-full h-40 bg-gray-100">
+      <div className="relative w-full overflow-hidden bg-gray-200" style={thumbnailStyle}>
         <div className="absolute inset-0">
           {isVideo ? (
             <VideoPosterFallback topLabel={topLabel || 'VIDEO'} bottomText={placeholderName} />
@@ -80,15 +82,25 @@ export function AssetThumbCard({
         </div>
 
         {hasHash && !imageFailed ? (
-          <img
-            src={resolvedImageUrl}
-            alt={hash}
-            className="relative z-10 w-full h-40 object-cover"
-            loading="lazy"
-            onError={() => {
-              setImageFailed(true);
-            }}
-          />
+          <>
+            <img
+              src={resolvedImageUrl}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 z-10 h-full w-full scale-110 object-cover opacity-30 blur-lg"
+              loading="lazy"
+            />
+            <div className="absolute inset-0 z-10 bg-black/5" aria-hidden="true" />
+            <img
+              src={resolvedImageUrl}
+              alt={placeholderName || hash}
+              className="relative z-10 h-full w-full object-contain"
+              loading="lazy"
+              onError={() => {
+                setFailedImageKey(imageKey);
+              }}
+            />
+          </>
         ) : null}
 
         {/* Always-visible type/ext badge (so cards remain distinguishable even with thumbs). */}

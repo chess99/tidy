@@ -20,7 +20,6 @@ import { AssetViewer } from './components/AssetViewer';
 import { Button } from './components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from './components/ui/popover';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
-import { GRID_COLUMNS } from './utils/gridLayout';
 import { useFilesGridController } from './hooks/useFilesGridController';
 import { SystemAdminView } from './components/SystemAdminView';
 
@@ -61,13 +60,11 @@ function Main() {
   const filesGridRef = useRef(null);
 
   const LIMIT = 50;
-  const COLUMNS = GRID_COLUMNS;
 
   const filesCtrl = useFilesGridController({
     active: activeTab === 'files',
     viewerOpen,
     filesQuery,
-    columns: COLUMNS,
     limit: LIMIT,
     filesGridRef,
     getFiles: getFilesUnified,
