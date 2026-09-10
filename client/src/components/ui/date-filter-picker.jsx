@@ -23,10 +23,11 @@ function validDate(value) {
   return Number.isNaN(date.getTime()) ? undefined : date
 }
 
-function SingleDatePicker({ label, value, placeholder, clearLabel, dayBoundary, onChange }) {
+function SingleDatePicker({ label, value, referenceValue, placeholder, clearLabel, dayBoundary, onChange }) {
   "use no memo"
   const [open, setOpen] = useState(false)
   const date = validDate(value)
+  const initialMonth = date ?? validDate(referenceValue)
 
   const selectDate = (nextDate) => {
     if (!nextDate) return
@@ -63,7 +64,7 @@ function SingleDatePicker({ label, value, placeholder, clearLabel, dayBoundary, 
             <Calendar
               initialFocus
               mode="single"
-              defaultMonth={date}
+              defaultMonth={initialMonth}
               selected={date}
               captionLayout="dropdown"
               startMonth={DATE_PICKER_START_MONTH}
@@ -135,6 +136,7 @@ export function DateFilterPicker({ value, onChange, className }) {
       <SingleDatePicker
         label="开始"
         value={from}
+        referenceValue={to}
         placeholder="不限开始日期"
         clearLabel="清空开始日期"
         dayBoundary="start"
@@ -143,6 +145,7 @@ export function DateFilterPicker({ value, onChange, className }) {
       <SingleDatePicker
         label="结束"
         value={to}
+        referenceValue={from}
         placeholder="不限结束日期"
         clearLabel="清空结束日期"
         dayBoundary="end"
