@@ -9,6 +9,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:rawthumbs": "node scripts/test-raw-thumbs.js",
+    "clip:migrate": "node scripts/migrate-clip-model.js",
     "faces:clear": "node scripts/clear-faces.js",
     "faces:scan": "node scripts/scan-faces.js",
     "faces:scan:all": "node scripts/scan-faces.js --all",
