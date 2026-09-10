@@ -5,6 +5,7 @@
  */
 
 import { format } from "date-fns"
+import { zhCN } from "date-fns/locale"
 import { CalendarIcon, X } from "lucide-react"
 import { useState } from "react"
 
@@ -12,6 +13,9 @@ import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
+
+const DATE_PICKER_START_MONTH = new Date(1900, 0, 1)
+const DATE_PICKER_END_MONTH = new Date(2100, 11, 1)
 
 function validDate(value) {
   if (value === undefined || value === null) return undefined
@@ -61,6 +65,14 @@ function SingleDatePicker({ label, value, placeholder, clearLabel, dayBoundary, 
               mode="single"
               defaultMonth={date}
               selected={date}
+              captionLayout="dropdown"
+              startMonth={DATE_PICKER_START_MONTH}
+              endMonth={DATE_PICKER_END_MONTH}
+              locale={zhCN}
+              formatters={{
+                formatMonthDropdown: (month) => `${month.getMonth() + 1}月`,
+                formatYearDropdown: (year) => `${year.getFullYear()}年`,
+              }}
               // DayPicker's flex rows have no intrinsic width; keep the seven columns from
               // collapsing to the narrow sidebar trigger.
               classNames={{
