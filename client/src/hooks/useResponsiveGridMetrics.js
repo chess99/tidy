@@ -1,9 +1,3 @@
-/**
- * input: 滚动容器 ref + 水平内边距
- * output: 随容器宽度变化的网格列数与卡片尺寸
- * pos: 客户端交互状态层：为虚拟网格提供稳定的响应式布局指标（变更需同步更新本头注释与所属目录 README）
- */
-
 import { useLayoutEffect, useMemo, useState } from 'react';
 import { getGridMetrics } from '../utils/gridLayout';
 

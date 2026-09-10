@@ -1,8 +1,3 @@
-/**
- * input: ai-service（/clip/text-embed?profile=1）+ Node fetch + CLI 参数
- * output: 并发请求并汇总每次的 totalMs / clip.slot.waitMs（排队）用于长尾定位
- * pos: 运维/调试脚本：AI 推理性能排查（变更需同步更新本头注释与所属目录 README）
- */
 /* eslint-disable no-console */
 
 function parseArgs(argv) {

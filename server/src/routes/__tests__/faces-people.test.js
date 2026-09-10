@@ -1,9 +1,3 @@
-/**
- * input: people/faces/assets 测试数据 + 人物 HTTP 路由
- * output: 人物筛选所需的头像裁剪元数据与照片数
- * pos: 路由层测试：锁定人物选择器依赖的接口结构
- */
-
 const express = require('express');
 const fs = require('fs-extra');
 const os = require('os');

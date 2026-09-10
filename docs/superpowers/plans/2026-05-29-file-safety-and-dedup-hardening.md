@@ -187,12 +187,6 @@ Expected: FAIL with `Cannot find module '../fileSafety'`.
 Create `server/src/services/fileSafety.js`:
 
 ```js
-/**
- * input: filesystem paths + configured roots
- * output: safe path validation and quarantine helpers for file mutations
- * pos: service layer guardrail for destructive or move-like filesystem operations
- */
-
 const fs = require('fs-extra');
 const path = require('path');
 
@@ -799,12 +793,6 @@ describe('hashPolicy', () => {
 - [ ] **Step 2: Implement `server/src/services/hashPolicy.js`**
 
 ```js
-/**
- * input: two file/content rows
- * output: whether they are safe to treat as the same content for destructive dedupe
- * pos: service layer guardrail for hash-based duplicate actions
- */
-
 const { areFilesByteEqual } = require('./fileSafety');
 
 async function canTreatAsSameContentForDestructiveDedupe(a, b) {

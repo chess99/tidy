@@ -1,16 +1,19 @@
-# React + Vite
+# Tidy Client
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Tidy 的前端应用，使用 React、Vite、Tailwind CSS 和 TanStack Query，通过 `/api` 与本地 server 通信。
 
-Currently, two official plugins are available:
+## 开发
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+```bash
+npm install
+npm run dev
+```
 
-## React Compiler
+常用验证命令：
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+npm run lint
+npm run build
+```
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+应用入口位于 `src/main.jsx`，根视图与全局交互编排位于 `src/App.jsx`。页面级组件集中在 `src/components/`，API 边界集中在 `src/api/`，复杂交互状态优先收敛到 `src/hooks/`。

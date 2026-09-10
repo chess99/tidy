@@ -1,9 +1,3 @@
-/**
- * input: 测试用例 + enrich 模块
- * output: 测试结果
- * pos: enrich handler 的单元测试（变更需同步更新本头注释与所属目录 README）
- */
-
 const path = require('path');
 
 // Import the actual functions we want to test.

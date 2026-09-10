@@ -1,9 +1,3 @@
-/**
- * input: Electron userData 路径 + 文件系统（fs）
- * output: 创建/清理日志目录，并提供写入工具（用于 desktop/server/ai 日志落盘）
- * pos: 桌面主进程工具：被 `main.cjs`/`sidecars.cjs` 使用（变更需同步更新本头注释与所属目录 README）
- */
-
 const fs = require('fs');
 const path = require('path');
 

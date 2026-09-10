@@ -1,9 +1,3 @@
-/**
- * input: job queue data + optional navigation callback
- * output: compact header task status chip with detail popover
- * pos: client view layer global task status entry
- */
-
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Clock3, RefreshCw } from 'lucide-react';

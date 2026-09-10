@@ -1,9 +1,3 @@
-/**
- * input: TanStack Query + API（jobs/config）+ 子组件
- * output: 简化版系统管理视图（设置 + 任务状态）
- * pos: 客户端系统管理页面：精简的设置与任务状态展示（变更需同步更新本头注释与所属目录 README）
- */
-
 import { SettingsViewSimple } from './SettingsViewSimple';
 import { TasksStatus } from './TasksStatus';
 

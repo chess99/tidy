@@ -1,9 +1,3 @@
-/**
- * input: explicit Codex LocalCache Tidy data directory + real user APPDATA
- * output: atomically copied desktop data with the previous real directory preserved
- * pos: one-time Windows migration for data accidentally written through MSIX AppData virtualization
- */
-
 import fs from 'node:fs';
 import path from 'node:path';
 

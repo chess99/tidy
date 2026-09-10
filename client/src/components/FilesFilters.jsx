@@ -1,9 +1,3 @@
-/**
- * input: props + API 数据 + 本地状态
- * output: 含文字/临时参考图智能搜索的筛选面板
- * pos: 客户端视图层：统一搜索与筛选交互（变更需同步更新本头注释与所属目录 README）
- */
-
 import { Search, X, Filter, Image, Video, Calendar, Users, Folder, Hash, Sparkles, Trash2, CheckCircle2, ImagePlus, Type, LoaderCircle, Upload } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';

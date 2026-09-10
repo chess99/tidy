@@ -1,9 +1,3 @@
-/**
- * input: Express req/res + DB + 相似度阈值/分页参数
- * output: 重复项分组（hash/pHash）与建议保留项
- * pos: 服务端路由层：为“实用工具-检查重复项”提供数据（变更需同步更新本头注释与所属目录 README）
- */
-
 const express = require('express');
 const path = require('path');
 const fs = require('fs-extra');

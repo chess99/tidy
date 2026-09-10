@@ -1,9 +1,3 @@
-/**
- * input: isolated DATA_DIR + config.json contents
- * output: config loading behavior without destructive recovery
- * pos: guards configuration persistence against silent reset or rewrite
- */
-
 const fs = require('fs-extra');
 const os = require('os');
 const path = require('path');

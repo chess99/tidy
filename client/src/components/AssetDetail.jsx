@@ -1,9 +1,3 @@
-/**
- * input: 可为空的 selectedAsset + API 数据
- * output: 宽屏常驻、窄屏覆盖的详情侧栏及资产详情
- * pos: 客户端视图层：不触发网格重排的详情侧栏，支持各种筛选联动（变更需同步更新本头注释与所属目录 README）
- */
-
 import {
   X, FolderOpen, Maximize2, Calendar, Camera, Hash, FileType, HardDrive, Users, Sparkles,
   Image as ImageIcon, Trash2, FolderCheck, FolderSearch

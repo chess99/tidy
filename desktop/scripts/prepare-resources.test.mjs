@@ -1,9 +1,3 @@
-/**
- * input: candidate paths from the server source tree
- * output: packaging inclusion decisions
- * pos: prevents development data and secrets from entering desktop bundles
- */
-
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';

@@ -1,9 +1,3 @@
-/**
- * input: props + React Query（分页/取消）+ 虚拟滚动 viewport 范围
- * output: 文件网格渲染与交互（按需拉多页；避免重复拉第 1 页）
- * pos: 客户端视图层：文件列表主视图（变更需同步更新本头注释与所属目录 README）
- */
-
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';

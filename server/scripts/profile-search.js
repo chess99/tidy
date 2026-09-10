@@ -1,8 +1,3 @@
-/**
- * input: 本地 server（/api/files）+ Node fetch + CLI 参数
- * output: 打印 /api/files 智能搜索的 server/ai-service profiling 关键步骤摘要
- * pos: 运维/调试脚本：性能排查入口（变更需同步更新本头注释与所属目录 README）
- */
 /* eslint-disable no-console */
 
 function parseArgs(argv) {

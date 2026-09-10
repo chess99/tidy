@@ -1,9 +1,3 @@
-/**
- * input: Node 运行时（hrtime/cpuUsage/memoryUsage/perf_hooks）
- * output: 轻量 profiling 工具（分段耗时 + CPU/内存增量 + event loop 延迟）
- * pos: 服务端工具层：为路由/服务提供可观测性（变更需同步更新本头注释与所属目录 README）
- */
-
 const { monitorEventLoopDelay } = require('perf_hooks');
 
 function nowNs() {

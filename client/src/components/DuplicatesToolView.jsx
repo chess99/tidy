@@ -1,9 +1,3 @@
-/**
- * input: props + API（duplicates）+ 本地状态
- * output: "检查重复项"工具页（单组聚焦、左右对比、键盘驱动）
- * pos: 客户端视图层：实用工具入口之一（变更需同步更新本头注释与所属目录 README）
- */
-
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, Trash2, Check, Loader2, AlertCircle, Images } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';

@@ -1,10 +1,4 @@
 #!/usr/bin/env node
-/**
- * input: 本地 Node/npm + Python(可选) + 进程管理/信号
- * output: 一键启动/停止（backend/frontend/ai-service）并维护 PID 文件
- * pos: 开发辅助脚本：提升本地开发体验（变更需同步更新本头注释与所属目录 README）
- */
-
 const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');

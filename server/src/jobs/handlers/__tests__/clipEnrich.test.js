@@ -1,9 +1,3 @@
-/**
- * input: CLIP capability preflight state
- * output: blocked enrichment result before database selection or inference
- * pos: guards CLIP storage against mismatched or unavailable AI models
- */
-
 describe('clipEnrich capability preflight', () => {
   afterEach(() => {
     jest.resetModules();

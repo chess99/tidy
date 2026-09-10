@@ -1,9 +1,3 @@
-/**
- * input: 测试图片 + 临时缩略图目录
- * output: 缩略图保持比例且不放大小图的断言
- * pos: 扫描管线测试：锁定缩略图的完整画面策略
- */
-
 const fs = require('fs-extra');
 const os = require('os');
 const path = require('path');

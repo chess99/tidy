@@ -1,9 +1,3 @@
-/**
- * input: packaged/development runtime layouts and explicit environment overrides
- * output: deterministic sidecar runtime selection
- * pos: guards desktop startup against silent host-runtime fallbacks
- */
-
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');

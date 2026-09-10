@@ -1,9 +1,3 @@
-/**
- * input: Express req/res + DB + CLIP/相似检索服务
- * output: Express Router（HTTP API）
- * pos: 服务端路由层：列表/筛选/文字与临时参考图 CLIP 检索入口（变更需同步更新本头注释与所属目录 README）
- */
-
 const express = require('express');
 const path = require('path');
 const { getDB } = require('../db');

@@ -1,10 +1,5 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
-/**
- * input: 本地 DB 路径 + 文件系统（存在性检查）
- * output: DB 修复/报告（可能会删除/更新 rows）
- * pos: 运维脚本：DB 修复工具（变更需同步更新本头注释与所属目录 README）
- */
 const path = require('path');
 const fs = require('fs-extra');
 const Database = require('better-sqlite3');

@@ -1,15 +1,12 @@
-本目录是后端工程根目录：负责 HTTP API、后台任务、DB 与对文件系统/AI 的编排。
-输入：客户端请求 + 文件系统 + SQLite + ai-service；输出：HTTP API + 任务执行副作用（DB/缩略图/索引/文件操作）。
-更新规则：入口/打包/运行方式变化时，更新本 README + `docs/README.md`。
+# Tidy Server
+
+后端负责 HTTP API、后台任务、SQLite 数据以及文件系统和 AI 服务的编排。
 
 ### 文件与子目录
 
 - `index.js`：后端进程入口（Express app、路由挂载、任务 runner、可选托管 `client/dist`；启动时做 CLIP 索引/智能搜索 warmup）。
-- `src/`：后端核心源码（见 `src/README.md`）。
-- `scripts/`：运维/性能排查脚本（见 `scripts/README.md`）。
+- `src/`：后端核心源码。
+- `scripts/`：运维与性能排查脚本。
 - `package.json`：后端依赖与脚本。
 - `jest.config.js`：Jest 测试配置。
 - `src/**/__tests__/`：单元测试（运行 `npm test`）。
-
-
-

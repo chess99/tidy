@@ -1,8 +1,3 @@
-"""input: FastAPI Request + Python runtime(time/resource)
-output: 轻量 profiling（分段耗时 + CPU 时间 + RSS 峰值），可附带到响应中
-pos: AI service 工具层：为推理接口提供可观测性（变更需同步更新本头注释与所属目录 README）
-"""
-
 from __future__ import annotations
 
 import time

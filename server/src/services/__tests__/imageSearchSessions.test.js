@@ -1,9 +1,3 @@
-/**
- * input: 临时以图搜图会话服务
- * output: 内存隔离、过期、删除和非法向量测试
- * pos: 服务层测试：验证参考图 embedding 不持久化的会话语义
- */
-
 const {
   createImageSearchSession,
   getImageSearchSession,

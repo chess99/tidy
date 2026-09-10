@@ -1,9 +1,3 @@
-/**
- * input: 本地 node/python 可执行文件 + 仓库路径/环境变量 + 端口/数据目录
- * output: 拉起/关闭后端 server 与 ai-service 子进程（返回 child_process 句柄）
- * pos: 桌面进程编排层：被 `main.cjs` 调用（变更需同步更新本头注释与所属目录 README）
- */
-
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');

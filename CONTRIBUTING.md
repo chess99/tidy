@@ -11,7 +11,6 @@ Thanks for your interest in contributing to Tidy.
 
 - Follow the docs in `docs/开发指南.md`.
 - Keep code style consistent with existing files.
-- Run `npm run doc:check` if you add/rename source files.
 
 ## Branching and Releases
 
@@ -25,7 +24,7 @@ Thanks for your interest in contributing to Tidy.
 
 - Explain the problem and the reasoning.
 - Keep changes focused and cohesive.
-- Update affected docs and README indexes.
+- Update documentation when behavior, public interfaces, or operational procedures change.
 
 ## Issues
 

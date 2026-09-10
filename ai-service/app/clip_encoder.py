@@ -1,8 +1,3 @@
-"""input: env(TIDY_CLIP_MODEL_ID) + torch/transformers + text/PIL images
-output: encode_text/encode_images -> (model_id, device, dim, normalized, embeddings)
-pos: AI service CLIP 抽象层：为 FastAPI 路由提供统一编码接口（变更需同步更新本头注释与所属目录 README）
-"""
-
 from __future__ import annotations
 
 import os

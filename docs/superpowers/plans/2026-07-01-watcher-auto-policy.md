@@ -169,12 +169,6 @@ Expected: FAIL with `Cannot find module '../policy'`.
 Create `server/src/watcher/policy.js`:
 
 ```javascript
-/**
- * input: configured scan roots + environment + filesystem/drive probes
- * output: per-root watcher decisions and watchable root list
- * pos: watcher policy boundary; keeps platform/path capability checks out of watcher runtime
- */
-
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
@@ -528,12 +522,6 @@ Expected: FAIL because `getWatcherStatus`, policy integration, and fallback sche
 Modify `server/src/watcher/index.js` to use this complete implementation:
 
 ```javascript
-/**
- * input: scanRoots config + filesystem events + watcher policy
- * output: automatic discover jobs and watcher operational status
- * pos: filesystem watcher module; decides when real-time watching is safe and falls back otherwise
- */
-
 const chokidar = require('chokidar');
 const path = require('path');
 const { getConfig } = require('../configStore');

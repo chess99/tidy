@@ -1,9 +1,3 @@
-/**
- * input: Express req/res + AI capabilities + job store
- * output: system status API for AI readiness and latest background task state
- * pos: server route layer for system-level operational status
- */
-
 const express = require('express');
 const { getAiCapabilities } = require('../services/aiCapabilities');
 const { listJobs } = require('../jobs/store');

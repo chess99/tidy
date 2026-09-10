@@ -1,9 +1,3 @@
-/**
- * input: TIDY_CLIP_MODEL_ID environment setting and local filesystem residue
- * output: deterministic server CLIP model selection
- * pos: guards the canonical model choice shared with ai-service
- */
-
 describe('server CLIP model selection', () => {
   const originalModelId = process.env.TIDY_CLIP_MODEL_ID;
 

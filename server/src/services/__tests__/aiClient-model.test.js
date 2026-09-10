@@ -1,9 +1,3 @@
-/**
- * input: CLIP inference responses from ai-service
- * output: strict model-identity validation before caching or persistence
- * pos: guards semantic-search vectors against cross-model contamination
- */
-
 describe('aiClient CLIP model validation', () => {
   const originalFetch = global.fetch;
 

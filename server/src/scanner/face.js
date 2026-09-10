@@ -1,9 +1,3 @@
-/**
- * input: 文件路径/媒体字节 + 配置 + ai-service
- * output: hash/元信息/缩略图/人脸等派生产物
- * pos: 服务端扫描管线：从文件系统提取结构化信息（变更需同步更新本头注释与所属目录 README）
- */
-
 const { getDB } = require('../db');
 const { FACE_MIN_CONFIDENCE, FACE_MIN_PX } = require('../config');
 const { detectFaces: aiDetectFaces } = require('../services/aiClient');

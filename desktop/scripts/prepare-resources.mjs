@@ -1,9 +1,3 @@
-/**
- * input: 本机 Node 二进制（process.execPath）+ 仓库产物（client/dist、ai-service/dist、server/）
- * output: 生成 `desktop/bundle/` 目录（供 electron-builder extraResources 打包）
- * pos: 桌面打包脚本：被 `desktop/package.json` scripts 调用（变更需同步更新本头注释与所属目录 README）
- */
-
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';

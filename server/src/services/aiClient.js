@@ -1,9 +1,3 @@
-/**
- * input: AI_SERVICE_URL（环境变量）+ HTTP fetch + SQLite(getDB) + 进程内内存缓存 + 文件系统
- * output: 调用 ai-service 的推理结果（人脸检测/embedding、CLIP 文本/图片 embedding；支持路径或临时图片字节）
- * pos: 服务端服务层：跨路由/任务复用的 AI 推理客户端（变更需同步更新本头注释与所属目录 README）
- */
-
 const fs = require('fs');
 const path = require('path');
 const { AI_SERVICE_URL, CLIP_MODEL_ID } = require('../config');

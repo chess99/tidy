@@ -1,9 +1,3 @@
-/**
- * input: filesystem paths + configured roots
- * output: safe path validation and quarantine helpers for file mutations
- * pos: service layer guardrail for destructive or move-like filesystem operations
- */
-
 const fs = require('fs-extra');
 const path = require('path');
 

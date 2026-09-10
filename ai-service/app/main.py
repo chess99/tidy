@@ -1,8 +1,3 @@
-"""input: base64 图片/本地路径 + InsightFace/OpenCV + CLIP(Transformers/Torch)
-output: 人脸检测框/关键点/embedding 向量；CLIP 图像/文本 embedding
-pos: Python AI 服务入口：供主服务调用（变更需同步更新本头注释与所属目录 README）
-"""
-
 import base64
 import importlib
 import importlib.util

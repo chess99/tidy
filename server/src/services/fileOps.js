@@ -1,9 +1,3 @@
-/**
- * input: file_ops rows + DB + filesystem state
- * output: idempotent file operation execution and recovery reports
- * pos: service layer executor for all filesystem mutations tracked in file_ops
- */
-
 const fs = require('fs-extra');
 const path = require('path');
 const {

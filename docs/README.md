@@ -43,17 +43,6 @@ Tidy 是一个**本地文件整理与关联查找工具**：扫描固定工作�
 
 Tidy 是一个**本地文件系统整理工具**，不是相册 App：以 `hash` 为内容主键，操作直接落盘，并提供可恢复的一致性对账。
 
-## 分形自指文档（强约束）
-
-- **源码目录入口**：
-  - `client/src/README.md`：前端入口与组件分层索引（逐层下钻）。
-  - `server/src/README.md`：后端入口（routes/db/jobs/scanner/services 分层索引）。
-  - `ai-service/app/README.md`：AI 服务入口（人脸 + CLIP/智能搜索推理）。
-- **文件头注释**：每个源码文件开头必须有 3 行 `input/output/pos`（pos 行包含“变更需同步更新头注释与所属目录 README”）。
-- **自动校验**：
-  - `npm run doc:check`：检查所有源码目录 README 与文件头注释是否齐全。
-  - `npm run doc:add-headers`：为缺失头注释的源码文件补齐 3 行头注释（首次初始化/批量修复用）。
-
 ## 术语表（快速对齐沟通）
 
 - **asset（内容资产）**：以 `hash` 为主键的一份“内容”，去重后的实体（所有整理/删除/标注都应该绑在 asset 上）。

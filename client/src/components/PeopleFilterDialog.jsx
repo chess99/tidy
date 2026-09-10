@@ -1,9 +1,3 @@
-/**
- * input: 人物列表 + 当前筛选值 + 应用回调
- * output: 可搜索、看头像、多选的人物筛选弹层
- * pos: 客户端视图层：承载人物筛选的高辨识度选择体验（变更需同步更新所属目录 README）
- */
-
 import { Check, Search, UserRound, Users, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { apiUrl } from '../api/client';

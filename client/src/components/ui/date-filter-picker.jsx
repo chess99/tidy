@@ -1,9 +1,3 @@
-/**
- * input: 起止时间戳 + 变更回调 + 样式类名
- * output: 可独立选择、清空的开始日期与结束日期控件
- * pos: 客户端 UI 组合层：为文件日期筛选提供清晰的单边/双边回显（变更需同步更新本头注释与所属目录 README）
- */
-
 import { format } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import { CalendarIcon, X } from "lucide-react"

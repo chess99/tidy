@@ -1,9 +1,3 @@
-/**
- * input: files 以图搜图 HTTP 路由 + mock CLIP 推理/索引
- * output: 上传、分页检索、释放、类型校验的集成测试
- * pos: 路由层测试：验证临时参考图完整 API 生命周期
- */
-
 const express = require('express');
 const fs = require('fs-extra');
 const os = require('os');

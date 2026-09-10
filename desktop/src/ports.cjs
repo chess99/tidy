@@ -1,9 +1,3 @@
-/**
- * input: 操作系统端口占用状态（net）
- * output: 选择可用端口（优先期望端口，冲突则回退到随机空闲端口）
- * pos: 桌面主进程工具：供 `main.cjs`/`sidecars.cjs` 使用（变更需同步更新本头注释与所属目录 README）
- */
-
 const net = require('net');
 
 function isPortFree(port, host = '127.0.0.1') {

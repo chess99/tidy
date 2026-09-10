@@ -1,9 +1,3 @@
-/**
- * input: 图片文件路径/RAW 预览字节 + sharp
- * output: 64-bit pHash(hex) 与距离计算
- * pos: 服务端扫描管线：为重复项工具提供“相似度”特征（变更需同步更新本头注释与所属目录 README）
- */
-
 const sharp = require('sharp');
 const path = require('path');
 const { RAW_EXTS, extractEmbeddedPreview } = require('./thumbnail');

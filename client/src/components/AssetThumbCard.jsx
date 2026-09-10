@@ -1,9 +1,3 @@
-/**
- * input: props + API 数据 + 本地状态
- * output: 功能/页面组件（React 组件）
- * pos: 客户端视图层：拼装业务交互（变更需同步更新本头注释与所属目录 README）
- */
-
 import clsx from 'clsx';
 import { useState } from 'react';
 import { apiUrl } from '../api/client';

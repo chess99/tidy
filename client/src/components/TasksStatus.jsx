@@ -1,9 +1,3 @@
-/**
- * input: 任务队列 API 数据
- * output: 简洁的任务状态展示组件
- * pos: 客户端视图层：自动任务流程的状态展示（变更需同步更新本头注释与所属目录 README）
- */
-
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, CheckCircle2, AlertCircle, Clock, Activity } from 'lucide-react';
 import { listJobs } from '../api/client';

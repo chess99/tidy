@@ -1,9 +1,3 @@
-/**
- * input: props + API 数据 + 本地状态
- * output: 简化版设置界面（仅核心配置）
- * pos: 客户端视图层：精简的设置面板（变更需同步更新本头注释与所属目录 README）
- */
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FolderPlus, Loader2, Trash2, RefreshCw, Image, FileImage, Video, Settings2, FolderCheck } from 'lucide-react';
 import { useState } from 'react';

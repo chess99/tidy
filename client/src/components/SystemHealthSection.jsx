@@ -1,9 +1,3 @@
-/**
- * input: system status API data + query state
- * output: compact AI capability health card for simplified settings
- * pos: client view layer settings subsection for automatic recovery visibility
- */
-
 import { useQuery } from '@tanstack/react-query';
 import { AlertCircle, CheckCircle2, CircleHelp, FolderSync, Loader2, RefreshCw, ScanFace, Search } from 'lucide-react';
 import { getSystemStatus } from '../api/client';

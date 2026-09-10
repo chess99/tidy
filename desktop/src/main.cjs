@@ -1,9 +1,3 @@
-/**
- * input: Electron app 生命周期 + 本机 userData 目录 + 子进程（server/ai-service）
- * output: 桌面窗口（加载本地 UI）+ 后端/AI 子进程的启动与退出清理
- * pos: 桌面应用入口：分发形态的最上层入口（变更需同步更新本头注释与所属目录 README）
- */
-
 const { app, BrowserWindow, dialog, Menu, shell, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');

@@ -1,9 +1,3 @@
-/**
- * input: manifest URL（可选）+ 网络（https）+ Electron dialog/shell
- * output: 提示式更新弹窗（打开下载链接；不做静默更新）
- * pos: 桌面更新策略（阶段 1）：被 `main.cjs` 调用（变更需同步更新本头注释与所属目录 README）
- */
-
 const https = require('https');
 const { dialog, shell } = require('electron');
 

@@ -1,9 +1,3 @@
-/**
- * input: 命令名称
- * output: 系统命令路径或 null
- * pos: 工具函数：查找系统 PATH 中的命令（变更需同步更新本头注释与所属目录 README）
- */
-
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);

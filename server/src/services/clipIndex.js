@@ -1,9 +1,3 @@
-/**
- * input: SQLite（clip_embeddings/clip_index_meta）+ DATA_DIR 文件系统 + hnsw
- * output: CLIP 近邻检索（topK）与索引构建/加载能力
- * pos: 服务端服务层：为智能搜索/找相似提供向量检索（变更需同步更新本头注释与所属目录 README）
- */
-
 const fs = require('fs-extra');
 const path = require('path');
 const { getDB } = require('../db');

@@ -1,9 +1,3 @@
-/**
- * input: 网格可用宽度
- * output: 响应式列数与 4:3 缩略图尺寸断言
- * pos: 客户端工具层测试：锁定虚拟网格的响应式布局契约
- */
-
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DEFAULT_GRID_COLUMNS, getGridMetrics } from './gridLayout.js';

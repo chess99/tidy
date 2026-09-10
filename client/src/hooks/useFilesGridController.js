@@ -1,9 +1,3 @@
-/**
- * input: 组件参数 + 事件流 + 列表 fetcher（getFiles/getAsset）
- * output: 网格控制器 hook（cursor/键盘/刷子；筛选变更时尽量保持 cursor 对齐）
- * pos: 客户端交互状态层：从组件中抽离复杂交互（优先读 Query cache，减少多余网络）（变更需同步更新本头注释与所属目录 README）
- */
-
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_GRID_COLUMNS } from '../utils/gridLayout';

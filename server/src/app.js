@@ -1,9 +1,3 @@
-/**
- * input: Express dependencies + route modules
- * output: configured Express app without starting listeners or background jobs
- * pos: server app factory used by production entrypoint and route integration tests
- */
-
 const express = require('express');
 const cors = require('cors');
 

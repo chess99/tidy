@@ -1,9 +1,3 @@
-/**
- * input: 测试用例 + configStore 模块
- * output: 测试结果
- * pos: configStore workspace 相关逻辑的单元测试（变更需同步更新本头注释与所属目录 README）
- */
-
 const path = require('path');
 const os = require('os');
 

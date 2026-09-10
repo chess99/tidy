@@ -1,9 +1,3 @@
-/**
- * input: AI capabilities + DB asset state + job queue
- * output: best-effort automatic recovery jobs for capabilities that became available
- * pos: server service boundary for non-destructive task auto-recovery
- */
-
 const { getDB } = require('../db');
 const { createQueuedJobIfNoActiveJob } = require('../jobs/store');
 const { getAiCapabilities } = require('./aiCapabilities');

@@ -1,9 +1,3 @@
-/**
- * input: AI service health endpoint
- * output: normalized AI capability state for job preflight and UI status
- * pos: server service boundary for AI availability checks
- */
-
 const path = require('path');
 const { AI_SERVICE_URL, CLIP_MODEL_ID } = require('../config');
 

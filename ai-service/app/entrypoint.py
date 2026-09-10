@@ -1,8 +1,3 @@
-"""input: 环境变量/CLI 参数（host/port/日志）+ FastAPI app（app.main）+ uvicorn
-output: 启动本地 HTTP 推理服务进程（提供 /health、/detect+embed、/clip/*）
-pos: ai-service 可执行入口：用于 PyInstaller 打包与桌面壳拉起（变更需同步更新本头注释与所属目录 README）
-"""
-
 import argparse
 import os
 

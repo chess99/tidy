@@ -1,9 +1,3 @@
-/**
- * input: 临时参考图生成的 CLIP embedding
- * output: 短期内存搜索会话（不写数据库、文件或索引）
- * pos: 服务端服务层：连接一次性图片上传与可分页的以图搜图请求
- */
-
 const crypto = require('crypto');
 
 const DEFAULT_TTL_MS = Math.max(60_000, Number(process.env.TIDY_IMAGE_SEARCH_TTL_MS) || 30 * 60_000);

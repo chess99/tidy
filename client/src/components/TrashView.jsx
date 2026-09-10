@@ -1,9 +1,3 @@
-/**
- * input: props + API（assets?status=trash）+ 本地状态
- * output: 回收站视图（分页/虚拟化列表 + 点击查看详情）
- * pos: 客户端视图层：用于展示被删除内容（变更需同步更新本头注释与所属目录 README）
- */
-
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import React, { useEffect, useMemo, useRef, useState } from 'react';

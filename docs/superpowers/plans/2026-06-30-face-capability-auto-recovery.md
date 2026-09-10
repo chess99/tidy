@@ -253,12 +253,6 @@ Expected: FAIL with `Cannot find module '../aiCapabilities'`.
 Create `server/src/services/aiCapabilities.js`:
 
 ```javascript
-/**
- * input: AI service health endpoint
- * output: normalized AI capability state for job preflight and UI status
- * pos: server service boundary for AI availability checks
- */
-
 const { AI_SERVICE_URL } = require('../config');
 
 function joinUrl(base, p) {
@@ -618,12 +612,6 @@ Expected: FAIL with `Cannot find module '../taskAutoRecovery'`.
 Create `server/src/services/taskAutoRecovery.js`:
 
 ```javascript
-/**
- * input: AI capabilities + DB asset state + job queue
- * output: best-effort automatic recovery jobs for capabilities that became available
- * pos: service-level task orchestration helper called by the job runner
- */
-
 const { getDB } = require('../db');
 const { createJob, listJobs } = require('../jobs/store');
 const { getAiCapabilities } = require('./aiCapabilities');
@@ -866,12 +854,6 @@ Expected: FAIL with 404 because `/api/system` is not mounted.
 Create `server/src/routes/system.js`:
 
 ```javascript
-/**
- * input: system service state + task queue
- * output: compact status API for simplified UI health display
- * pos: Express route for non-configuration system health
- */
-
 const express = require('express');
 const { getAiCapabilities } = require('../services/aiCapabilities');
 const { listJobs } = require('../jobs/store');

@@ -1,9 +1,3 @@
-/**
- * input: asset hash + workspace trash policy
- * output: asset-level trash operation with one kept copy and optional extra-copy quarantine
- * pos: service layer for user-visible delete/trash semantics
- */
-
 const fs = require('fs-extra');
 const path = require('path');
 const { createFileOp, applyFileOp } = require('./fileOps');

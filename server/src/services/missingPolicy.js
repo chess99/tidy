@@ -1,9 +1,3 @@
-/**
- * input: DB + 文件系统存在性检查（pathExists）+ 时间戳
- * output: 缺失策略应用（删除 files / 标记 assets.missing / 删除 assets）
- * pos: 服务端服务层：缺失治理策略复用（变更需同步更新本头注释与所属目录 README）
- */
-
 function toTs(tsOrFn) {
   if (typeof tsOrFn === 'function') return Number(tsOrFn());
   if (Number.isFinite(Number(tsOrFn))) return Number(tsOrFn);

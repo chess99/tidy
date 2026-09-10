@@ -1,9 +1,3 @@
-/**
- * input: 环境变量（PORT/DATA_DIR/AI_SERVICE_URL 等）+ 文件系统/DB + HTTP 请求
- * output: 启动本地 HTTP 服务（API + 可选静态 UI 托管）与后台任务 runner
- * pos: 后端进程入口：被桌面壳/开发脚本拉起（变更需同步更新本头注释与所属目录 README）
- */
-
 require('dotenv').config();
 const { initDB } = require('./src/db');
 const express = require('express');
