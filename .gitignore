@@ -30,6 +30,7 @@ ai-service/models/
 # Desktop packaging artifacts (Electron / electron-builder)
 desktop/bundle/
 desktop/dist/
+desktop/dist-*/
 desktop/node_modules/
 desktop/builder-debug.yml
 
