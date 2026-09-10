@@ -1,14 +1,16 @@
 import { Check, Search, UserRound, Users, X } from 'lucide-react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { apiUrl } from '../api/client';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 
 const GRID_GAP_PX = 12;
-const GRID_MIN_CARD_WIDTH_PX = 140;
+const GRID_CARD_WIDTH_PX = 144;
+const GRID_ROW_HEIGHT_PX = 198;
 const GRID_MAX_COLUMNS = 9;
-const GRID_CARD_EXTRA_HEIGHT_PX = 54;
+const GRID_INITIAL_VIEWPORT_HEIGHT_PX = 560;
+const GRID_HORIZONTAL_PADDING_PX = 48;
 
 function displayPersonName(person) {
   return person.name?.trim() || `人物 ${person.id}`;
@@ -55,7 +57,7 @@ export function PeopleFilterDialog({ people, selectedIds, onApply }) {
   const [query, setQuery] = useState('');
   const [draftIds, setDraftIds] = useState(() => new Set(selectedIds));
   const [listWidth, setListWidth] = useState(1000);
-  const listRef = useRef(null);
+  const [scrollElement, setScrollElement] = useState(null);
 
   const peopleById = useMemo(
     () => new Map(people.map((person) => [person.id, person])),
@@ -81,35 +83,41 @@ export function PeopleFilterDialog({ people, selectedIds, onApply }) {
   }, [people, query]);
 
   const columnCount = Math.max(
-    3,
-    Math.min(GRID_MAX_COLUMNS, Math.floor((listWidth + GRID_GAP_PX) / (GRID_MIN_CARD_WIDTH_PX + GRID_GAP_PX)))
+    1,
+    Math.min(GRID_MAX_COLUMNS, Math.floor((listWidth + GRID_GAP_PX) / (GRID_CARD_WIDTH_PX + GRID_GAP_PX)))
   );
-  const cardWidth = Math.max(1, (listWidth - GRID_GAP_PX * (columnCount - 1)) / columnCount);
   const rowCount = Math.ceil(filteredPeople.length / columnCount);
   // TanStack Virtual manages mutable measurements internally and is intentionally excluded from compiler memoization.
   // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
     count: rowCount,
-    getScrollElement: () => listRef.current,
-    estimateSize: () => cardWidth + GRID_CARD_EXTRA_HEIGHT_PX,
+    getScrollElement: () => scrollElement,
+    estimateSize: () => GRID_ROW_HEIGHT_PX,
+    // Dialog content is portalled; seed the first measurement so cards render before the element observer connects.
+    initialRect: { width: listWidth, height: GRID_INITIAL_VIEWPORT_HEIGHT_PX },
     overscan: 2,
   });
 
-  useLayoutEffect(() => {
-    if (!open || !listRef.current) return undefined;
+  const setListElement = useCallback((element) => {
+    setScrollElement(element);
+    if (element?.clientWidth) setListWidth(Math.max(1, element.clientWidth - GRID_HORIZONTAL_PADDING_PX));
+  }, []);
+
+  useEffect(() => {
+    if (!scrollElement) return undefined;
     const observer = new ResizeObserver(([entry]) => {
       const nextWidth = entry?.contentRect?.width || 0;
       if (nextWidth > 0) setListWidth(nextWidth);
     });
-    observer.observe(listRef.current);
+    observer.observe(scrollElement);
     return () => observer.disconnect();
-  }, [open]);
+  }, [scrollElement]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !scrollElement) return;
     rowVirtualizer.scrollToOffset(0);
     rowVirtualizer.measure();
-  }, [columnCount, open, query, rowVirtualizer]);
+  }, [columnCount, open, query, rowVirtualizer, scrollElement]);
 
   const handleOpenChange = (nextOpen) => {
     if (nextOpen) {
@@ -231,10 +239,10 @@ export function PeopleFilterDialog({ people, selectedIds, onApply }) {
             </span>
           </div>
 
-          {draftPeople.length > 0 && (
-            <section className="shrink-0 border-b border-blue-100 bg-blue-50/50 px-6 py-3" aria-label="弹层内已选人物">
-              <div className="mb-2 flex items-center justify-between gap-4">
-                <div className="text-xs font-semibold text-blue-900">已选人物（{draftPeople.length}）</div>
+          <section className="h-[92px] shrink-0 border-b border-blue-100 bg-blue-50/50 px-6 py-3" aria-label="弹层内已选人物">
+            <div className="mb-2 flex items-center justify-between gap-4">
+              <div className="text-xs font-semibold text-blue-900">已选人物（{draftPeople.length}）</div>
+              {draftPeople.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setDraftIds(new Set())}
@@ -242,12 +250,14 @@ export function PeopleFilterDialog({ people, selectedIds, onApply }) {
                 >
                   清空已选
                 </button>
-              </div>
-              <div className="flex gap-2 overflow-x-auto pb-0.5">
+              )}
+            </div>
+            {draftPeople.length > 0 ? (
+              <div className="flex h-11 gap-2 overflow-x-auto pb-0.5">
                 {draftPeople.map((person) => (
                   <div
                     key={person.id}
-                    className="flex shrink-0 items-center gap-2 rounded-lg border border-blue-200 bg-white py-1.5 pl-1.5 pr-2 shadow-sm"
+                    className="flex h-10 shrink-0 items-center gap-2 rounded-lg border border-blue-200 bg-white py-1 pl-1 pr-2 shadow-sm"
                   >
                     <PersonAvatar person={person} className="h-8 w-8 shrink-0 rounded-md" />
                     <span className="max-w-32 truncate text-xs font-semibold text-slate-800">
@@ -264,8 +274,12 @@ export function PeopleFilterDialog({ people, selectedIds, onApply }) {
                   </div>
                 ))}
               </div>
-            </section>
-          )}
+            ) : (
+              <div className="flex h-11 items-center text-xs text-blue-700/60">
+                从下方人物中选择，已选项会固定显示在这里
+              </div>
+            )}
+          </section>
 
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center justify-between px-6 pb-2 pt-4">
@@ -274,7 +288,7 @@ export function PeopleFilterDialog({ people, selectedIds, onApply }) {
             </div>
 
             {filteredPeople.length > 0 ? (
-              <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-6 pb-5">
+              <div ref={setListElement} className="min-h-0 flex-1 overflow-y-auto px-6 pb-5">
                 <div
                   className="relative w-full"
                   style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
@@ -285,16 +299,17 @@ export function PeopleFilterDialog({ people, selectedIds, onApply }) {
                     return (
                       <div
                         key={virtualRow.key}
-                        ref={rowVirtualizer.measureElement}
-                        data-index={virtualRow.index}
-                        className="absolute left-0 top-0 w-full pb-3"
-                        style={{ transform: `translateY(${virtualRow.start}px)` }}
+                        className="absolute left-0 top-0 flex w-full justify-center"
+                        style={{
+                          height: `${GRID_ROW_HEIGHT_PX}px`,
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
                       >
                         <div
                           className="grid"
                           style={{
                             gap: `${GRID_GAP_PX}px`,
-                            gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+                            gridTemplateColumns: `repeat(${columnCount}, ${GRID_CARD_WIDTH_PX}px)`,
                           }}
                         >
                           {rowPeople.map((person) => {
@@ -305,13 +320,13 @@ export function PeopleFilterDialog({ people, selectedIds, onApply }) {
                                 key={person.id}
                                 aria-pressed={selected}
                                 onClick={() => toggleDraft(person.id)}
-                                className={`group relative min-w-0 rounded-xl border p-2 text-center transition-[border-color,background-color,box-shadow,transform] focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                className={`group relative h-[186px] w-36 min-w-0 rounded-xl border p-2 text-center transition-[border-color,background-color,box-shadow,transform] focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                                   selected
                                     ? 'border-blue-500 bg-blue-50 shadow-sm ring-1 ring-blue-500'
                                     : 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-sm'
                                 }`}
                               >
-                                <PersonAvatar person={person} className="mx-auto aspect-square w-full rounded-lg" />
+                                <PersonAvatar person={person} className="mx-auto h-32 w-32 rounded-lg" />
                                 <span className="mt-2 block truncate text-xs font-semibold text-slate-800" title={displayPersonName(person)}>
                                   {displayPersonName(person)}
                                 </span>
