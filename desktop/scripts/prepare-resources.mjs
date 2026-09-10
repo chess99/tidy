@@ -43,7 +43,7 @@ function run(cmd, args, opts = {}) {
   return res.stdout || '';
 }
 
-function copyDir(src, dst) {
+function copyDir(src, dst, { filter } = {}) {
   mkdirp(dst);
   fs.cpSync(src, dst, {
     recursive: true,
@@ -54,9 +54,20 @@ function copyDir(src, dst) {
       // Avoid bundling transient caches
       if (base === '__pycache__') return false;
       if (base === '.DS_Store') return false;
+      if (filter && !filter(p)) return false;
       return true;
     },
   });
+}
+
+export function shouldCopyServerPath(candidatePath) {
+  const relative = path.relative(path.join(repoRoot, 'server'), candidatePath);
+  const parts = relative.split(path.sep).filter(Boolean);
+  const base = path.basename(candidatePath);
+  if (['data', 'coverage', '__tests__'].includes(parts[0])) return false;
+  if (parts[0] === 'src' && parts.includes('__tests__')) return false;
+  if (['.env', 'tidy.db', 'tidy.db-wal', 'tidy.db-shm'].includes(base)) return false;
+  return true;
 }
 
 function assertExists(p, hint) {
@@ -199,7 +210,7 @@ function main() {
   const serverSrc = path.join(repoRoot, 'server');
   assertExists(path.join(serverSrc, 'index.js'), 'Run from repo root with server/ present.');
   assertExists(path.join(serverSrc, 'node_modules'), 'Install server deps first: `cd server && npm i`.');
-  copyDir(serverSrc, bundleServerDir);
+  copyDir(serverSrc, bundleServerDir, { filter: shouldCopyServerPath });
 
   // 3) Bundle client dist (static UI). Ensure it exists.
   const clientDist = path.join(repoRoot, 'client', 'dist');
@@ -223,4 +234,4 @@ function main() {
   console.log('  ai     =', bundleAiDir);
 }
 
-main();
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) main();

@@ -97,7 +97,7 @@ function isDev() {
 }
 
 async function initDataLayout({ repoRoot, packaged }) {
-  const configured = String(process.env.DATA_DIR || '').trim();
+  const configured = String(process.env.TIDY_DATA_DIR || '').trim();
   const dataDir = configured
     ? path.resolve(configured)
     : packaged
@@ -195,6 +195,12 @@ async function main() {
   const logs = initLogs({ userDataRoot: app.getPath('userData'), appName: app.getName() });
   logDir = logs.logsDir;
   installConsoleTee({ dir: logDir });
+  console.log('[desktop] startup', JSON.stringify({
+    executable: process.execPath,
+    packaged: app.isPackaged,
+    userData: app.getPath('userData'),
+    dataDir,
+  }));
   installMenu();
 
   const serverPort = await pickPort({ preferred: process.env.TIDY_SERVER_PORT || 3001 });

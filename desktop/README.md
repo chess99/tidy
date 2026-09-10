@@ -8,6 +8,5 @@
 - `src/main.cjs`：Electron 主进程入口（单实例窗口 + sidecar 启停 + 更新提示；开发模式直接使用仓库 `data/`）。
 - `src/ports.cjs`：端口选择（优先固定端口，冲突时回退到空闲端口）。
 - `src/sidecars.cjs`：拉起/关闭 Node server 与 ai-service（开发模式显式使用项目/系统运行时；正式包只允许随包二进制，缺失即报错）。
-- `scripts/`：打包脚本入口（生成 `bundle/` 资源目录供 electron-builder 打包）（见 `scripts/README.md`）。
-
+- `scripts/`：打包脚本入口（生成 `bundle/`，并排除开发数据库、`.env`、测试与缓存）（见 `scripts/README.md`）。
 
