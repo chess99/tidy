@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs-extra');
 const schema = require('./schema');
 const { DB_PATH } = require('../config');
+const { TIME_METADATA_VERSION } = require('../scanner/metadata');
 
 let db;
 
@@ -22,6 +23,7 @@ function ensureColumns(dbConn, tableName, columns) {
 
 function migrateDB(dbConn) {
   // Add new columns to existing tables (SQLite CREATE TABLE IF NOT EXISTS won't alter).
+  const legacyAssetColumns = getExistingColumns(dbConn, 'assets');
   ensureColumns(dbConn, 'assets', [
     { name: 'updated_at', type: 'INTEGER' },
     { name: 'thumb_updated_at', type: 'INTEGER' },
@@ -31,11 +33,23 @@ function migrateDB(dbConn) {
     { name: 'face_scanned_at', type: 'INTEGER' },
     { name: 'missing', type: 'INTEGER', defaultSql: '0' },
     { name: 'hash_algo', type: 'TEXT', defaultSql: "'md5'" },
+    { name: 'captured_at', type: 'INTEGER' },
+    { name: 'captured_local_ms', type: 'INTEGER' },
+    { name: 'time_zone', type: 'TEXT' },
+    { name: 'time_source', type: 'TEXT' },
+    { name: 'time_tag', type: 'TEXT' },
+    { name: 'time_confidence', type: 'TEXT' },
+    { name: 'time_zone_inferred', type: 'INTEGER', defaultSql: '0' },
+    { name: 'time_locked', type: 'INTEGER', defaultSql: '0' },
+    { name: 'time_scanned_at', type: 'INTEGER' },
+    { name: 'time_metadata_version', type: 'INTEGER', defaultSql: '0' },
   ]);
 
   ensureColumns(dbConn, 'files', [
+    { name: 'missing', type: 'INTEGER', defaultSql: '0' },
     { name: 'size', type: 'INTEGER' },
     { name: 'mtime_ms', type: 'INTEGER' },
+    { name: 'birthtime_ms', type: 'INTEGER' },
     { name: 'ext', type: 'TEXT' },
     { name: 'mime_guess', type: 'TEXT' },
     { name: 'discovered_at', type: 'INTEGER' },
@@ -59,6 +73,26 @@ function migrateDB(dbConn) {
     UPDATE file_ops SET attempts = COALESCE(attempts, 0) WHERE attempts IS NULL;
   `);
 
+  // Legacy taken_at mixed real media dates with filesystem fallbacks and carried no provenance.
+  // Do not migrate those values into captured_at: the enrich job will re-extract every asset.
+  if (legacyAssetColumns.has('taken_at')) {
+    dbConn.exec(`
+      DROP INDEX IF EXISTS idx_assets_taken_at;
+      UPDATE assets
+      SET captured_at = NULL,
+          captured_local_ms = NULL,
+          time_zone = NULL,
+          time_source = NULL,
+          time_tag = NULL,
+          time_confidence = NULL,
+          time_zone_inferred = 0,
+          time_scanned_at = NULL,
+          time_metadata_version = 0
+      WHERE COALESCE(time_locked, 0) = 0;
+      ALTER TABLE assets DROP COLUMN taken_at;
+    `);
+  }
+
   dbConn.exec(`
     UPDATE files
     SET discovered_at = COALESCE(discovered_at, scanned_at),
@@ -68,7 +102,7 @@ function migrateDB(dbConn) {
 
   dbConn.exec(`
     UPDATE assets
-    SET updated_at = COALESCE(updated_at, taken_at)
+    SET updated_at = COALESCE(updated_at, captured_at)
     WHERE updated_at IS NULL;
   `);
 
@@ -90,10 +124,33 @@ function migrateDB(dbConn) {
     CREATE INDEX IF NOT EXISTS idx_assets_updated_at ON assets(updated_at);
     CREATE INDEX IF NOT EXISTS idx_assets_is_camera ON assets(is_camera);
     CREATE INDEX IF NOT EXISTS idx_assets_missing ON assets(missing);
+    CREATE INDEX IF NOT EXISTS idx_assets_captured_at ON assets(captured_at);
+    CREATE INDEX IF NOT EXISTS idx_assets_captured_local_ms ON assets(captured_local_ms);
+    CREATE INDEX IF NOT EXISTS idx_assets_time_scanned_at ON assets(time_scanned_at);
     CREATE INDEX IF NOT EXISTS idx_files_discovered_at ON files(discovered_at);
     CREATE INDEX IF NOT EXISTS idx_files_updated_at ON files(updated_at);
     CREATE INDEX IF NOT EXISTS idx_files_phash ON files(phash);
   `);
+
+  const hasJobsTable = dbConn.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'jobs'`).get();
+  const needsTimeRescan = dbConn.prepare(`
+    SELECT 1 FROM assets
+    WHERE COALESCE(time_locked, 0) = 0
+      AND (time_scanned_at IS NULL OR COALESCE(time_metadata_version, 0) != ?)
+      AND EXISTS (SELECT 1 FROM files WHERE files.hash = assets.hash AND COALESCE(files.missing, 0) = 0)
+    LIMIT 1
+  `).get(TIME_METADATA_VERSION);
+  if (hasJobsTable && needsTimeRescan) {
+    const ts = Date.now();
+    dbConn.prepare(`
+      INSERT INTO jobs (type, mode, status, params_json, created_at, updated_at)
+      SELECT 'enrich', 'missing', 'queued', '{"reason":"time_metadata_migration"}', ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM jobs
+        WHERE type = 'enrich' AND status = 'queued'
+      )
+    `).run(ts, ts);
+  }
 
   // Migrate CHECK constraints that cannot be ALTERed (SQLite): file_ops.op must include 'quarantine'.
   try {

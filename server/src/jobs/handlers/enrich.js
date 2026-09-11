@@ -4,8 +4,7 @@ const fastq = require('fastq');
 const mime = require('mime-types');
 const { getDB } = require('../../db');
 const { computeHash } = require('../../scanner/hasher');
-const { extractMetadata } = require('../../scanner/metadata');
-const { extractVideoMetadata } = require('../../scanner/videoMetadata');
+const { TIME_METADATA_VERSION, extractMetadata } = require('../../scanner/metadata');
 const { generateThumbnail, getThumbnailPath, RAW_EXTS } = require('../../scanner/thumbnail');
 const { computePHash } = require('../../scanner/phash');
 const { insertChange, now } = require('./_util');
@@ -22,6 +21,85 @@ function safeJsonStringify(v) {
 function shouldTryThumb({ mimeType, filePath }) {
   const extLower = path.extname(filePath).toLowerCase();
   return (mimeType && String(mimeType).startsWith('image/')) || RAW_EXTS.has(extLower);
+}
+
+function shouldExtractMetadata({ mimeType, filePath }) {
+  const mediaType = String(mimeType || '').toLowerCase();
+  return mediaType.startsWith('image/') || mediaType.startsWith('video/') || RAW_EXTS.has(path.extname(filePath).toLowerCase());
+}
+
+async function readMetadata({ mimeType, filePath }) {
+  if (!shouldExtractMetadata({ mimeType, filePath })) return null;
+  return extractMetadata(filePath);
+}
+
+function timeRank({ source, confidence }) {
+  if (source === 'manual' || source === 'manual_unknown') return 100;
+  if (source === 'sidecar') return 40;
+  if (source === 'embedded' && confidence === 'high') return 30;
+  if (source === 'embedded') return 20;
+  return 0;
+}
+
+function updateExistingAssetMetadata(db, { hash, metadata, stat, mimeType, ts }) {
+  const current = db.prepare(`
+    SELECT time_source, time_confidence, time_locked, time_metadata_version
+    FROM assets WHERE hash = ?
+  `).get(hash);
+  const replaceTime = !current?.time_locked && (
+    Number(current?.time_metadata_version || 0) !== TIME_METADATA_VERSION
+    || timeRank({ source: metadata?.time_source, confidence: metadata?.time_confidence })
+      > timeRank({ source: current?.time_source, confidence: current?.time_confidence })
+  );
+  const cameraMake = metadata?.camera_make ? String(metadata.camera_make) : null;
+  const cameraModel = metadata?.camera_model ? String(metadata.camera_model) : null;
+  const isCamera = cameraMake || cameraModel ? 1 : 0;
+  db.prepare(`
+    UPDATE assets
+    SET mime_type = COALESCE(?, mime_type),
+        size = ?,
+        metadata = ?,
+        captured_at = CASE WHEN ? = 1 THEN ? ELSE captured_at END,
+        captured_local_ms = CASE WHEN ? = 1 THEN ? ELSE captured_local_ms END,
+        time_zone = CASE WHEN ? = 1 THEN ? ELSE time_zone END,
+        time_source = CASE WHEN ? = 1 THEN ? ELSE time_source END,
+        time_tag = CASE WHEN ? = 1 THEN ? ELSE time_tag END,
+        time_confidence = CASE WHEN ? = 1 THEN ? ELSE time_confidence END,
+        time_zone_inferred = CASE WHEN ? = 1 THEN ? ELSE time_zone_inferred END,
+        time_scanned_at = ?,
+        time_metadata_version = ?,
+        camera_make = ?,
+        camera_model = ?,
+        is_camera = ?,
+        missing = 0,
+        updated_at = ?
+    WHERE hash = ?
+  `).run(
+    mimeType,
+    stat.size,
+    safeJsonStringify(metadata || {}),
+    replaceTime ? 1 : 0,
+    metadata?.captured_at ?? null,
+    replaceTime ? 1 : 0,
+    metadata?.captured_local_ms ?? null,
+    replaceTime ? 1 : 0,
+    metadata?.time_zone ?? null,
+    replaceTime ? 1 : 0,
+    metadata?.time_source ?? null,
+    replaceTime ? 1 : 0,
+    metadata?.time_tag ?? null,
+    replaceTime ? 1 : 0,
+    metadata?.time_confidence ?? null,
+    replaceTime ? 1 : 0,
+    metadata?.time_zone_inferred ? 1 : 0,
+    ts,
+    TIME_METADATA_VERSION,
+    cameraMake,
+    cameraModel,
+    isCamera,
+    ts,
+    hash
+  );
 }
 
 function stripTrailingSep(p) {
@@ -212,12 +290,19 @@ async function handleEnrich(ctx) {
 	      OR COALESCE(hash_status, 'pending') != 'done'
 	      OR COALESCE(thumb_status, 'pending') != 'ready'
 	      OR COALESCE(phash_status, 'pending') NOT IN ('done', 'unsupported')
+	      OR hash IN (
+	        SELECT hash FROM assets
+	        WHERE time_scanned_at IS NULL OR COALESCE(time_metadata_version, 0) != ${TIME_METADATA_VERSION}
+	      )
+	      ${mode === 'all' ? 'OR 1 = 1' : ''}
 	      ${mode === 'all' ? "OR COALESCE(hash_algo, 'md5') != 'sha256'" : ''}
 	    )
 	  `;
 
 	  const rows = db.prepare(`
-	    SELECT id, path, hash, hash_algo, scanned_at, mtime_ms, ext, mime_guess, hash_status, thumb_status, phash, phash_status
+	    SELECT id, path, hash, hash_algo, scanned_at, mtime_ms, birthtime_ms, ext, mime_guess, hash_status, thumb_status, phash, phash_status,
+	      (SELECT time_scanned_at FROM assets WHERE assets.hash = files.hash) AS asset_time_scanned_at,
+	      (SELECT time_metadata_version FROM assets WHERE assets.hash = files.hash) AS asset_time_metadata_version
     FROM files
     WHERE ${where}
     ORDER BY id ASC
@@ -260,9 +345,26 @@ async function handleEnrich(ctx) {
     const mimeType = mime.lookup(filePath) || row.mime_guess || null;
     const phashNeeded = !row.phash || String(row.phash_status || '') !== 'done';
 
-    // For missing-mode, if unchanged and already hashed, only backfill thumb if needed.
-    if (mode === 'missing' && unchanged && row.hash && String(row.hash_status) === 'done') {
+    const needsHashUpgrade = mode === 'all' && String(row.hash_algo || 'md5') !== 'sha256';
+    // Unchanged, hashed files do not need another content hash. Metadata has its own versioned refresh path.
+    if (unchanged && row.hash && String(row.hash_status) === 'done' && !needsHashUpgrade) {
       const hash = String(row.hash);
+      const needsMetadataRefresh = mode === 'all'
+        || !row.asset_time_scanned_at
+        || Number(row.asset_time_metadata_version || 0) !== TIME_METADATA_VERSION;
+      if (needsMetadataRefresh) {
+        try {
+          const metadata = await readMetadata({ mimeType, filePath });
+          updateExistingAssetMetadata(db, { hash, metadata, stat, mimeType, ts: now() });
+          db.prepare('UPDATE files SET mtime_ms = ?, birthtime_ms = ?, updated_at = ? WHERE id = ?')
+            .run(stat.mtimeMs, stat.birthtimeMs || null, now(), fileId);
+          insertChange('asset', hash, 'metadata_refresh');
+          stats.updated++;
+        } catch (error) {
+          stats.errors++;
+          console.warn('[enrich] Metadata refresh failed:', { fileId, filePath, error: String(error?.message || error) });
+        }
+      }
       // thumb backfill
       try {
         if (row.thumb_status !== 'ready') {
@@ -333,60 +435,42 @@ async function handleEnrich(ctx) {
 	    const hashResult = await computeHash(filePath);
 	    const hash = hashResult.hash;
 	    const hashAlgo = hashResult.hash_algo;
-	    const existingAsset = db.prepare('SELECT hash, status, hash_algo FROM assets WHERE hash = ?').get(hash);
+	    const existingAsset = db.prepare('SELECT hash, status, hash_algo, time_locked FROM assets WHERE hash = ?').get(hash);
 	    const status = existingAsset ? existingAsset.status : 'inbox';
 
-      const metadata = mimeType && String(mimeType).startsWith('image/')
-        ? await extractMetadata(filePath)
-        : (mimeType && String(mimeType).startsWith('video/') ? await extractVideoMetadata(filePath) : null);
-
-      const takenAt = metadata?.taken_at ? metadata.taken_at : stat.mtimeMs;
+      const metadata = await readMetadata({ mimeType, filePath });
       const cameraMake = metadata?.camera_make ? String(metadata.camera_make) : null;
       const cameraModel = metadata?.camera_model ? String(metadata.camera_model) : null;
       const isCamera = (cameraMake || cameraModel) ? 1 : 0;
       const ts = now();
 
       if (existingAsset) {
-        db.prepare(`
-	          UPDATE assets
-	          SET mime_type = COALESCE(mime_type, ?),
-	              hash_algo = COALESCE(hash_algo, ?),
-	              size = COALESCE(size, ?),
-              metadata = COALESCE(metadata, ?),
-              taken_at = COALESCE(taken_at, ?),
-              camera_make = COALESCE(camera_make, ?),
-              camera_model = COALESCE(camera_model, ?),
-              is_camera = CASE
-                WHEN COALESCE(is_camera, 0) = 1 THEN 1
-                WHEN ? = 1 THEN 1
-                ELSE COALESCE(is_camera, 0)
-              END,
-              missing = 0,
-              updated_at = ?
-          WHERE hash = ?
-	        `).run(
-	          mimeType,
-	          hashAlgo,
-	          stat.size,
-          safeJsonStringify(metadata || {}),
-          takenAt,
-          cameraMake,
-          cameraModel,
-          isCamera,
-          ts,
-          hash
-        );
+        db.prepare('UPDATE assets SET hash_algo = COALESCE(hash_algo, ?) WHERE hash = ?').run(hashAlgo, hash);
+        updateExistingAssetMetadata(db, { hash, metadata, stat, mimeType, ts });
 	      } else {
 	        db.prepare(`
-	          INSERT INTO assets (hash, hash_algo, mime_type, size, metadata, taken_at, status, missing, camera_make, camera_model, is_camera, updated_at)
-	          VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+	          INSERT INTO assets (
+	            hash, hash_algo, mime_type, size, metadata,
+	            captured_at, captured_local_ms, time_zone, time_source, time_tag, time_confidence,
+	            time_zone_inferred, time_locked, time_scanned_at, time_metadata_version,
+	            status, missing, camera_make, camera_model, is_camera, updated_at
+	          )
+	          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 0, ?, ?, ?, ?)
 	        `).run(
 	          hash,
 	          hashAlgo,
 	          mimeType,
           stat.size,
           safeJsonStringify(metadata || {}),
-          takenAt,
+          metadata?.captured_at ?? null,
+          metadata?.captured_local_ms ?? null,
+          metadata?.time_zone ?? null,
+          metadata?.time_source ?? null,
+          metadata?.time_tag ?? null,
+          metadata?.time_confidence ?? null,
+          metadata?.time_zone_inferred ? 1 : 0,
+          ts,
+          TIME_METADATA_VERSION,
           status,
           cameraMake,
           cameraModel,
@@ -404,11 +488,12 @@ async function handleEnrich(ctx) {
 	            scanned_at = ?,
             size = ?,
             mtime_ms = ?,
+            birthtime_ms = ?,
             missing = 0,
             updated_at = ?,
             hash_status = 'done'
 	        WHERE id = ?
-	      `).run(hash, hashAlgo, ts, stat.size, stat.mtimeMs, ts, fileId);
+	      `).run(hash, hashAlgo, ts, stat.size, stat.mtimeMs, stat.birthtimeMs || null, ts, fileId);
 
       insertChange('file', fileId, 'upsert');
       insertChange('asset', hash, 'upsert');
@@ -527,5 +612,11 @@ async function handleEnrich(ctx) {
   return { ok: true, ...stats, finishedAt: now() };
 }
 
-module.exports = { handleEnrich, isUnder, reconcileAssetByFilesystem };
+module.exports = {
+  TIME_METADATA_VERSION,
+  handleEnrich,
+  isUnder,
+  reconcileAssetByFilesystem,
+  updateExistingAssetMetadata,
+};
 

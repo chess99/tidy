@@ -358,8 +358,8 @@ export function DuplicatesToolView({ onAssetClick }) {
 
                       <div>修改: {fmtDate(item.mtime_ms)}</div>
 
-                      {item.asset_taken_at && (
-                        <div>拍摄: {fmtDate(item.asset_taken_at)}</div>
+                      {item.asset_captured_at && (
+                        <div>拍摄: {fmtDate(item.asset_captured_at)}</div>
                       )}
 
                       {item.lat != null && item.lon != null && (

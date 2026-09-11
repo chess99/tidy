@@ -5,7 +5,16 @@ const dbSchema = `
     mime_type TEXT,
     size INTEGER,
     metadata TEXT,
-    taken_at INTEGER,
+    captured_at INTEGER,
+    captured_local_ms INTEGER,
+    time_zone TEXT,
+    time_source TEXT,
+    time_tag TEXT,
+    time_confidence TEXT,
+    time_zone_inferred INTEGER DEFAULT 0,
+    time_locked INTEGER DEFAULT 0,
+    time_scanned_at INTEGER,
+    time_metadata_version INTEGER DEFAULT 0,
     status TEXT CHECK(status IN ('inbox', 'sorted', 'trash', 'ignored')) DEFAULT 'inbox',
     missing INTEGER DEFAULT 0,
     rating INTEGER DEFAULT 0,
@@ -27,6 +36,7 @@ const dbSchema = `
     missing INTEGER DEFAULT 0,
     size INTEGER,
     mtime_ms INTEGER,
+    birthtime_ms INTEGER,
     ext TEXT,
     mime_guess TEXT,
     discovered_at INTEGER,
@@ -154,7 +164,6 @@ const dbSchema = `
     index_path TEXT
   );
 
-  CREATE INDEX IF NOT EXISTS idx_assets_taken_at ON assets(taken_at);
   CREATE INDEX IF NOT EXISTS idx_files_hash ON files(hash);
   CREATE INDEX IF NOT EXISTS idx_changes_ts ON changes(ts);
   CREATE INDEX IF NOT EXISTS idx_file_ops_status ON file_ops(status);

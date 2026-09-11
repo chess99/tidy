@@ -8,6 +8,7 @@ import { getAlbumAssets } from '../api/client';
 import { useResponsiveGridMetrics } from '../hooks/useResponsiveGridMetrics';
 import { fileNameFromPath, preferredTopLabel } from '../utils/mediaLabel';
 import { AssetThumbCard } from './AssetThumbCard';
+import { formatTimelineDate } from '../utils/assetTime';
 
 function isEditableTarget(el) {
   if (!el) return false;
@@ -215,7 +216,7 @@ export function AlbumAssetsGrid({ albumId, onAssetClick, viewerOpen, onViewerNav
                     thumbnailHeight={thumbnailHeight}
                     topLabel={preferredTopLabel({ ext: asset.sample_ext, path: asset.sample_path, mime: asset.mime_type })}
                     placeholderBottomText={asset.sample_path || asset.hash}
-                    dateText={asset.taken_at ? new Date(asset.taken_at).toLocaleDateString() : null}
+                    dateText={formatTimelineDate(asset)}
                     dimmed={!!asset.missing}
                     cursorFocused={cursorFocused}
                     onClick={() => {

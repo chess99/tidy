@@ -162,6 +162,35 @@ describe('file workflow routes', () => {
     expect(op.error).toContain('not_regular_file');
   });
 
+  test('PATCH /api/assets/:hash/time stores a locked manual capture time and can mark it unknown', async () => {
+    harness = await makeHarness();
+    const hash = 'hash-manual-time';
+    seedAssetFile(harness.db, { filePath: path.join(harness.sourceRoot, 'photo.jpg'), hash });
+    const capturedAt = Date.parse('2020-05-02T03:04:05.000Z');
+    const capturedLocalMs = Date.parse('2020-05-02T11:04:05.000Z');
+
+    await request(harness.app)
+      .patch(`/api/assets/${hash}/time`)
+      .send({ capturedAt, capturedLocalMs, timeZone: 'Asia/Shanghai' })
+      .expect(200);
+
+    expect(harness.db.prepare(`
+      SELECT captured_at, captured_local_ms, time_zone, time_source, time_confidence, time_locked
+      FROM assets WHERE hash = ?
+    `).get(hash)).toEqual({
+      captured_at: capturedAt,
+      captured_local_ms: capturedLocalMs,
+      time_zone: 'Asia/Shanghai',
+      time_source: 'manual',
+      time_confidence: 'high',
+      time_locked: 1,
+    });
+
+    await request(harness.app).patch(`/api/assets/${hash}/time`).send({ capturedAt: null }).expect(200);
+    expect(harness.db.prepare('SELECT captured_at, time_source, time_locked FROM assets WHERE hash = ?').get(hash))
+      .toEqual({ captured_at: null, time_source: 'manual_unknown', time_locked: 1 });
+  });
+
   test('GET /api/assets/:hash/poster generates and serves a cached video poster when ffmpeg is available', async () => {
     jest.resetModules();
     const childProcess = require('child_process');

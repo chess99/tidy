@@ -4,6 +4,7 @@ import clsx from 'clsx';
 import React, { useEffect, useRef } from 'react';
 import { apiUrl, getAssets } from '../api/client';
 import { ThumbPlaceholder } from './ThumbPlaceholder';
+import { formatTimelineDate } from '../utils/assetTime';
 
 function topLabelFromMime(mime) {
   if (!mime) return 'FILE';
@@ -112,7 +113,7 @@ export function VirtualGrid({ onAssetClick }) {
                       <ThumbPlaceholder
                         topLabel={topLabelFromMime(asset.mime_type)}
                         bottomText={asset.hash}
-                        dateText={asset.taken_at ? new Date(asset.taken_at).toLocaleDateString() : null}
+                        dateText={formatTimelineDate(asset)}
                       />
                     </div>
                     <img
@@ -126,7 +127,7 @@ export function VirtualGrid({ onAssetClick }) {
                     />
                   </div>
                   <div className="p-2 text-xs truncate">
-                    {new Date(asset.taken_at).toLocaleDateString()}
+                    {formatTimelineDate(asset)}
                   </div>
                 </div>
               ))}
@@ -142,4 +143,3 @@ export function VirtualGrid({ onAssetClick }) {
     </div>
   );
 }
-

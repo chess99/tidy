@@ -164,7 +164,7 @@ function selectCandidates(db, targetModel, limit) {
         SELECT 1 FROM clip_embeddings ce
         WHERE ce.hash = a.hash AND ce.model = ?
       )
-    ORDER BY a.taken_at DESC, a.hash ASC
+    ORDER BY a.captured_at DESC, a.hash ASC
     ${limitSql}
   `);
   return limit == null ? statement.all(targetModel) : statement.all(targetModel, limit);

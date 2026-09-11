@@ -87,6 +87,7 @@ function upsertFileDiscovered(db, filePath, stat) {
       SET missing = 0,
           size = ?,
           mtime_ms = ?,
+          birthtime_ms = ?,
           ext = COALESCE(ext, ?),
           mime_guess = COALESCE(mime_guess, ?),
           updated_at = ?,
@@ -112,6 +113,7 @@ function upsertFileDiscovered(db, filePath, stat) {
     `).run(
       stat.size,
       stat.mtimeMs,
+      stat.birthtimeMs || null,
       ext,
       mimeGuess,
       ts,
@@ -141,9 +143,9 @@ function upsertFileDiscovered(db, filePath, stat) {
 
   const info = db.prepare(`
     INSERT INTO files (
-      path, missing, size, mtime_ms, ext, mime_guess, discovered_at, updated_at, hash, hash_status, thumb_status, phash, phash_status
-    ) VALUES (?, 0, ?, ?, ?, ?, ?, ?, NULL, 'pending', 'pending', NULL, 'pending')
-  `).run(normPath, stat.size, stat.mtimeMs, ext, mimeGuess, ts, ts);
+      path, missing, size, mtime_ms, birthtime_ms, ext, mime_guess, discovered_at, updated_at, hash, hash_status, thumb_status, phash, phash_status
+    ) VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, NULL, 'pending', 'pending', NULL, 'pending')
+  `).run(normPath, stat.size, stat.mtimeMs, stat.birthtimeMs || null, ext, mimeGuess, ts, ts);
 
   const id = info.lastInsertRowid;
   insertChange('file', id, 'upsert');

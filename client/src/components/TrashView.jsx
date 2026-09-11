@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { getAsset, getAssets, openFileLocation } from '../api/client';
 import { useResponsiveGridMetrics } from '../hooks/useResponsiveGridMetrics';
 import { AssetThumbCard } from './AssetThumbCard';
+import { formatTimelineDate } from '../utils/assetTime';
 
 function formatDate(ms) {
   if (!Number.isFinite(Number(ms))) return '—';
@@ -107,7 +108,7 @@ export function TrashView({ onAssetClick }) {
                       thumbnailHeight={thumbnailHeight}
                       topLabel="TRASH"
                       placeholderBottomText={hash || '—'}
-                      dateText={formatDate(asset?.taken_at)}
+                      dateText={formatTimelineDate(asset)}
                       dimmed={!!asset?.missing}
                       bottomPrimary={hash || '—'}
                       bottomSecondary={asset?.target_path || '—'}

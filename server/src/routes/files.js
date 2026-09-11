@@ -11,6 +11,15 @@ const router = express.Router();
 let smartSearchInflight = 0;
 const IMAGE_SEARCH_UPLOAD_LIMIT = 20 * 1024 * 1024;
 const parseImageUpload = express.raw({ type: () => true, limit: IMAGE_SEARCH_UPLOAD_LIMIT });
+const TIMELINE_TIME_EXPR = `COALESCE(
+  a.captured_at,
+  CASE
+    WHEN f.birthtime_ms IS NOT NULL AND f.birthtime_ms > 0 AND f.mtime_ms IS NOT NULL THEN MIN(f.birthtime_ms, f.mtime_ms)
+    ELSE COALESCE(f.birthtime_ms, f.mtime_ms)
+  END,
+  f.discovered_at,
+  f.scanned_at
+)`;
 
 function imageUploadBody(req, res, next) {
   parseImageUpload(req, res, (error) => {
@@ -198,9 +207,12 @@ function toFileRow(r) {
   const fileName = r.path ? path.basename(r.path) : null;
   const ext = r.ext || (r.path ? path.extname(r.path).toLowerCase() : null);
 
+  const fileTime = r.birthtime_ms && r.mtime_ms
+    ? Math.min(r.birthtime_ms, r.mtime_ms)
+    : (r.birthtime_ms ?? r.mtime_ms ?? null);
   const displayTime =
-    r.asset_taken_at ??
-    r.mtime_ms ??
+    r.asset_captured_at ??
+    fileTime ??
     r.discovered_at ??
     r.scanned_at ??
     null;
@@ -212,6 +224,7 @@ function toFileRow(r) {
     ext,
     size: r.size,
     mtime_ms: r.mtime_ms,
+    birthtime_ms: r.birthtime_ms,
     mime_guess: r.mime_guess,
     missing: r.missing,
     discovered_at: r.discovered_at,
@@ -221,6 +234,9 @@ function toFileRow(r) {
     thumb_status: r.thumb_status,
     thumb_updated_at: r.thumb_updated_at,
     display_time: displayTime,
+    display_time_source: r.asset_captured_at != null
+      ? (r.asset_time_source || 'embedded')
+      : (fileTime != null ? 'filesystem' : 'index'),
 
     // derived fields
     organized_to: r.organized_to ?? null,
@@ -228,7 +244,12 @@ function toFileRow(r) {
 
     // joined asset fields (nullable)
     asset_status: r.asset_status,
-    asset_taken_at: r.asset_taken_at,
+    asset_captured_at: r.asset_captured_at,
+    asset_captured_local_ms: r.asset_captured_local_ms,
+    asset_time_zone: r.asset_time_zone,
+    asset_time_source: r.asset_time_source,
+    asset_time_tag: r.asset_time_tag,
+    asset_time_confidence: r.asset_time_confidence,
     asset_mime_type: r.asset_mime_type,
     asset_updated_at: r.asset_updated_at,
     asset_thumb_updated_at: r.asset_thumb_updated_at,
@@ -318,7 +339,7 @@ router.get('/date-index', async (req, res) => {
     return res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
   }
 
-  const timeExpr = `COALESCE(a.taken_at, f.mtime_ms, f.discovered_at, f.scanned_at)`;
+  const timeExpr = TIMELINE_TIME_EXPR;
   // const organizedExistsExpr = `EXISTS (SELECT 1 FROM album_assets aa WHERE aa.hash = f.hash)`;
   const dupCountExpr = `(SELECT COUNT(*) FROM files f2 WHERE f2.hash = f.hash)`;
   const dupHashesQuery = `SELECT hash FROM files WHERE hash IS NOT NULL GROUP BY hash HAVING COUNT(*) > 1`;
@@ -509,7 +530,7 @@ async function handleFilesList(req, res) {
     return res.status(e.statusCode || 500).json({ error: e.message || 'Error' });
   }
 
-  const timeExpr = `COALESCE(a.taken_at, f.mtime_ms, f.discovered_at, f.scanned_at)`;
+  const timeExpr = TIMELINE_TIME_EXPR;
   // const organizedExistsExpr = `EXISTS (SELECT 1 FROM album_assets aa WHERE aa.hash = f.hash)`;
   const dupCountExpr = `(SELECT COUNT(*) FROM files f2 WHERE f2.hash = f.hash)`;
   const dupHashesQuery = `SELECT hash FROM files WHERE hash IS NOT NULL GROUP BY hash HAVING COUNT(*) > 1`;
@@ -677,7 +698,12 @@ async function handleFilesList(req, res) {
           SELECT
             f.*,
             a.status AS asset_status,
-            a.taken_at AS asset_taken_at,
+            a.captured_at AS asset_captured_at,
+            a.captured_local_ms AS asset_captured_local_ms,
+            a.time_zone AS asset_time_zone,
+            a.time_source AS asset_time_source,
+            a.time_tag AS asset_time_tag,
+            a.time_confidence AS asset_time_confidence,
             a.mime_type AS asset_mime_type,
             a.updated_at AS asset_updated_at,
             a.thumb_updated_at AS asset_thumb_updated_at,
@@ -772,7 +798,12 @@ async function handleFilesList(req, res) {
     SELECT
       f.*,
       a.status AS asset_status,
-      a.taken_at AS asset_taken_at,
+      a.captured_at AS asset_captured_at,
+      a.captured_local_ms AS asset_captured_local_ms,
+      a.time_zone AS asset_time_zone,
+      a.time_source AS asset_time_source,
+      a.time_tag AS asset_time_tag,
+      a.time_confidence AS asset_time_confidence,
       a.mime_type AS asset_mime_type,
       a.updated_at AS asset_updated_at,
       a.thumb_updated_at AS asset_thumb_updated_at,
@@ -837,7 +868,12 @@ router.get('/batch', (req, res) => {
     SELECT
       f.*,
       a.status AS asset_status,
-      a.taken_at AS asset_taken_at,
+      a.captured_at AS asset_captured_at,
+      a.captured_local_ms AS asset_captured_local_ms,
+      a.time_zone AS asset_time_zone,
+      a.time_source AS asset_time_source,
+      a.time_tag AS asset_time_tag,
+      a.time_confidence AS asset_time_confidence,
       a.mime_type AS asset_mime_type,
       a.updated_at AS asset_updated_at,
       a.thumb_updated_at AS asset_thumb_updated_at,

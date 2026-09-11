@@ -72,15 +72,25 @@ async function main() {
   const existsAsset = db.prepare('SELECT hash FROM assets WHERE hash = ?').get(hash);
   if (!existsAsset) {
     db.prepare(`
-      INSERT INTO assets (hash, hash_algo, mime_type, size, metadata, taken_at, status, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, 'inbox', ?)
+      INSERT INTO assets (
+        hash, hash_algo, mime_type, size, metadata, captured_at, captured_local_ms,
+        time_zone, time_source, time_tag, time_confidence, time_scanned_at, time_metadata_version,
+        status, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'inbox', ?)
     `).run(
       hash,
       hashAlgo,
       mimeType,
       stat.size,
       JSON.stringify(meta || {}),
-      meta?.taken_at || stat.mtimeMs,
+      meta?.captured_at ?? null,
+      meta?.captured_local_ms ?? null,
+      meta?.time_zone ?? null,
+      meta?.time_source ?? null,
+      meta?.time_tag ?? null,
+      meta?.time_confidence ?? null,
+      now,
       now
     );
   }
@@ -89,8 +99,8 @@ async function main() {
   const existsFile = db.prepare('SELECT id FROM files WHERE path = ?').get(abs);
   if (!existsFile) {
     db.prepare(`
-      INSERT INTO files (path, hash, hash_algo, scanned_at, missing, size, mtime_ms, ext, mime_guess, discovered_at, updated_at, hash_status, thumb_status)
-      VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 'done', 'pending')
+      INSERT INTO files (path, hash, hash_algo, scanned_at, missing, size, mtime_ms, birthtime_ms, ext, mime_guess, discovered_at, updated_at, hash_status, thumb_status)
+      VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, 'done', 'pending')
     `).run(
       abs,
       hash,
@@ -98,6 +108,7 @@ async function main() {
       now,
       stat.size,
       stat.mtimeMs,
+      stat.birthtimeMs || null,
       path.extname(abs).toLowerCase() || null,
       mimeType,
       now,

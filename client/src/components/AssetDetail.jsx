@@ -4,10 +4,11 @@ import {
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { apiUrl, openFileLocation } from '../api/client';
+import { apiUrl, openFileLocation, updateAssetTime } from '../api/client';
 import { useState } from 'react';
 import { AssetFacesPanel } from './AssetFacesPanel';
 import { VideoPosterFallback } from './VideoPosterFallback';
+import { captureTimeOf, formatCaptureDateTime, timelineTimeOf, timeSourceLabel } from '../utils/assetTime';
 
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes)) return '—';
@@ -34,6 +35,13 @@ function dirPrefixOf(filePath) {
   if (!filePath) return '';
   const lastSep = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
   return lastSep > 0 ? filePath.slice(0, lastSep) : '';
+}
+
+function toDateTimeLocalValue(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
 }
 
 function InfoRow({ icon, label, value, children }) {
@@ -64,6 +72,11 @@ export function AssetDetail({
 }) {
   const [failedPreviewKey, setFailedPreviewKey] = useState(null);
   const [showMetadata, setShowMetadata] = useState(false);
+  const [timeOverride, setTimeOverride] = useState(null);
+  const [editingTime, setEditingTime] = useState(false);
+  const [timeDraft, setTimeDraft] = useState('');
+  const [timeSaving, setTimeSaving] = useState(false);
+  const [timeError, setTimeError] = useState('');
 
   if (!asset) {
     return (
@@ -78,7 +91,10 @@ export function AssetDetail({
     );
   }
 
-  const isVideo = String(asset.mime_type || '').toLowerCase().startsWith('video/');
+  const effectiveAsset = timeOverride?.hash === asset.hash ? { ...asset, ...timeOverride } : asset;
+  const capturedAt = captureTimeOf(effectiveAsset);
+  const timelineAt = timelineTimeOf(effectiveAsset);
+  const isVideo = String(effectiveAsset.mime_type || '').toLowerCase().startsWith('video/');
   const typeLabel = asset.ext?.toUpperCase() || asset.mime_type?.split('/')[1]?.toUpperCase() || 'UNKNOWN';
   const previewSrc = apiUrl(
     isVideo
@@ -105,12 +121,41 @@ export function AssetDetail({
   };
 
   const handleDateFilter = (type) => {
-    if (!asset.taken_at) return;
-    const d = new Date(asset.taken_at);
+    if (!timelineAt) return;
+    const d = new Date(timelineAt);
     if (type === 'from') {
       onApplyFilter?.({ from: d.setHours(0, 0, 0, 0) });
     } else {
       onApplyFilter?.({ to: d.setHours(23, 59, 59, 999) });
+    }
+  };
+
+  const saveManualTime = async (value) => {
+    setTimeSaving(true);
+    setTimeError('');
+    try {
+      let payload;
+      if (value === null) {
+        payload = { capturedAt: null };
+      } else {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) throw new Error('请输入有效日期和时间');
+        payload = {
+          capturedAt: date.getTime(),
+          capturedLocalMs: Date.UTC(
+            date.getFullYear(), date.getMonth(), date.getDate(),
+            date.getHours(), date.getMinutes(), date.getSeconds(), date.getMilliseconds()
+          ),
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
+        };
+      }
+      const updated = await updateAssetTime(asset.hash, payload);
+      setTimeOverride(updated);
+      setEditingTime(false);
+    } catch (error) {
+      setTimeError(error?.response?.data?.error || error?.message || '保存失败');
+    } finally {
+      setTimeSaving(false);
     }
   };
 
@@ -277,11 +322,46 @@ export function AssetDetail({
 
           <InfoRow icon={HardDrive} label="文件大小" value={formatBytes(asset.size)} />
 
-          <InfoRow icon={Calendar} label="时间">
+          <InfoRow icon={Calendar} label="拍摄时间">
             <div className="text-sm text-gray-900">
-              {formatDate(asset.taken_at)}
+              {capturedAt ? formatCaptureDateTime(effectiveAsset, 'zh-CN') : '未知'}
             </div>
-            {asset.taken_at && (
+            <div className="mt-1 text-[11px] text-gray-500">
+              {timeSourceLabel(effectiveAsset)}
+              {effectiveAsset.time_confidence ? ` · ${effectiveAsset.time_confidence === 'high' ? '高可信' : '需谨慎'}` : ''}
+              {effectiveAsset.time_zone ? ` · ${effectiveAsset.time_zone}` : ''}
+            </div>
+            {!capturedAt && timelineAt ? (
+              <div className="mt-1 text-[11px] text-amber-700">排序暂用文件时间：{formatDate(timelineAt)}</div>
+            ) : null}
+            {editingTime ? (
+              <div className="mt-2 space-y-2">
+                <input
+                  type="datetime-local"
+                  value={timeDraft}
+                  onChange={(event) => setTimeDraft(event.target.value)}
+                  className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs"
+                />
+                {timeError ? <div className="text-[11px] text-red-600">{timeError}</div> : null}
+                <div className="flex flex-wrap gap-1.5">
+                  <button className="px-2 py-1 rounded border text-[11px]" disabled={!timeDraft || timeSaving} onClick={() => saveManualTime(timeDraft)}>保存</button>
+                  <button className="px-2 py-1 rounded border text-[11px]" disabled={timeSaving} onClick={() => saveManualTime(null)}>标记为未知</button>
+                  <button className="px-2 py-1 rounded border text-[11px]" disabled={timeSaving} onClick={() => setEditingTime(false)}>取消</button>
+                </div>
+              </div>
+            ) : (
+              <button
+                className="mt-2 px-2 py-1 rounded border border-gray-200 text-[11px] text-gray-700 hover:bg-gray-50"
+                onClick={() => {
+                  setTimeDraft(capturedAt ? toDateTimeLocalValue(capturedAt) : '');
+                  setTimeError('');
+                  setEditingTime(true);
+                }}
+              >
+                修改时间
+              </button>
+            )}
+            {timelineAt && (
               <div className="flex gap-2 mt-2">
                 <button
                   className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 hover:border-gray-300 transition-colors cursor-pointer"

@@ -23,7 +23,7 @@ if (filter === 'media') {
   `;
 }
 
-const timeExpr = `COALESCE(a.taken_at, f.mtime_ms, f.discovered_at, f.scanned_at)`;
+const timeExpr = `COALESCE(a.captured_at, f.birthtime_ms, f.mtime_ms, f.discovered_at, f.scanned_at)`;
 
 if (!where) where = 'WHERE 1=1';
 

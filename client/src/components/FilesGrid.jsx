@@ -6,6 +6,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import { apiUrl, createAlbum, getAlbums, getFilesUnified, getFilesBatch, getFilesDateIndex, organizeAssets, updateAssetsStatusBatch } from '../api/client';
 import { useResponsiveGridMetrics } from '../hooks/useResponsiveGridMetrics';
 import { GRID_PAGE_SIZE } from '../utils/gridLayout';
+import { formatTimelineDate } from '../utils/assetTime';
 import { updateItemSelection, updateRangeSelection } from '../utils/gridSelection';
 import { AssetThumbCard } from './AssetThumbCard';
 import { SelectedDrawer } from './SelectedDrawer';
@@ -655,7 +656,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
                 }
                 const isPlaceholder = !file;
                 const name = isPlaceholder ? '—' : (file.file_name || file.path);
-                const dateText = !isPlaceholder && file.display_time ? new Date(file.display_time).toLocaleDateString() : null;
+                const dateText = isPlaceholder ? null : formatTimelineDate(file);
                 const thumbV = file ? (file.asset_thumb_updated_at || file.asset_updated_at || 0) : 0;
                 const isSelected = !isPlaceholder && selectedIds.has(file.id);
                 const organizedTo = !isPlaceholder ? (file.organized_to || null) : null;

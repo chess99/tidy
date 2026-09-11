@@ -76,7 +76,7 @@ async function handleClipEnrich(ctx) {
       ) AS path
       FROM assets a
       WHERE ${where}
-      ORDER BY a.taken_at DESC, a.hash ASC
+      ORDER BY a.captured_at DESC, a.hash ASC
       LIMIT 200000
       `
     )

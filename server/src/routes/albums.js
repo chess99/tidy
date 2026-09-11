@@ -37,7 +37,7 @@ router.get('/', (req, res) => {
         FROM album_assets aa2
         JOIN assets a2 ON a2.hash = aa2.hash
         WHERE aa2.album_id = al.id
-        ORDER BY COALESCE(a2.taken_at, a2.updated_at, 0) DESC, COALESCE(aa2.added_at, 0) DESC
+        ORDER BY COALESCE(a2.captured_at, a2.updated_at, 0) DESC, COALESCE(aa2.added_at, 0) DESC
         LIMIT 1
       ) AS cover_hash
     FROM albums al
@@ -87,7 +87,7 @@ router.get('/:id/assets', (req, res) => {
     FROM album_assets aa
     JOIN assets a ON a.hash = aa.hash
     WHERE aa.album_id = ?
-    ORDER BY COALESCE(a.taken_at, a.updated_at, 0) DESC, COALESCE(aa.added_at, 0) DESC
+    ORDER BY COALESCE(a.captured_at, a.updated_at, 0) DESC, COALESCE(aa.added_at, 0) DESC
     LIMIT ? OFFSET ?
   `).all(id, limit, offset);
 
@@ -118,6 +118,13 @@ router.get('/:id/assets', (req, res) => {
 
     return {
       ...r,
+      timeline_at: r.captured_at ?? files
+        .map((file) => {
+          if (file.birthtime_ms && file.mtime_ms) return Math.min(file.birthtime_ms, file.mtime_ms);
+          return file.birthtime_ms ?? file.mtime_ms ?? null;
+        })
+        .filter(Number.isFinite)
+        .sort((a, b) => a - b)[0] ?? null,
       sample_ext: ext || null,
       metadata: safeJsonParse(r.metadata),
       files: files || [],

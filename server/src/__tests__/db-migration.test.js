@@ -1,5 +1,6 @@
 const Database = require('better-sqlite3');
 const { applyMigrationsForTest } = require('../db');
+const schema = require('../db/schema');
 
 describe('db migration shape', () => {
   test('file_ops supports quarantine and retry metadata', () => {
@@ -32,6 +33,17 @@ describe('db migration shape', () => {
     const cols = db.prepare('PRAGMA table_info(file_ops)').all().map((r) => r.name);
     expect(cols).toContain('attempts');
     expect(cols).toContain('last_attempt_at');
+    const assetCols = db.prepare('PRAGMA table_info(assets)').all().map((r) => r.name);
+    expect(assetCols).not.toContain('taken_at');
+    expect(assetCols).toEqual(expect.arrayContaining([
+      'captured_at',
+      'captured_local_ms',
+      'time_source',
+      'time_tag',
+      'time_confidence',
+      'time_locked',
+      'time_scanned_at',
+    ]));
   });
 
   test('assets and files get hash_algo defaults for legacy rows', () => {
@@ -54,5 +66,19 @@ describe('db migration shape', () => {
 
     expect(db.prepare('SELECT hash_algo FROM assets WHERE hash = ?').get('legacy-md5').hash_algo).toBe('md5');
     expect(db.prepare('SELECT hash_algo FROM files WHERE hash = ?').get('legacy-md5').hash_algo).toBe('md5');
+  });
+
+  test('queues one metadata refresh when automatic asset times are stale', () => {
+    const db = new Database(':memory:');
+    db.exec(schema);
+    db.prepare(`INSERT INTO assets (hash, time_locked, time_metadata_version) VALUES ('stale', 0, 0)`).run();
+    db.prepare(`INSERT INTO files (path, hash, missing) VALUES ('/tmp/stale.jpg', 'stale', 0)`).run();
+
+    applyMigrationsForTest(db);
+    applyMigrationsForTest(db);
+
+    expect(db.prepare(`SELECT type, mode, status FROM jobs WHERE type = 'enrich'`).all()).toEqual([
+      { type: 'enrich', mode: 'missing', status: 'queued' },
+    ]);
   });
 });

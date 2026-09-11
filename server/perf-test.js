@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const exifr = require('exifr');
+const { extractMetadata, closeMetadataReader } = require('./src/scanner/metadata');
 
 const TEST_DIR = process.argv[2] || 'Z:\\photos';
 const SAMPLES = 10;
@@ -59,10 +59,9 @@ async function runTest() {
   // Test EXIF
   await measure('EXIF Extraction', async () => {
     for (const f of files) {
-      await exifr.parse(f, { tiff: true, ifd0: true, exif: true });
+      await extractMetadata(f);
     }
   });
 }
 
-runTest();
-
+runTest().finally(closeMetadataReader);

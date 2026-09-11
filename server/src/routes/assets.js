@@ -43,6 +43,25 @@ function safeJsonParse(v) {
   }
 }
 
+function fileTimelineTime(file) {
+  if (!file) return null;
+  if (file.birthtime_ms && file.mtime_ms) return Math.min(file.birthtime_ms, file.mtime_ms);
+  return file.birthtime_ms ?? file.mtime_ms ?? file.discovered_at ?? file.scanned_at ?? null;
+}
+
+function withTimelineTime(asset, files = null) {
+  const fallback = Array.isArray(files)
+    ? files.map(fileTimelineTime).filter(Number.isFinite).sort((a, b) => a - b)[0] ?? null
+    : asset.timeline_at ?? null;
+  return {
+    ...asset,
+    timeline_at: asset.captured_at ?? fallback ?? asset.updated_at ?? null,
+    timeline_time_source: asset.captured_at != null
+      ? (asset.time_source || 'embedded')
+      : (fallback != null ? 'filesystem' : 'index'),
+  };
+}
+
 function parseCsvParam(v) {
   if (!v) return [];
   return String(v)
@@ -91,7 +110,18 @@ router.get('/', (req, res) => {
   // For now return all
   const statusFilter = req.query.status;
   
-  let query = 'SELECT * FROM assets';
+  let query = `
+    SELECT a.*,
+      COALESCE(
+        a.captured_at,
+        (SELECT MIN(CASE
+          WHEN f.birthtime_ms IS NOT NULL AND f.birthtime_ms > 0 AND f.mtime_ms IS NOT NULL THEN MIN(f.birthtime_ms, f.mtime_ms)
+          ELSE COALESCE(f.birthtime_ms, f.mtime_ms)
+        END) FROM files f WHERE f.hash = a.hash),
+        a.updated_at
+      ) AS timeline_at
+    FROM assets a
+  `;
   const params = [];
 
   if (statusFilter) {
@@ -99,7 +129,7 @@ router.get('/', (req, res) => {
     params.push(statusFilter);
   }
 
-  query += ' ORDER BY taken_at DESC LIMIT ? OFFSET ?';
+  query += ' ORDER BY timeline_at DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
   const assets = db.prepare(query).all(...params);
@@ -109,7 +139,7 @@ router.get('/', (req, res) => {
 
   // Parse metadata
   const results = assets.map(a => ({
-    ...a,
+    ...withTimelineTime(a),
     metadata: safeJsonParse(a.metadata)
   }));
 
@@ -126,10 +156,21 @@ router.get('/batch', (req, res) => {
   if (hashes.length === 0) return res.json({ data: [] });
 
   const { clause, params } = makeInClause(hashes);
-  const rows = db.prepare(`SELECT * FROM assets WHERE hash IN ${clause}`).all(...params);
+  const rows = db.prepare(`
+    SELECT a.*,
+      COALESCE(
+        a.captured_at,
+        (SELECT MIN(CASE
+          WHEN f.birthtime_ms IS NOT NULL AND f.birthtime_ms > 0 AND f.mtime_ms IS NOT NULL THEN MIN(f.birthtime_ms, f.mtime_ms)
+          ELSE COALESCE(f.birthtime_ms, f.mtime_ms)
+        END) FROM files f WHERE f.hash = a.hash),
+        a.updated_at
+      ) AS timeline_at
+    FROM assets a WHERE a.hash IN ${clause}
+  `).all(...params);
   res.json({
     data: rows.map(a => ({
-      ...a,
+      ...withTimelineTime(a),
       metadata: safeJsonParse(a.metadata),
     }))
   });
@@ -167,13 +208,54 @@ router.get('/:hash', (req, res) => {
     .get(hash);
 
   res.json({
-    ...asset,
+    ...withTimelineTime(asset, files),
     metadata: safeJsonParse(asset.metadata),
     files,
     phash: phashInfo?.phash || null,
     phash_status: phashInfo?.phash_status || null,
     clip_status: clipInfo?.has_clip ? 'ready' : null,
   });
+});
+
+// Set or explicitly clear a trusted capture time. Manual values survive metadata refreshes.
+router.patch('/:hash/time', (req, res) => {
+  const db = getDB();
+  const { hash } = req.params;
+  const asset = db.prepare('SELECT hash FROM assets WHERE hash = ?').get(hash);
+  if (!asset) return res.status(404).json({ error: 'Asset not found' });
+
+  const capturedAt = req.body?.capturedAt;
+  const capturedLocalMs = req.body?.capturedLocalMs;
+  const timeZone = req.body?.timeZone == null ? null : String(req.body.timeZone).trim().slice(0, 100) || null;
+  if (capturedAt !== null && !Number.isFinite(Number(capturedAt))) {
+    return res.status(400).json({ error: 'capturedAt must be a millisecond timestamp or null' });
+  }
+  if (capturedAt !== null && capturedLocalMs != null && !Number.isFinite(Number(capturedLocalMs))) {
+    return res.status(400).json({ error: 'capturedLocalMs must be a millisecond timestamp' });
+  }
+
+  const ts = Date.now();
+  const absolute = capturedAt === null ? null : Number(capturedAt);
+  const local = capturedAt === null ? null : Number(capturedLocalMs ?? capturedAt);
+  db.prepare(`
+    UPDATE assets
+    SET captured_at = ?,
+        captured_local_ms = ?,
+        time_zone = ?,
+        time_source = ?,
+        time_tag = NULL,
+        time_confidence = ?,
+        time_zone_inferred = 0,
+        time_locked = 1,
+        time_scanned_at = ?,
+        updated_at = ?
+    WHERE hash = ?
+  `).run(absolute, local, timeZone, capturedAt === null ? 'manual_unknown' : 'manual', 'high', ts, ts, hash);
+  insertChange(db, 'asset', hash, capturedAt === null ? 'time:manual_unknown' : 'time:manual');
+
+  const updated = db.prepare('SELECT * FROM assets WHERE hash = ?').get(hash);
+  const files = db.prepare('SELECT * FROM files WHERE hash = ?').all(hash);
+  return res.json({ ...withTimelineTime(updated, files), metadata: safeJsonParse(updated.metadata) });
 });
 
 // Update asset (e.g. trash it)
