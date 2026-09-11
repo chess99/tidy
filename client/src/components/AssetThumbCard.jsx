@@ -64,7 +64,7 @@ export function AssetThumbCard({
         !showCursorRing && showSelectedRing ? 'ring-2 ring-emerald-500' : null,
         showCursorRing && showSelectedRing ? 'outline outline-2 outline-emerald-400 outline-offset-[-2px]' : null
       )}
-      onClick={() => (isPlaceholder ? null : onClick?.())}
+      onClick={(event) => (isPlaceholder ? null : onClick?.(event))}
     >
       <div className="relative w-full overflow-hidden bg-gray-200" style={thumbnailStyle}>
         <div className="absolute inset-0">

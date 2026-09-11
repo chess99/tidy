@@ -2,17 +2,24 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
 import { Check, ChevronsUpDown } from 'lucide-react';
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { apiUrl, createAlbum, getAlbums, getFilesUnified, getFilesBatch, getFilesDateIndex, organizeAssets, updateAssetsStatusBatch } from '../api/client';
 import { useResponsiveGridMetrics } from '../hooks/useResponsiveGridMetrics';
 import { GRID_PAGE_SIZE } from '../utils/gridLayout';
+import { updateItemSelection, updateRangeSelection } from '../utils/gridSelection';
 import { AssetThumbCard } from './AssetThumbCard';
 import { SelectedDrawer } from './SelectedDrawer';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 
-export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts, cursorFileId, onMetaChange, brushHint }, ref) {
+function isEditableTarget(element) {
+  if (!element) return false;
+  const tag = String(element.tagName || '').toUpperCase();
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!element.isContentEditable;
+}
+
+export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts, cursorFileId, onMetaChange, viewerOpen = false }, ref) {
   "use no memo";
   const parentRef = useRef(null);
   const overlayRef = useRef(null);
@@ -24,9 +31,10 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
   });
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
-  const selectedIdsRef = useRef(selectedIds);
+  const selectionAnchorIndexRef = useRef(null);
+  const selectionRequestIdRef = useRef(0);
   const [showSelected, setShowSelected] = useState(false);
-  const [showSelectAllTooLarge, setShowSelectAllTooLarge] = useState(false);
+  const [selectionLimit, setSelectionLimit] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [addAlbumId, setAddAlbumId] = useState('');
   const [newAlbumName, setNewAlbumName] = useState('');
@@ -72,10 +80,6 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
     rowVirtualizer.measure();
   }, [rowVirtualizer, rowHeight, COLUMNS]);
 
-  useEffect(() => {
-    selectedIdsRef.current = selectedIds;
-  }, [selectedIds]);
-
   useImperativeHandle(
     ref,
     () => ({
@@ -83,31 +87,6 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
         if (!Number.isFinite(globalIndex)) return;
         const rowIndex = Math.floor(globalIndex / COLUMNS);
         rowVirtualizer.scrollToIndex(rowIndex, { align: 'center' });
-      },
-      getIsSelected: (fileId) => {
-        const id = Number(fileId);
-        if (!Number.isFinite(id)) return false;
-        return !!selectedIdsRef.current?.has?.(id);
-      },
-      setSelected: (fileId, nextBool) => {
-        const id = Number(fileId);
-        if (!Number.isFinite(id)) return;
-        setSelectedIds((prev) => {
-          const next = new Set(prev);
-          if (nextBool) next.add(id);
-          else next.delete(id);
-          return next;
-        });
-      },
-      toggleSelected: (fileId) => {
-        const id = Number(fileId);
-        if (!Number.isFinite(id)) return;
-        setSelectedIds((prev) => {
-          const next = new Set(prev);
-          if (next.has(id)) next.delete(id);
-          else next.add(id);
-          return next;
-        });
       },
     }),
     [rowVirtualizer, COLUMNS]
@@ -418,49 +397,150 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
 
   const canSelectAll = total > 0 && total <= SELECT_ALL_LIMIT;
 
-  const fetchAllFilteredIds = async () => {
+  const fetchFilteredPage = useCallback((page) => qc.fetchQuery({
+    queryKey: ['files', filesQueryOpts, page],
+    queryFn: ({ signal }) => getFilesUnified(page, LIMIT, filesQueryOpts, { signal }),
+    staleTime: 30_000,
+  }), [LIMIT, filesQueryOpts, qc]);
+
+  const fetchAllFilteredIds = useCallback(async () => {
     if (!total) return [];
     const pages = Math.ceil(total / LIMIT);
     const ids = [];
     for (let p = 1; p <= pages; p++) {
-      const res = await qc.fetchQuery({
-        queryKey: ['files', filesQueryOpts, p],
-        queryFn: ({ signal }) => getFilesUnified(p, LIMIT, filesQueryOpts, { signal }),
-        staleTime: 30_000,
-      });
+      const res = await fetchFilteredPage(p);
       for (const row of res?.data || []) ids.push(row.id);
       if (ids.length >= total) break;
     }
     return ids.slice(0, total);
-  };
+  }, [LIMIT, fetchFilteredPage, total]);
 
-  const onSelectAll = async () => {
+  const onSelectAll = useCallback(async () => {
     if (!total) return;
     if (!canSelectAll) {
-      setShowSelectAllTooLarge(true);
+      setSelectionLimit({ kind: 'all', count: total });
       return;
     }
-    const ids = await fetchAllFilteredIds();
-    setSelectedIds(new Set(ids));
-  };
+    const requestId = ++selectionRequestIdRef.current;
+    try {
+      const ids = await fetchAllFilteredIds();
+      if (selectionRequestIdRef.current !== requestId) return;
+      setSelectedIds(new Set(ids));
+    } catch {
+      if (selectionRequestIdRef.current === requestId) {
+        setSelectionLimit({ kind: 'error', message: '加载当前筛选结果失败，请重试。' });
+      }
+    }
+  }, [canSelectAll, fetchAllFilteredIds, total]);
 
   const onInvertAll = async () => {
     if (!total) return;
     if (!canSelectAll) {
-      setShowSelectAllTooLarge(true);
+      setSelectionLimit({ kind: 'all', count: total });
       return;
     }
-    const ids = await fetchAllFilteredIds();
-    setSelectedIds((prev) => {
-      const next = new Set();
-      for (const id of ids) {
-        if (!prev.has(id)) next.add(id);
+    const requestId = ++selectionRequestIdRef.current;
+    try {
+      const ids = await fetchAllFilteredIds();
+      if (selectionRequestIdRef.current !== requestId) return;
+      setSelectedIds((prev) => {
+        const next = new Set();
+        for (const id of ids) {
+          if (!prev.has(id)) next.add(id);
+        }
+        return next;
+      });
+    } catch {
+      if (selectionRequestIdRef.current === requestId) {
+        setSelectionLimit({ kind: 'error', message: '加载当前筛选结果失败，请重试。' });
       }
-      return next;
-    });
+    }
   };
 
-  const onClearSelection = () => setSelectedIds(new Set());
+  const onClearSelection = () => {
+    selectionRequestIdRef.current++;
+    selectionAnchorIndexRef.current = null;
+    setSelectedIds(new Set());
+  };
+
+  const selectRange = useCallback(async ({ fromIndex, toIndex, additive }) => {
+    const lower = Math.max(0, Math.min(fromIndex, toIndex));
+    const upper = Math.min(total - 1, Math.max(fromIndex, toIndex));
+    const count = upper - lower + 1;
+    if (count <= 0) return;
+    if (count > SELECT_ALL_LIMIT) {
+      setSelectionLimit({ kind: 'range', count });
+      return;
+    }
+
+    const requestId = ++selectionRequestIdRef.current;
+    const firstPage = Math.floor(lower / LIMIT) + 1;
+    const lastPage = Math.floor(upper / LIMIT) + 1;
+    const pageNumbers = [];
+    for (let page = firstPage; page <= lastPage; page++) pageNumbers.push(page);
+    let responses;
+    try {
+      responses = await Promise.all(pageNumbers.map((page) => fetchFilteredPage(page)));
+    } catch {
+      if (selectionRequestIdRef.current === requestId) {
+        setSelectionLimit({ kind: 'error', message: '加载连续选择范围失败，请重试。' });
+      }
+      return;
+    }
+    if (selectionRequestIdRef.current !== requestId) return;
+
+    const rowsByPage = new Map(pageNumbers.map((page, index) => [page, responses[index]?.data || []]));
+    const ids = [];
+    for (let globalIndex = lower; globalIndex <= upper; globalIndex++) {
+      const page = Math.floor(globalIndex / LIMIT) + 1;
+      const indexInPage = globalIndex % LIMIT;
+      const id = rowsByPage.get(page)?.[indexInPage]?.id;
+      if (id != null) ids.push(id);
+    }
+
+    setSelectedIds((previous) => updateRangeSelection(previous, ids, { additive }));
+  }, [LIMIT, fetchFilteredPage, total]);
+
+  const onCardClick = (event, file, globalIndex) => {
+    if (!file) return;
+    onFileClick?.(file, globalIndex);
+
+    const additive = !!(event?.ctrlKey || event?.metaKey);
+    if (event?.shiftKey && Number.isFinite(selectionAnchorIndexRef.current)) {
+      void selectRange({
+        fromIndex: selectionAnchorIndexRef.current,
+        toIndex: globalIndex,
+        additive,
+      });
+      return;
+    }
+
+    selectionRequestIdRef.current++;
+    selectionAnchorIndexRef.current = globalIndex;
+    setSelectedIds((previous) => updateItemSelection(previous, file.id, { additive }));
+  };
+
+  const onSelectionCircleClick = (file, globalIndex) => {
+    if (!file) return;
+    selectionRequestIdRef.current++;
+    selectionAnchorIndexRef.current = globalIndex;
+    onFileClick?.(file, globalIndex);
+    setSelectedIds((previous) => updateItemSelection(previous, file.id, { additive: true }));
+  };
+
+  useEffect(() => {
+    if (viewerOpen) return undefined;
+    const onKeyDown = (event) => {
+      if (event.defaultPrevented || isEditableTarget(document.activeElement)) return;
+      if (!(event.ctrlKey || event.metaKey) || String(event.key).toLowerCase() !== 'a') return;
+      if (!total) return;
+      event.preventDefault();
+      void onSelectAll();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onSelectAll, total, viewerOpen]);
 
   const submitOrganize = async () => {
     if (!canOrganize) return;
@@ -512,20 +592,6 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
               )}
             />
           </button>
-
-          {brushHint ? (
-            <div
-              className={clsx(
-                'absolute left-0 top-full mt-2 px-3 py-2 rounded-lg border shadow-sm backdrop-blur pointer-events-none',
-                'text-xs font-semibold',
-                brushHint.targetSelected
-                  ? 'bg-emerald-50/90 text-emerald-700 border-emerald-200'
-                  : 'bg-orange-50/90 text-orange-700 border-orange-200'
-              )}
-            >
-              刷子模式：{brushHint.targetSelected ? '批量选中' : '批量取消'}（按住 B + 方向键）
-            </div>
-          ) : null}
 
           {showJump ? (
             <div
@@ -613,21 +679,11 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
                     dimmed={false}
                     selected={isSelected}
                     cursorFocused={cursorFocused}
-                    onClick={() => onFileClick?.(file, globalIndex)}
+                    onClick={(event) => onCardClick(event, file, globalIndex)}
                     onToggleSelected={
                       isPlaceholder
                         ? undefined
-                        : () => {
-                            // If user is interacting with this card, also move cursor focus here
-                            // (so keyboard navigation continues from the last-touched item).
-                            onFileClick?.(file, globalIndex);
-                            setSelectedIds((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(file.id)) next.delete(file.id);
-                              else next.add(file.id);
-                              return next;
-                            });
-                          }
+                        : () => onSelectionCircleClick(file, globalIndex)
                     }
                     badges={[
                       !isPlaceholder && organizedTo
@@ -695,7 +751,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
               className="px-3 py-2 rounded-lg bg-white text-gray-800 border border-gray-200 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
               onClick={onSelectAll}
               disabled={!total}
-              title={canSelectAll ? '全选当前筛选结果' : `结果过多（>${SELECT_ALL_LIMIT}）请进一步筛选`}
+              title={canSelectAll ? '全选当前筛选结果（Ctrl/Command+A）' : `结果过多（>${SELECT_ALL_LIMIT}）请进一步筛选`}
             >
               全选
             </button>
@@ -777,15 +833,28 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
         }}
       />
 
-      <Dialog open={showSelectAllTooLarge} onOpenChange={setShowSelectAllTooLarge}>
+      <Dialog open={!!selectionLimit} onOpenChange={(open) => !open && setSelectionLimit(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>结果过多，无法一键全选</DialogTitle>
+            <DialogTitle>
+              {selectionLimit?.kind === 'error'
+                ? '选择失败'
+                : selectionLimit?.kind === 'range'
+                  ? '选择范围过大'
+                  : '结果过多，无法一键全选'}
+            </DialogTitle>
           </DialogHeader>
           <div className="text-sm text-muted-foreground leading-6">
-            当前筛选结果共有 <span className="font-semibold tabular-nums">{total}</span> 项，超过全选上限
-            <span className="font-semibold tabular-nums"> {SELECT_ALL_LIMIT}</span>。
-            <div className="mt-2">建议进一步收窄筛选（例如增加后缀/日期/路径），再执行全选。</div>
+            {selectionLimit?.kind === 'error' ? (
+              selectionLimit.message
+            ) : (
+              <>
+                {selectionLimit?.kind === 'range' ? '当前连续范围' : '当前筛选结果'}共有{' '}
+                <span className="font-semibold tabular-nums">{selectionLimit?.count || 0}</span> 项，超过选择上限
+                <span className="font-semibold tabular-nums"> {SELECT_ALL_LIMIT}</span>。
+                <div className="mt-2">建议进一步收窄筛选（例如增加后缀/日期/路径），再执行全选。</div>
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>

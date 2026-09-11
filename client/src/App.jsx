@@ -389,7 +389,7 @@ function Main() {
               ref={filesGridRef}
               queryOpts={filesQuery}
               cursorFileId={filesCtrl.cursorFileId}
-              brushHint={filesCtrl.brushHint}
+              viewerOpen={viewerOpen}
               onMetaChange={filesCtrl.onMetaChange}
               onFileClick={filesCtrl.onFileClick}
             />
