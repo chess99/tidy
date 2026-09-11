@@ -75,7 +75,7 @@ $$
   - `clip_embeddings`：保存 embedding（BLOB）
   - `clip_index_meta`：保存索引元信息
 - **索引（HNSW）**
-  - 索引文件：`DATA_DIR/index/clip_hnsw.json`
+  - 索引文件：`DATA_DIR/index/clip_hnsw.bin`（V8 structured binary，避免高维大图库 JSON 序列化超过字符串上限）
   - 代码：`server/src/services/clipIndex.js`
 
 ### 3.3 jobs：补算与重建

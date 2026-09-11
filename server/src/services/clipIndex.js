@@ -1,5 +1,6 @@
 const fs = require('fs-extra');
 const path = require('path');
+const v8 = require('v8');
 const { getDB } = require('../db');
 const { DATA_DIR, CLIP_MODEL_ID } = require('../config');
 const { clipImageEmbed } = require('./aiClient');
@@ -11,7 +12,29 @@ function getIndexDir() {
 }
 
 function getIndexPath() {
+  return path.join(getIndexDir(), 'clip_hnsw.bin');
+}
+
+function getLegacyIndexPath() {
   return path.join(getIndexDir(), 'clip_hnsw.json');
+}
+
+async function writeIndex(indexPath, index) {
+  const temporaryPath = `${indexPath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    // JSON serialization exceeds V8's maximum string size for 1024-dimensional
+    // libraries of this size. Structured binary serialization avoids the giant
+    // intermediate string while preserving the hnsw package's plain data shape.
+    await fs.writeFile(temporaryPath, v8.serialize(index.toJSON()));
+    await fs.move(temporaryPath, indexPath, { overwrite: true });
+  } finally {
+    await fs.remove(temporaryPath).catch(() => {});
+  }
+}
+
+async function readIndex(indexPath, HNSW) {
+  const serialized = await fs.readFile(indexPath);
+  return HNSW.fromJSON(v8.deserialize(serialized));
 }
 
 let _hnswModule = null;
@@ -139,7 +162,7 @@ async function rebuildIndex({ model = CLIP_MODEL_ID, m = 16, efConstruction = 20
   }
   await index.buildIndex(data);
 
-  await fs.writeJson(indexPath, index.toJSON());
+  await writeIndex(indexPath, index);
   _index = index;
   _indexInfo = { model, dim, normalized, path: indexPath, builtAt: Date.now(), fileCount: rows.length };
 
@@ -152,6 +175,7 @@ async function rebuildIndex({ model = CLIP_MODEL_ID, m = 16, efConstruction = 20
     params_json: JSON.stringify({ m, efConstruction, metric: 'cosine', engine: 'hnsw' }),
     index_path: indexPath,
   });
+  await fs.remove(getLegacyIndexPath());
 
   return { ok: true, model, dim, normalized, fileCount: rows.length, indexPath };
 }
@@ -192,8 +216,7 @@ async function ensureIndexLoaded({ model = CLIP_MODEL_ID } = {}) {
   }
 
   const { HNSW } = await loadHnsw();
-  const indexJson = await fs.readJson(indexPath);
-  const index = HNSW.fromJSON(indexJson);
+  const index = await readIndex(indexPath, HNSW);
   _index = index;
   _indexInfo = {
     model,
