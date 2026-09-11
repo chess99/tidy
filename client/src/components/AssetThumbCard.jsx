@@ -27,6 +27,7 @@ export function AssetThumbCard({
   bottomSecondaryTitle,
   bottomContent,
   onClick,
+  onDoubleClick,
   isPlaceholder = false,
   mediaKind = 'file',
   thumbnailHeight,
@@ -64,7 +65,14 @@ export function AssetThumbCard({
         !showCursorRing && showSelectedRing ? 'ring-2 ring-emerald-500' : null,
         showCursorRing && showSelectedRing ? 'outline outline-2 outline-emerald-400 outline-offset-[-2px]' : null
       )}
-      onClick={(event) => (isPlaceholder ? null : onClick?.(event))}
+      onClick={(event) => {
+        if (isPlaceholder || (event.detail > 1 && typeof onDoubleClick === 'function')) return;
+        onClick?.(event);
+      }}
+      onDoubleClick={(event) => {
+        if (isPlaceholder) return;
+        onDoubleClick?.(event);
+      }}
     >
       <div className="relative w-full overflow-hidden bg-gray-200" style={thumbnailStyle}>
         <div className="absolute inset-0">
@@ -111,7 +119,12 @@ export function AssetThumbCard({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
+              if (e.detail > 1) return;
               onToggleSelected();
+            }}
+            onDoubleClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
             }}
           >
             {selected ? '✓' : ''}

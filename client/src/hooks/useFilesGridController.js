@@ -38,6 +38,8 @@ export function useFilesGridController({
   const lastKnownCursorIndexRef = useRef(null);
   const cursorIndexRef = useRef(cursorIndex);
   const cursorFileIdRef = useRef(cursorFileId);
+  const clickRequestIdRef = useRef(0);
+  const assetLoadsRef = useRef(new Map());
 
   const filesQueryKey = useMemo(() => {
     const o = { ...(filesQuery || {}) };
@@ -53,11 +55,25 @@ export function useFilesGridController({
   }, [filesQueryKey, getFiles, qc]);
 
   const reset = () => {
+    clickRequestIdRef.current++;
     setCursorIndex(null);
     setCursorFileId(null);
     setCursorTotal(null);
     lastKnownCursorIndexRef.current = null;
   };
+
+  const loadAsset = useCallback((hash) => {
+    const key = String(hash || '');
+    if (!key) return Promise.resolve(null);
+    const existing = assetLoadsRef.current.get(key);
+    if (existing) return existing;
+
+    const pending = Promise.resolve(getAsset(key)).finally(() => {
+      if (assetLoadsRef.current.get(key) === pending) assetLoadsRef.current.delete(key);
+    });
+    assetLoadsRef.current.set(key, pending);
+    return pending;
+  }, [getAsset]);
 
   const navigateToIndex = useCallback(async (nextIndex, { scroll = true } = {}) => {
     if (!Number.isFinite(nextIndex)) return;
@@ -170,14 +186,17 @@ export function useFilesGridController({
 
   const onFileClick = async (file, globalIndex) => {
     if (!file?.hash) return;
+    const requestId = ++clickRequestIdRef.current;
     if (Number.isFinite(globalIndex)) setCursorIndex(globalIndex);
     setCursorFileId(file.id);
     lastKnownCursorIndexRef.current = Number.isFinite(globalIndex) ? globalIndex : lastKnownCursorIndexRef.current;
     try {
-      const asset = await getAsset(file.hash);
+      const asset = await loadAsset(file.hash);
+      if (clickRequestIdRef.current !== requestId) return null;
       setSelectedAsset(asset);
+      return asset;
     } catch {
-      // ignore
+      return null;
     }
   };
 

@@ -392,6 +392,10 @@ function Main() {
               viewerOpen={viewerOpen}
               onMetaChange={filesCtrl.onMetaChange}
               onFileClick={filesCtrl.onFileClick}
+              onFileDoubleClick={async (file, globalIndex) => {
+                const asset = await filesCtrl.onFileClick(file, globalIndex);
+                if (asset) setViewerOpen(true);
+              }}
             />
           ) : (
             <AlbumsView

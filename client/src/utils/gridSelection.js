@@ -12,3 +12,7 @@ export function updateRangeSelection(previous, fileIds, { additive = false } = {
   for (const fileId of fileIds) next.add(fileId);
   return next;
 }
+
+export function shouldOpenViewerFromDoubleClick(event) {
+  return !(event?.ctrlKey || event?.metaKey || event?.shiftKey);
+}

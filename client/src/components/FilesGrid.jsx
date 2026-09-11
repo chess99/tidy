@@ -7,7 +7,7 @@ import { apiUrl, createAlbum, getAlbums, getFilesUnified, getFilesBatch, getFile
 import { useResponsiveGridMetrics } from '../hooks/useResponsiveGridMetrics';
 import { GRID_PAGE_SIZE } from '../utils/gridLayout';
 import { formatTimelineDate } from '../utils/assetTime';
-import { updateItemSelection, updateRangeSelection } from '../utils/gridSelection';
+import { shouldOpenViewerFromDoubleClick, updateItemSelection, updateRangeSelection } from '../utils/gridSelection';
 import { AssetThumbCard } from './AssetThumbCard';
 import { SelectedDrawer } from './SelectedDrawer';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command';
@@ -20,7 +20,7 @@ function isEditableTarget(element) {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!element.isContentEditable;
 }
 
-export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts, cursorFileId, onMetaChange, viewerOpen = false }, ref) {
+export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, onFileDoubleClick, queryOpts, cursorFileId, onMetaChange, viewerOpen = false }, ref) {
   "use no memo";
   const parentRef = useRef(null);
   const overlayRef = useRef(null);
@@ -529,6 +529,12 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
     setSelectedIds((previous) => updateItemSelection(previous, file.id, { additive: true }));
   };
 
+  const onCardDoubleClick = (event, file, globalIndex) => {
+    if (!file || !shouldOpenViewerFromDoubleClick(event)) return;
+    event.preventDefault();
+    void onFileDoubleClick?.(file, globalIndex);
+  };
+
   useEffect(() => {
     if (viewerOpen) return undefined;
     const onKeyDown = (event) => {
@@ -681,6 +687,7 @@ export const FilesGrid = forwardRef(function FilesGrid({ onFileClick, queryOpts,
                     selected={isSelected}
                     cursorFocused={cursorFocused}
                     onClick={(event) => onCardClick(event, file, globalIndex)}
+                    onDoubleClick={(event) => onCardDoubleClick(event, file, globalIndex)}
                     onToggleSelected={
                       isPlaceholder
                         ? undefined

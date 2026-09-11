@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { updateItemSelection, updateRangeSelection } from './gridSelection.js';
+import { shouldOpenViewerFromDoubleClick, updateItemSelection, updateRangeSelection } from './gridSelection.js';
 
 test('plain click replaces the previous selection', () => {
   assert.deepEqual([...updateItemSelection(new Set([1, 2]), 3)], [3]);
@@ -20,4 +20,11 @@ test('shift range replaces the previous selection', () => {
 
 test('additive shift range preserves the previous selection', () => {
   assert.deepEqual([...updateRangeSelection(new Set([8]), [2, 3, 4], { additive: true })], [8, 2, 3, 4]);
+});
+
+test('double click opens the viewer only without selection modifiers', () => {
+  assert.equal(shouldOpenViewerFromDoubleClick({}), true);
+  assert.equal(shouldOpenViewerFromDoubleClick({ ctrlKey: true }), false);
+  assert.equal(shouldOpenViewerFromDoubleClick({ metaKey: true }), false);
+  assert.equal(shouldOpenViewerFromDoubleClick({ shiftKey: true }), false);
 });
