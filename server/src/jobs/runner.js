@@ -3,6 +3,7 @@ const { runTaskAutoRecovery } = require('../services/taskAutoRecovery');
 const { getHandler } = require('./handlers');
 const {
   interruptStaleRunningJobs,
+  interruptRunningJobsOnStartup,
   pickNextQueuedJob,
   startJob,
   heartbeat,
@@ -148,6 +149,8 @@ async function tick() {
 
 function startJobRunner({ pollIntervalMs = 500 } = {}) {
   if (_timer) return;
+  const interrupted = interruptRunningJobsOnStartup();
+  if (interrupted > 0) console.warn(`[jobs] Marked ${interrupted} orphaned running job(s) as interrupted after restart`);
   _timer = setInterval(() => {
     tick().catch((error) => console.error('[jobs] runner tick failed:', error));
   }, Math.max(200, Number(pollIntervalMs) || 500));

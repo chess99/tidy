@@ -212,6 +212,16 @@ function interruptStaleRunningJobs({ staleAfterMs = 30_000 } = {}) {
   `).run(ts, ts, cutoff);
 }
 
+function interruptRunningJobsOnStartup() {
+  const db = getDB();
+  const ts = now();
+  return db.prepare(`
+    UPDATE jobs
+    SET status = 'interrupted', updated_at = ?, finished_at = COALESCE(finished_at, ?)
+    WHERE status = 'running'
+  `).run(ts, ts).changes;
+}
+
 function pickNextQueuedJob() {
   const db = getDB();
   const row = db.prepare(`
@@ -239,6 +249,6 @@ module.exports = {
   setCheckpoint,
   getCheckpoint,
   interruptStaleRunningJobs,
+  interruptRunningJobsOnStartup,
   pickNextQueuedJob,
 };
-

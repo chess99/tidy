@@ -17,6 +17,7 @@ const {
 // Reuse the existing clear-by-root logic directly (no legacy compat, but avoid duplicating SQL).
 const { clearByRoot } = require('../services/clearByRoot');
 const { restartWatcher } = require('../watcher');
+const { createJob } = require('../jobs/store');
 
 const router = express.Router();
 
@@ -138,8 +139,17 @@ router.put('/tasks', async (req, res) => {
 router.put('/workspace', async (req, res) => {
   try {
     const { managedRoot, trashDir } = req.body || {};
+    const previous = await loadConfig();
     const cfg = await setWorkspacePaths({ managedRoot, trashDir });
     const ws = cfg.workspace || {};
+    const changed = previous.workspace?.managedRoot !== ws.managedRoot || previous.workspace?.trashDir !== ws.trashDir;
+    const reconcileJob = changed
+      ? createJob({
+          type: 'workspace_reconcile',
+          mode: 'rebuild',
+          params: { previousWorkspace: previous.workspace || null },
+        })
+      : null;
     res.json({
       workspace: {
         MANAGED_ROOT: ws.managedRoot,
@@ -148,6 +158,7 @@ router.put('/workspace', async (req, res) => {
         DB_PATH,
         THUMB_DIR,
       },
+      reconcileJob,
     });
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.message || 'Error' });

@@ -1,5 +1,6 @@
 const { handleDiscover } = require('./discover');
 const { handleEnrich } = require('./enrich');
+const { handleWorkspaceReconcile } = require('./workspaceReconcile');
 const { handleThumbsRebuild } = require('./thumbsRebuild');
 const { handleFacesScan } = require('./facesScan');
 const { handleFacesReset } = require('./facesReset');
@@ -15,6 +16,8 @@ function getHandler(type) {
       return handleDiscover;
     case 'enrich':
       return handleEnrich;
+    case 'workspace_reconcile':
+      return handleWorkspaceReconcile;
     case 'thumbs_rebuild':
       return handleThumbsRebuild;
     case 'faces_scan':
@@ -37,5 +40,4 @@ function getHandler(type) {
 }
 
 module.exports = { getHandler };
-
 

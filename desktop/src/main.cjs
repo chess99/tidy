@@ -190,7 +190,11 @@ async function main() {
   installMenu();
 
   const serverPort = await pickPort({ preferred: process.env.TIDY_SERVER_PORT || 3001 });
-  const aiPort = await pickPort({ preferred: process.env.TIDY_AI_PORT || 8002 });
+  const aiPort = await pickPort({
+    preferred: process.env.TIDY_AI_PORT || 8002,
+    hosts: ['127.0.0.1'],
+    connectHosts: ['127.0.0.1'],
+  });
   ports = { serverPort, aiPort };
   process.env.TIDY_AI_PORT = String(aiPort);
   const clipModelId = String(process.env.TIDY_CLIP_MODEL_ID || 'jinaai/jina-clip-v2').trim();

@@ -83,4 +83,17 @@ describe('jobs store', () => {
     expect(job).toBeNull();
     expect(harness.db.prepare('SELECT COUNT(*) AS count FROM jobs WHERE type = ?').get('faces_scan').count).toBe(1);
   });
+
+  test('marks every orphaned running job interrupted on process startup', async () => {
+    harness = await makeHarness();
+    const { createJob, startJob, getJobById, interruptRunningJobsOnStartup } = require('../store');
+    const first = createJob({ type: 'discover', mode: 'missing', params: {} });
+    const second = createJob({ type: 'clip_enrich', mode: 'missing', params: {} });
+    expect(startJob(first.id)).toBe(true);
+    expect(startJob(second.id)).toBe(true);
+
+    expect(interruptRunningJobsOnStartup()).toBe(2);
+    expect(getJobById(first.id).status).toBe('interrupted');
+    expect(getJobById(second.id).status).toBe('interrupted');
+  });
 });

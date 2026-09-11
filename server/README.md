@@ -10,3 +10,7 @@
 - `package.json`：后端依赖与脚本。
 - `jest.config.js`：Jest 测试配置。
 - `src/**/__tests__/`：单元测试（运行 `npm test`）。
+
+工作目录实际变化时会自动排队 `workspace_reconcile`：只按新旧 `MANAGED_ROOT/TRASH_DIR` 重建资产状态和相册关系，不重新处理媒体或触发 AI 管线。
+
+server 进程启动时会立即把遗留的 `running` 任务标记为 `interrupted`；这些任务属于已退出的旧进程，不能按近期 heartbeat 继续假装运行。

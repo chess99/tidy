@@ -115,7 +115,7 @@ function parseAlbumNameFromManagedPath(filePath, managedRoot, trashDir) {
 async function reconcileAssetByFilesystem(db, hash, { managedRoot, trashDir }) {
   const ts = now();
   const rows = await listExistingFileRowsByHash(db, hash);
-  if (!rows.length) return;
+  if (!rows.length) return 'unchanged';
 
   const inTrash = rows.filter((r) => isUnder(trashDir, r.path));
   const inManagedNonTrash = rows.filter((r) => isUnder(managedRoot, r.path) && !isUnder(trashDir, r.path));
@@ -123,18 +123,18 @@ async function reconcileAssetByFilesystem(db, hash, { managedRoot, trashDir }) {
   // TRASH_DIR means the asset has been deleted and we're keeping the last copy for restore.
   if (inTrash.length > 0 && inTrash.length === rows.length) {
     const best = pickBestRow(inTrash) || pickBestRow(rows);
-    if (!best?.path) return;
+    if (!best?.path) return 'unchanged';
 
     db.prepare(`UPDATE assets SET status = 'trash', target_path = ?, missing = 0, updated_at = ? WHERE hash = ?`).run(best.path, ts, hash);
     db.prepare(`DELETE FROM album_assets WHERE hash = ?`).run(hash);
     insertChange('asset', hash, 'trash_fs');
-    return;
+    return 'trash';
   }
 
   // Any file under managed root (but not in trashDir) means "sorted".
   if (inManagedNonTrash.length > 0) {
     const best = pickBestRow(inManagedNonTrash) || pickBestRow(rows);
-    if (!best?.path) return;
+    if (!best?.path) return 'unchanged';
 
     db.prepare(`UPDATE assets SET status = 'sorted', target_path = ?, missing = 0, updated_at = ? WHERE hash = ?`).run(best.path, ts, hash);
     insertChange('asset', hash, 'sorted_fs');
@@ -156,16 +156,17 @@ async function reconcileAssetByFilesystem(db, hash, { managedRoot, trashDir }) {
       db.prepare(`DELETE FROM album_assets WHERE hash = ?`).run(hash);
     }
 
-    return;
+    return 'sorted';
   }
 
   // Outside managed/trash: default to inbox unless user explicitly ignored it.
   const current = db.prepare(`SELECT status FROM assets WHERE hash = ?`).get(hash);
-  if (String(current?.status || '') === 'ignored') return;
+  if (String(current?.status || '') === 'ignored') return 'ignored';
 
   db.prepare(`UPDATE assets SET status = 'inbox', target_path = NULL, missing = 0, updated_at = ? WHERE hash = ?`).run(ts, hash);
   db.prepare(`DELETE FROM album_assets WHERE hash = ?`).run(hash);
   insertChange('asset', hash, 'inbox_fs');
+  return 'inbox';
 }
 
 async function handleEnrich(ctx) {
@@ -526,5 +527,5 @@ async function handleEnrich(ctx) {
   return { ok: true, ...stats, finishedAt: now() };
 }
 
-module.exports = { handleEnrich };
+module.exports = { handleEnrich, isUnder, reconcileAssetByFilesystem };
 

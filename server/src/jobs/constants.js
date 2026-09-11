@@ -1,6 +1,7 @@
 const JOB_TYPES = [
   'discover',
   'enrich',
+  'workspace_reconcile',
   'thumbs_rebuild',
   'faces_scan',
   'faces_reset',
@@ -30,5 +31,4 @@ module.exports = {
   isValidJobType,
   isValidJobMode,
 };
-
 

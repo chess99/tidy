@@ -327,6 +327,11 @@ async function setWorkspacePaths({ managedRoot, trashDir } = {}) {
     managedRoot: managedRoot !== undefined ? (managedRoot === '' ? DEFAULT_MANAGED_ROOT : validateRootOrThrow(managedRoot)) : prev.managedRoot,
     trashDir: trashDir !== undefined ? (trashDir === '' ? DEFAULT_TRASH_DIR : validateRootOrThrow(trashDir)) : prev.trashDir,
   };
+  if (isUnder(next.trashDir, next.managedRoot)) {
+    const e = new Error('managedRoot must not be equal to or inside trashDir');
+    e.statusCode = 400;
+    throw e;
+  }
   return await saveConfig({ ...cfg, workspace: next });
 }
 

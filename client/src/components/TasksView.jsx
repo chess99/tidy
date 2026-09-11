@@ -73,6 +73,13 @@ const TASK_DEFS = [
     settingsAnchor: 'concurrency',
   },
   {
+    type: 'workspace_reconcile',
+    title: '工作目录对账',
+    desc: '根据当前整理目录和回收站路径重建资产状态与相册关系，不重新处理媒体内容。',
+    actions: [{ label: '重新对账', mode: 'rebuild', variant: 'outline', title: '重建工作目录状态' }],
+    settingsAnchor: 'workspace',
+  },
+  {
     type: 'thumbs_rebuild',
     title: '重建缩略图',
     desc: '重建全库缩略图（all 会强制重建；missing 仅补齐缺失）。',
@@ -307,5 +314,4 @@ export function TasksView({ onJumpSettings, embedded = false }) {
     </div>
   );
 }
-
 

@@ -73,4 +73,21 @@ describe('configStore load behavior', () => {
 
     await expect(loadConfig()).rejects.toThrow('workspace paths must be absolute');
   });
+
+  test('allows trash inside managed root but rejects the inverse relationship', async () => {
+    const { loadConfig, setWorkspacePaths } = require('../configStore');
+    await loadConfig();
+    const managedRoot = path.join(dataDir, 'Tidy');
+    const nestedTrash = path.join(managedRoot, '_Trash');
+
+    await expect(setWorkspacePaths({ managedRoot, trashDir: nestedTrash })).resolves.toMatchObject({
+      workspace: { managedRoot, trashDir: nestedTrash },
+    });
+    await expect(setWorkspacePaths({ managedRoot: nestedTrash, trashDir: managedRoot })).rejects.toThrow(
+      'managedRoot must not be equal to or inside trashDir'
+    );
+    await expect(setWorkspacePaths({ managedRoot, trashDir: managedRoot })).rejects.toThrow(
+      'managedRoot must not be equal to or inside trashDir'
+    );
+  });
 });

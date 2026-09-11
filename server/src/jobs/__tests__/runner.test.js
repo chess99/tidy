@@ -41,6 +41,7 @@ test('runner checks auto-recovery before picking the next queued job', async () 
   }));
   jest.doMock('../store', () => ({
     interruptStaleRunningJobs: jest.fn(() => calls.push('interrupt')),
+    interruptRunningJobsOnStartup: jest.fn(() => 0),
     pickNextQueuedJob: jest.fn(() => {
       calls.push('pick');
       return null;
