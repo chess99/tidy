@@ -101,42 +101,6 @@ async function initDataLayout({ repoRoot, packaged }) {
   return { dataDir };
 }
 
-function bootHtml({ serverPort } = {}) {
-  const msg = `Starting Tidy...\n\nBackend: http://127.0.0.1:${serverPort}\n`;
-  const esc = (s) =>
-    String(s || '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-  return `data:text/html;charset=utf-8,${encodeURIComponent(`
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Tidy</title>
-    <style>
-      html, body { height: 100%; margin: 0; background: #0b0b0f; color: #e6e6ef; font-family: ui-sans-serif, system-ui, -apple-system; }
-      .wrap { height: 100%; display: grid; place-items: center; }
-      .card { width: min(720px, calc(100% - 48px)); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 24px; background: rgba(255,255,255,0.03); }
-      .title { font-size: 18px; margin: 0 0 8px; }
-      .sub { opacity: 0.8; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono"; font-size: 12px; }
-      .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.18); border-top-color: rgba(255,255,255,0.9); animation: r 1s linear infinite; display: inline-block; margin-right: 10px; vertical-align: -3px; }
-      @keyframes r { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-    </style>
-  </head>
-  <body>
-    <div class="wrap">
-      <div class="card">
-        <p class="title"><span class="spin"></span>Launching...</p>
-        <div class="sub">${esc(msg)}</div>
-      </div>
-    </div>
-  </body>
-</html>
-  `)}`;
-}
-
 async function waitForServerReady({ url, timeoutMs = 30000, intervalMs = 250 } = {}) {
   const u = String(url || '').trim();
   if (!u) throw new Error('waitForServerReady: url required');
@@ -158,6 +122,7 @@ async function waitForServerReady({ url, timeoutMs = 30000, intervalMs = 250 } =
 
 async function createWindow() {
   win = new BrowserWindow({
+    show: false,
     width: 1280,
     height: 840,
     backgroundColor: '#0b0b0f',
@@ -218,7 +183,6 @@ async function main() {
   });
 
   await createWindow();
-  await win.loadURL(bootHtml({ serverPort }));
 
   const uiUrl = isDev() && process.env.TIDY_DEV_UI_URL
     ? String(process.env.TIDY_DEV_UI_URL)
@@ -227,6 +191,7 @@ async function main() {
   // Wait for backend ready to avoid ERR_CONNECTION_REFUSED "flash quit".
   const ok = await waitForServerReady({ url: `http://127.0.0.1:${serverPort}/api/health` });
   if (!ok) {
+    win.show();
     await dialog.showMessageBox(win, {
       type: 'error',
       title: '启动失败',
@@ -238,7 +203,9 @@ async function main() {
 
   try {
     await win.loadURL(uiUrl);
+    win.show();
   } catch (e) {
+    win.show();
     await dialog.showMessageBox(win, {
       type: 'error',
       title: '启动失败',
