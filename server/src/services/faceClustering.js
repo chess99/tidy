@@ -1,99 +1,201 @@
+const { HNSW } = require('hnsw');
+
+const DEFAULT_FACE_MAX_DISTANCE = 0.5;
+const DEFAULT_FACE_MIN_FACES = 3;
+
 function parseDescriptor(json) {
   if (!json) return null;
   try {
     const arr = JSON.parse(json);
     if (!Array.isArray(arr) || arr.length === 0) return null;
-    const v = new Float32Array(arr.length);
-    for (let i = 0; i < arr.length; i++) v[i] = Number(arr[i]) || 0;
-    return v;
+    const vector = new Float32Array(arr.length);
+    for (let i = 0; i < arr.length; i++) vector[i] = Number(arr[i]) || 0;
+    return vector;
   } catch {
     return null;
   }
 }
 
 function dot(a, b) {
-  let s = 0;
-  for (let i = 0; i < a.length; i++) s += a[i] * b[i];
-  return s;
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += a[i] * b[i];
+  return sum;
 }
 
 function norm(a) {
   return Math.sqrt(dot(a, a));
 }
 
-function cosineDistance(a, b, na, nb) {
-  const denom = (na || norm(a)) * (nb || norm(b));
-  if (!denom) return 1;
-  const cos = dot(a, b) / denom;
-  // clamp for numeric stability
-  const c = Math.max(-1, Math.min(1, cos));
-  return 1 - c;
+function cosineDistance(a, b, normA, normB) {
+  const denominator = (normA || norm(a)) * (normB || norm(b));
+  if (!denominator) return 1;
+  const cosine = dot(a, b) / denominator;
+  return 1 - Math.max(-1, Math.min(1, cosine));
 }
 
-const DEFAULT_FACE_CLUSTER_EPS = 0.3;
-
-/**
- * DBSCAN clustering (O(n^2)). Fine for small/medium face counts.
- *
- * @param {Array<{id:number, descriptor:Float32Array, norm:number}>} points
- * @param {{eps:number, minSamples:number}} opts
- * @returns {{labels:number[], clusters:number forcingNoise:number}}
- *  labels: -1 = noise, else clusterId 0..k-1
- */
-function dbscan(points, opts) {
-  // InsightFace same-person distances in the local desktop dataset are commonly
-  // around 0.25-0.30. Tune with scripts/cluster-calibrate.js when datasets shift.
-  const eps = Number(opts?.eps ?? DEFAULT_FACE_CLUSTER_EPS);
-  const minSamples = Number(opts?.minSamples ?? 2);
-
-  const n = points.length;
-  const labels = new Array(n).fill(undefined); // undefined=unvisited, -1=noise, >=0 cluster
-  let clusterId = 0;
-
-  function regionQuery(i) {
-    const res = [];
-    const pi = points[i];
-    for (let j = 0; j < n; j++) {
-      const pj = points[j];
-      const d = cosineDistance(pi.descriptor, pj.descriptor, pi.norm, pj.norm);
-      if (d <= eps) res.push(j);
-    }
-    return res;
+class LinearFaceIndex {
+  constructor(points = []) {
+    this.points = new Map(points.map((point) => [point.id, point]));
   }
 
-  for (let i = 0; i < n; i++) {
-    if (labels[i] !== undefined) continue;
-    const neighbors = regionQuery(i);
-    if (neighbors.length < minSamples) {
-      labels[i] = -1;
-      continue;
+  search(descriptor, limit) {
+    return Array.from(this.points.values())
+      .map((point) => ({ id: point.id, distance: cosineDistance(descriptor, point.descriptor) }))
+      .sort((a, b) => a.distance - b.distance || a.id - b.id)
+      .slice(0, limit);
+  }
+}
+
+class HnswFaceIndex {
+  constructor({ dimensions, efSearch = 100 } = {}) {
+    this.index = new HNSW(16, 300, dimensions, 'cosine', efSearch);
+    this.ids = new Set();
+  }
+
+  static async create(points, options = {}) {
+    const dimensions = Number(options.dimensions || points[0]?.descriptor?.length || 0);
+    if (!dimensions) throw new Error('Face index dimensions are required');
+    const faceIndex = new HnswFaceIndex({ dimensions, efSearch: options.efSearch });
+    if (points.length) {
+      await faceIndex.index.buildIndex(
+        points.map((point) => ({ id: point.id, vector: point.descriptor })),
+        { onProgress: options.onProgress, progressInterval: options.progressInterval || 1000 }
+      );
+      for (const point of points) faceIndex.ids.add(point.id);
+    }
+    return faceIndex;
+  }
+
+  search(descriptor, limit) {
+    if (!this.ids.size) return [];
+    return this.index
+      .searchKNN(descriptor, limit, { efSearch: Math.max(100, limit) })
+      .map((result) => ({ id: result.id, distance: 1 - result.score }));
+  }
+}
+
+function isWithinDistance(match, maxDistance) {
+  return Number.isFinite(match?.distance) && match.distance <= maxDistance;
+}
+
+/**
+ * Incremental grouping matching Immich's core/defer/assign behavior. A sparse
+ * face may join one existing person, but never unions two people through a
+ * bridge as an all-pairs DBSCAN component would.
+ */
+async function recognizeFacePoints(points, options = {}) {
+  const maxDistance = Number(options.maxDistance ?? DEFAULT_FACE_MAX_DISTANCE);
+  const minFaces = Math.max(1, Math.trunc(Number(options.minFaces ?? DEFAULT_FACE_MIN_FACES)));
+  const assignedSearchLimit = Math.max(minFaces, Math.trunc(Number(options.assignedSearchLimit ?? 100)));
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+  const createIndex = options.createIndex || ((items, indexOptions) => HnswFaceIndex.create(items, indexOptions));
+  const assignments = new Map();
+  for (const point of points) {
+    if (point.personId != null) assignments.set(point.id, point.personId);
+  }
+
+  if (!points.length) {
+    return {
+      assignments,
+      createdPeople: new Set(),
+      stats: {
+        faces: 0,
+        existingAssignedFaces: 0,
+        attachedFaces: 0,
+        deferredFaces: 0,
+        unassignedFaces: 0,
+        newPeople: 0,
+        maxDistance,
+        minFaces,
+      },
+    };
+  }
+
+  const allIndex = await createIndex(points, {
+    dimensions: points[0].descriptor.length,
+    onProgress: (done, total) => onProgress?.({ phase: 'face_index', done, total }),
+  });
+  const assignedPoints = points.filter((point) => assignments.has(point.id));
+  const createdPeople = new Set();
+  const deferred = [];
+  let nextPersonToken = 1;
+  let attachedFaces = 0;
+
+  async function assign(point, personId) {
+    if (assignments.has(point.id)) return;
+    assignments.set(point.id, personId);
+    attachedFaces++;
+  }
+
+  async function processPoint(point, isDeferredPass) {
+    if (assignments.has(point.id)) return;
+    const matches = allIndex.search(point.descriptor, minFaces).filter((match) => isWithinDistance(match, maxDistance));
+    if (minFaces > 1 && matches.length <= 1) return;
+
+    const isCore = matches.length >= minFaces;
+    if (!isCore && !isDeferredPass) {
+      deferred.push(point);
+      return;
     }
 
-    labels[i] = clusterId;
-    const queue = neighbors.slice();
-    for (let qi = 0; qi < queue.length; qi++) {
-      const j = queue[qi];
-      if (labels[j] === -1) labels[j] = clusterId;
-      if (labels[j] !== undefined) continue;
-      labels[j] = clusterId;
-
-      const n2 = regionQuery(j);
-      if (n2.length >= minSamples) {
-        for (const k of n2) queue.push(k);
+    let personId = null;
+    for (const match of matches) {
+      const assignedPersonId = assignments.get(match.id);
+      if (assignedPersonId != null) {
+        personId = assignedPersonId;
+        break;
       }
     }
 
-    clusterId++;
+    if (personId == null) {
+      const nearestAssigned = allIndex
+        .search(point.descriptor, assignedSearchLimit)
+        .find((match) => isWithinDistance(match, maxDistance) && assignments.has(match.id));
+      if (nearestAssigned) personId = assignments.get(nearestAssigned.id) ?? null;
+    }
+
+    if (personId == null && isCore) {
+      personId = `new:${nextPersonToken++}`;
+      createdPeople.add(personId);
+    }
+
+    if (personId != null) await assign(point, personId);
   }
 
-  return { labels, clusters: clusterId };
+  for (let index = 0; index < points.length; index++) {
+    await processPoint(points[index], false);
+    if ((index + 1) % 500 === 0) onProgress?.({ phase: 'face_recognition', done: index + 1, total: points.length });
+  }
+  for (let index = 0; index < deferred.length; index++) {
+    await processPoint(deferred[index], true);
+    if ((index + 1) % 500 === 0) {
+      onProgress?.({ phase: 'face_recognition_deferred', done: index + 1, total: deferred.length });
+    }
+  }
+
+  return {
+    assignments,
+    createdPeople,
+    stats: {
+      faces: points.length,
+      existingAssignedFaces: assignedPoints.length,
+      attachedFaces,
+      deferredFaces: deferred.length,
+      unassignedFaces: points.length - assignments.size,
+      newPeople: createdPeople.size,
+      maxDistance,
+      minFaces,
+    },
+  };
 }
 
 module.exports = {
-  DEFAULT_FACE_CLUSTER_EPS,
-  parseDescriptor,
-  norm,
+  DEFAULT_FACE_MAX_DISTANCE,
+  DEFAULT_FACE_MIN_FACES,
+  HnswFaceIndex,
+  LinearFaceIndex,
   cosineDistance,
-  dbscan,
+  norm,
+  parseDescriptor,
+  recognizeFacePoints,
 };
-

@@ -15,7 +15,8 @@
     "faces:scan:all": "node scripts/scan-faces.js --all",
     "faces:one": "node scripts/scan-one-face.js",
     "faces:recluster": "node scripts/recluster-people.js",
-    "faces:calibrate": "node scripts/cluster-calibrate.js"
+    "faces:calibrate": "node scripts/cluster-calibrate.js",
+    "faces:import:immich": "node scripts/import-immich-faces.js"
   },
   "keywords": [],
   "author": "",

@@ -32,7 +32,7 @@ const TASK_LABELS = {
   enrich: '提取信息',
   thumbs_rebuild: '生成缩略图',
   faces_scan: '人脸检测',
-  faces_recluster: '人脸聚类',
+  faces_recluster: '人物识别',
   clip_enrich: '图像理解',
   clip_index: '构建索引',
   sync: '同步文件',

@@ -120,9 +120,9 @@ const TASK_DEFS = [
   },
   {
     type: 'faces_recluster',
-    title: '人脸重聚类（维护）',
-    desc: '按当前 faces.descriptor 进行聚类生成 people，并写回 faces.person_id。',
-    actions: [{ label: '开始', mode: 'all', variant: 'default', title: '开始重聚类' }],
+    title: '人物识别归属（维护）',
+    desc: '按 Immich 兼容规则，将未分配人脸归入已有核心人物，必要时创建新人物。',
+    actions: [{ label: '开始', mode: 'all', variant: 'default', title: '开始识别人脸归属' }],
     settingsAnchor: 'faces',
   },
   {
@@ -314,4 +314,3 @@ export function TasksView({ onJumpSettings, embedded = false }) {
     </div>
   );
 }
-
