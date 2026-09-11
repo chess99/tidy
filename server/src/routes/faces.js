@@ -221,25 +221,4 @@ router.put('/:id', (req, res) => {
   }
 });
 
-// Create person from a specific face
-router.post('/create-from-face', (req, res) => {
-  try {
-    const { face_id, name } = req.body;
-    const db = getDB();
-    
-    const face = db.prepare('SELECT * FROM faces WHERE id = ?').get(face_id);
-    if (!face) return res.status(404).json({ error: 'Face not found' });
-
-    const now = Date.now();
-    const info = db.prepare('INSERT INTO people (name, avatar_face_id, created_at, updated_at) VALUES (?, ?, ?, ?)').run(name, face_id, now, now);
-    const personId = info.lastInsertRowid;
-    
-    db.prepare('UPDATE faces SET person_id = ? WHERE id = ?').run(personId, face_id);
-    
-    res.json({ id: personId, name, avatar_face_id: face_id });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 module.exports = router;

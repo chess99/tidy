@@ -224,7 +224,6 @@ export const getFaces = (hash) => api.get(`/faces/asset/${hash}`).then(res => re
 export const getPeople = () => api.get(`/faces/people`).then(res => res.data);
 export const renamePerson = (personId, name) => api.patch(`/faces/people/${personId}`, { name }).then((res) => res.data);
 export const updateFace = (id, { person_id }) => api.put(`/faces/${id}`, { person_id }).then(res => res.data);
-export const createPersonFromFace = (faceId, name) => api.post(`/faces/create-from-face`, { face_id: faceId, name }).then(res => res.data);
 export const mergePerson = (fromPersonId, intoPersonId) =>
   api.post(`/faces/people/${fromPersonId}/merge`, { intoPersonId }).then((res) => res.data);
 

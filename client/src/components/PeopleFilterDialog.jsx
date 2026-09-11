@@ -86,7 +86,7 @@ export function PeopleFilterDialog({ people, selectedIds, onApply }) {
           <span className="mt-0.5 block truncate text-[11px] text-slate-500">
             {selectedPeople.length > 0
               ? selectedPeople.map(displayPersonName).join('、')
-              : '打开头像列表，快速辨认'}
+              : '按人物筛选照片'}
           </span>
         </span>
         <span className="text-[11px] font-medium text-blue-600 group-hover:text-blue-700">
@@ -126,7 +126,7 @@ export function PeopleFilterDialog({ people, selectedIds, onApply }) {
                   选择人物
                 </DialogTitle>
                 <DialogDescription className="mt-1.5 text-xs">
-                  可多选；应用后将查找同时包含所有已选人物的照片。
+                  多选时仅显示共同出现的照片
                 </DialogDescription>
               </div>
               <Button
@@ -209,15 +209,14 @@ export function PeopleFilterDialog({ people, selectedIds, onApply }) {
               </div>
             ) : (
               <div className="flex h-11 items-center text-xs text-blue-700/60">
-                从下方人物中选择，已选项会固定显示在这里
+                暂无选择
               </div>
             )}
           </section>
 
           <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex shrink-0 items-center justify-between px-6 pb-2 pt-4">
+            <div className="flex shrink-0 items-center px-6 pb-2 pt-4">
               <div className="text-xs font-semibold text-slate-700">全部人物</div>
-              <div className="text-[11px] text-slate-500">已命名和常见人物优先 · 滚动自动加载</div>
             </div>
 
             {filteredPeople.length > 0 ? (
@@ -267,7 +266,7 @@ export function PeopleFilterDialog({ people, selectedIds, onApply }) {
 
           <DialogFooter className="shrink-0 flex-row items-center justify-between border-t bg-white px-6 py-4 sm:justify-between sm:space-x-0">
             <span className="text-xs text-slate-500">
-              已选 {draftIds.size} 人{draftIds.size > 1 ? ' · 结果需同时包含这些人物' : ''}
+              已选 {draftIds.size} 人
             </span>
             <div className="flex items-center gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>

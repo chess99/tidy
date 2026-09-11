@@ -142,4 +142,11 @@ describe('people routes', () => {
       .send({ faceIds: [1] })
       .expect(404);
   });
+
+  test('does not create people implicitly from the asset detail panel', async () => {
+    await request(app)
+      .post('/api/faces/create-from-face')
+      .send({ face_id: 1, name: '临时人物' })
+      .expect(404);
+  });
 });
