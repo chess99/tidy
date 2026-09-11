@@ -1,63 +1,17 @@
-import { Check, Search, UserRound, Users, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
-import { apiUrl } from '../api/client';
+import { Check, Search, UserCog, Users, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
-
-const GRID_GAP_PX = 12;
-const GRID_CARD_WIDTH_PX = 144;
-const GRID_ROW_HEIGHT_PX = 198;
-const GRID_MAX_COLUMNS = 9;
-const GRID_INITIAL_VIEWPORT_HEIGHT_PX = 560;
-const GRID_HORIZONTAL_PADDING_PX = 48;
-
-function displayPersonName(person) {
-  return person.name?.trim() || `人物 ${person.id}`;
-}
-
-function PersonAvatar({ person, className = '' }) {
-  const imageSrc = person.avatar_face_id
-    ? apiUrl(`/faces/people/${person.id}/avatar?v=${person.avatar_face_id}`)
-    : '';
-  const [failedSrc, setFailedSrc] = useState('');
-
-  return (
-    <div className={`relative overflow-hidden bg-slate-100 ${className}`}>
-      <div className="absolute inset-0 flex items-center justify-center text-slate-300">
-        <UserRound className="h-1/2 w-1/2" strokeWidth={1.5} />
-      </div>
-      {imageSrc && failedSrc !== imageSrc && (
-        <img
-          src={imageSrc}
-          alt=""
-          loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover"
-          onError={() => setFailedSrc(imageSrc)}
-        />
-      )}
-    </div>
-  );
-}
-
-function sortPeople(people) {
-  return [...people].sort((a, b) => {
-    const aNamed = !!a.name?.trim();
-    const bNamed = !!b.name?.trim();
-    if (aNamed !== bNamed) return aNamed ? -1 : 1;
-    if (aNamed) return displayPersonName(a).localeCompare(displayPersonName(b), 'zh-CN', { numeric: true });
-    const photoCountDifference = Number(b.face_count || 0) - Number(a.face_count || 0);
-    return photoCountDifference || a.id - b.id;
-  });
-}
+import { PeopleManagerDialog } from './PeopleManagerDialog';
+import { PersonAvatar } from './PersonAvatar';
+import { PeopleVirtualGrid } from './PeopleVirtualGrid';
+import { displayPersonName, filterPeople, sortPeople } from './peoplePresentation';
 
 export function PeopleFilterDialog({ people, selectedIds, onApply }) {
-  "use no memo";
   const [open, setOpen] = useState(false);
+  const [managerOpen, setManagerOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [draftIds, setDraftIds] = useState(() => new Set(selectedIds));
-  const [listWidth, setListWidth] = useState(1000);
-  const [scrollElement, setScrollElement] = useState(null);
 
   const peopleById = useMemo(
     () => new Map(people.map((person) => [person.id, person])),
@@ -72,52 +26,8 @@ export function PeopleFilterDialog({ people, selectedIds, onApply }) {
     [draftIds, peopleById]
   );
   const filteredPeople = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN');
-    const matches = normalizedQuery
-      ? people.filter((person) => (
-          displayPersonName(person).toLocaleLowerCase('zh-CN').includes(normalizedQuery)
-          || String(person.id).includes(normalizedQuery)
-        ))
-      : people;
-    return sortPeople(matches);
+    return sortPeople(filterPeople(people, query));
   }, [people, query]);
-
-  const columnCount = Math.max(
-    1,
-    Math.min(GRID_MAX_COLUMNS, Math.floor((listWidth + GRID_GAP_PX) / (GRID_CARD_WIDTH_PX + GRID_GAP_PX)))
-  );
-  const rowCount = Math.ceil(filteredPeople.length / columnCount);
-  // TanStack Virtual manages mutable measurements internally and is intentionally excluded from compiler memoization.
-  // eslint-disable-next-line react-hooks/incompatible-library
-  const rowVirtualizer = useVirtualizer({
-    count: rowCount,
-    getScrollElement: () => scrollElement,
-    estimateSize: () => GRID_ROW_HEIGHT_PX,
-    // Dialog content is portalled; seed the first measurement so cards render before the element observer connects.
-    initialRect: { width: listWidth, height: GRID_INITIAL_VIEWPORT_HEIGHT_PX },
-    overscan: 2,
-  });
-
-  const setListElement = useCallback((element) => {
-    setScrollElement(element);
-    if (element?.clientWidth) setListWidth(Math.max(1, element.clientWidth - GRID_HORIZONTAL_PADDING_PX));
-  }, []);
-
-  useEffect(() => {
-    if (!scrollElement) return undefined;
-    const observer = new ResizeObserver(([entry]) => {
-      const nextWidth = entry?.contentRect?.width || 0;
-      if (nextWidth > 0) setListWidth(nextWidth);
-    });
-    observer.observe(scrollElement);
-    return () => observer.disconnect();
-  }, [scrollElement]);
-
-  useEffect(() => {
-    if (!open || !scrollElement) return;
-    rowVirtualizer.scrollToOffset(0);
-    rowVirtualizer.measure();
-  }, [columnCount, open, query, rowVirtualizer, scrollElement]);
 
   const handleOpenChange = (nextOpen) => {
     if (nextOpen) {
@@ -139,6 +49,12 @@ export function PeopleFilterDialog({ people, selectedIds, onApply }) {
       else next.add(personId);
       return next;
     });
+  };
+
+  const handleMerged = (fromPersonId, intoPersonId) => {
+    if (!selectedIds.includes(fromPersonId)) return;
+    const next = selectedIds.map((id) => (id === fromPersonId ? intoPersonId : id));
+    onApply([...new Set(next)]);
   };
 
   return (
@@ -203,13 +119,30 @@ export function PeopleFilterDialog({ people, selectedIds, onApply }) {
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="flex h-[min(920px,calc(100vh-2rem))] w-[min(1400px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0">
           <DialogHeader className="shrink-0 border-b px-6 pb-4 pt-5 pr-14">
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <Users className="h-4 w-4 text-blue-600" />
-              选择人物
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              可多选；应用后将查找同时包含所有已选人物的照片。
-            </DialogDescription>
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <DialogTitle className="flex items-center gap-2 text-base">
+                  <Users className="h-4 w-4 text-blue-600" />
+                  选择人物
+                </DialogTitle>
+                <DialogDescription className="mt-1.5 text-xs">
+                  可多选；应用后将查找同时包含所有已选人物的照片。
+                </DialogDescription>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={() => {
+                  setOpen(false);
+                  setManagerOpen(true);
+                }}
+              >
+                <UserCog className="mr-1.5 h-3.5 w-3.5" />
+                管理人物
+              </Button>
+            </div>
           </DialogHeader>
 
           <div className="flex shrink-0 items-center gap-3 border-b bg-slate-50/70 px-6 py-3">
@@ -288,65 +221,38 @@ export function PeopleFilterDialog({ people, selectedIds, onApply }) {
             </div>
 
             {filteredPeople.length > 0 ? (
-              <div ref={setListElement} className="min-h-0 flex-1 overflow-y-auto px-6 pb-5">
-                <div
-                  className="relative w-full"
-                  style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
-                >
-                  {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                    const rowStart = virtualRow.index * columnCount;
-                    const rowPeople = filteredPeople.slice(rowStart, rowStart + columnCount);
-                    return (
-                      <div
-                        key={virtualRow.key}
-                        className="absolute left-0 top-0 flex w-full justify-center"
-                        style={{
-                          height: `${GRID_ROW_HEIGHT_PX}px`,
-                          transform: `translateY(${virtualRow.start}px)`,
-                        }}
-                      >
-                        <div
-                          className="grid"
-                          style={{
-                            gap: `${GRID_GAP_PX}px`,
-                            gridTemplateColumns: `repeat(${columnCount}, ${GRID_CARD_WIDTH_PX}px)`,
-                          }}
-                        >
-                          {rowPeople.map((person) => {
-                            const selected = draftIds.has(person.id);
-                            return (
-                              <button
-                                type="button"
-                                key={person.id}
-                                aria-pressed={selected}
-                                onClick={() => toggleDraft(person.id)}
-                                className={`group relative h-[186px] w-36 min-w-0 rounded-xl border p-2 text-center transition-[border-color,background-color,box-shadow,transform] focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                                  selected
-                                    ? 'border-blue-500 bg-blue-50 shadow-sm ring-1 ring-blue-500'
-                                    : 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-sm'
-                                }`}
-                              >
-                                <PersonAvatar person={person} className="mx-auto h-32 w-32 rounded-lg" />
-                                <span className="mt-2 block truncate text-xs font-semibold text-slate-800" title={displayPersonName(person)}>
-                                  {displayPersonName(person)}
-                                </span>
-                                <span className="mt-0.5 block text-[10px] text-slate-500">
-                                  {person.face_count || 0} 张照片
-                                </span>
-                                <span className={`absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full border shadow-sm ${
-                                  selected ? 'border-blue-600 bg-blue-600 text-white' : 'border-white bg-white/90 text-transparent'
-                                }`}>
-                                  <Check className="h-3 w-3" strokeWidth={3} />
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <PeopleVirtualGrid
+                people={filteredPeople}
+                resetKey={query}
+                renderPerson={(person) => {
+                  const selected = draftIds.has(person.id);
+                  return (
+                    <button
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => toggleDraft(person.id)}
+                      className={`group relative h-[186px] w-36 min-w-0 rounded-xl border p-2 text-center transition-[border-color,background-color,box-shadow,transform] focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        selected
+                          ? 'border-blue-500 bg-blue-50 shadow-sm ring-1 ring-blue-500'
+                          : 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-sm'
+                      }`}
+                    >
+                      <PersonAvatar person={person} className="mx-auto h-32 w-32 rounded-lg" />
+                      <span className="mt-2 block truncate text-xs font-semibold text-slate-800" title={displayPersonName(person)}>
+                        {displayPersonName(person)}
+                      </span>
+                      <span className="mt-0.5 block text-[10px] text-slate-500">
+                        {person.face_count || 0} 张照片
+                      </span>
+                      <span className={`absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full border shadow-sm ${
+                        selected ? 'border-blue-600 bg-blue-600 text-white' : 'border-white bg-white/90 text-transparent'
+                      }`}>
+                        <Check className="h-3 w-3" strokeWidth={3} />
+                      </span>
+                    </button>
+                  );
+                }}
+              />
             ) : (
               <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 pb-10 text-center">
                 <Search className="h-8 w-8 text-slate-300" />
@@ -381,6 +287,18 @@ export function PeopleFilterDialog({ people, selectedIds, onApply }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {managerOpen && (
+        <PeopleManagerDialog
+          people={people}
+          onMerged={handleMerged}
+          onClose={() => setManagerOpen(false)}
+          onBack={() => {
+            setManagerOpen(false);
+            handleOpenChange(true);
+          }}
+        />
+      )}
     </>
   );
 }

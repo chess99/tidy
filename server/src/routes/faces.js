@@ -31,58 +31,16 @@ router.post('/people/:id/merge', (req, res) => {
       if (!into || !from) throw new Error('Person not found');
 
       const moved = db.prepare('UPDATE faces SET person_id = ? WHERE person_id = ?').run(intoId, fromId).changes;
-
-      // If target has no avatar, inherit from source
-      if (!into.avatar_face_id && from.avatar_face_id) {
-        db.prepare('UPDATE people SET avatar_face_id = ?, updated_at = ? WHERE id = ?').run(from.avatar_face_id, Date.now(), intoId);
-      }
+      const targetName = String(into.name || '').trim() || String(from.name || '').trim() || null;
+      const targetAvatarFaceId = into.avatar_face_id || from.avatar_face_id || null;
+      db.prepare(`
+        UPDATE people
+        SET name = ?, avatar_face_id = ?, updated_at = ?
+        WHERE id = ?
+      `).run(targetName, targetAvatarFaceId, Date.now(), intoId);
 
       db.prepare('DELETE FROM people WHERE id = ?').run(fromId);
-      return { movedFaces: moved, fromId, intoId };
-    });
-
-    res.json({ success: true, result: tx() });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Split selected faces into a new person
-router.post('/people/:id/split', (req, res) => {
-  try {
-    const db = getDB();
-    const fromId = Number(req.params.id);
-    const faceIds = Array.isArray(req.body?.faceIds) ? req.body.faceIds.map(Number).filter(Number.isFinite) : [];
-    if (!Number.isFinite(fromId)) return res.status(400).json({ error: 'Invalid from id' });
-    if (faceIds.length === 0) return res.status(400).json({ error: 'faceIds required' });
-
-    const tx = db.transaction(() => {
-      const from = db.prepare('SELECT * FROM people WHERE id = ?').get(fromId);
-      if (!from) throw new Error('Person not found');
-
-      const now = Date.now();
-      const info = db.prepare('INSERT INTO people (name, avatar_face_id, created_at, updated_at) VALUES (NULL, NULL, ?, ?)').run(now, now);
-      const newId = info.lastInsertRowid;
-
-      const stmt = db.prepare('UPDATE faces SET person_id = ? WHERE id = ? AND person_id = ?');
-      let moved = 0;
-      for (const fid of faceIds) moved += stmt.run(newId, fid, fromId).changes;
-
-      // Set avatar of new person to the first moved face
-      const avatar = db.prepare('SELECT id FROM faces WHERE person_id = ? ORDER BY score DESC, id ASC LIMIT 1').get(newId);
-      if (avatar?.id) db.prepare('UPDATE people SET avatar_face_id = ?, updated_at = ? WHERE id = ?').run(avatar.id, now, newId);
-
-      // Ensure source still has avatar (if its avatar moved away)
-      const fromAvatar = db.prepare('SELECT avatar_face_id FROM people WHERE id = ?').get(fromId)?.avatar_face_id;
-      if (fromAvatar) {
-        const exists = db.prepare('SELECT 1 AS ok FROM faces WHERE id = ? AND person_id = ?').get(fromAvatar, fromId);
-        if (!exists) {
-          const repl = db.prepare('SELECT id FROM faces WHERE person_id = ? ORDER BY score DESC, id ASC LIMIT 1').get(fromId);
-          db.prepare('UPDATE people SET avatar_face_id = ?, updated_at = ? WHERE id = ?').run(repl?.id || null, now, fromId);
-        }
-      }
-
-      return { newPersonId: newId, movedFaces: moved, fromId };
+      return { movedFaces: moved, fromId, intoId, name: targetName, avatarFaceId: targetAvatarFaceId };
     });
 
     res.json({ success: true, result: tx() });
@@ -220,21 +178,6 @@ router.get('/people/:id/avatar', async (req, res) => {
     return res.send(avatar);
   } catch (err) {
     return res.status(500).send(String(err?.message || 'avatar_failed'));
-  }
-});
-
-// Create a new person
-router.post('/people', (req, res) => {
-  try {
-    const { name } = req.body;
-    if (!name) return res.status(400).json({ error: 'Name required' });
-    
-    const db = getDB();
-    const now = Date.now();
-    const info = db.prepare('INSERT INTO people (name, created_at, updated_at) VALUES (?, ?, ?)').run(name, now, now);
-    res.json({ id: info.lastInsertRowid, name });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
   }
 });
 

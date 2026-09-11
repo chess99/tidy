@@ -179,6 +179,7 @@ export const getFilesBatch = (ids = []) =>
   api.get('/files/batch', { params: { ids: ids.join(',') } }).then(res => res.data);
 
 export const updateAssetStatus = (hash, status) => api.patch(`/assets/${hash}`, { status }).then(res => res.data);
+export const updateAssetTime = (hash, value) => api.patch(`/assets/${hash}/time`, value).then(res => res.data);
 export const updateAssetsStatusBatch = (hashes = [], status) =>
   api.post('/assets/batch-status', { hashes, status }).then(res => res.data);
 export const syncChanges = () => api.post('/sync').then(res => res.data);
@@ -221,14 +222,11 @@ export const removeAssetTag = (hash, tagId) => api.delete(`/tags/asset/${hash}/$
 // Faces (data management; scanning/recluster/reset are jobs)
 export const getFaces = (hash) => api.get(`/faces/asset/${hash}`).then(res => res.data);
 export const getPeople = () => api.get(`/faces/people`).then(res => res.data);
-export const createPerson = (name) => api.post(`/faces/people`, { name }).then(res => res.data);
 export const renamePerson = (personId, name) => api.patch(`/faces/people/${personId}`, { name }).then((res) => res.data);
 export const updateFace = (id, { person_id }) => api.put(`/faces/${id}`, { person_id }).then(res => res.data);
 export const createPersonFromFace = (faceId, name) => api.post(`/faces/create-from-face`, { face_id: faceId, name }).then(res => res.data);
 export const mergePerson = (fromPersonId, intoPersonId) =>
   api.post(`/faces/people/${fromPersonId}/merge`, { intoPersonId }).then((res) => res.data);
-export const splitPerson = (fromPersonId, faceIds = []) =>
-  api.post(`/faces/people/${fromPersonId}/split`, { faceIds }).then((res) => res.data);
 
 // Duplicates tool
 export const getDuplicateGroups = ({ kind = 'phash', threshold = 10, limit = 20, cursor } = {}) => {

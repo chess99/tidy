@@ -86,4 +86,60 @@ describe('people routes', () => {
       format: 'jpeg',
     });
   });
+
+  test('merges into the selected person and inherits missing name and avatar', async () => {
+    db.prepare(`INSERT INTO assets (hash, metadata, status) VALUES ('merge-portrait', '{}', 'inbox')`).run();
+    const sourceId = db.prepare('INSERT INTO people (name) VALUES (?)').run('小满').lastInsertRowid;
+    const targetId = db.prepare('INSERT INTO people (name) VALUES (NULL)').run().lastInsertRowid;
+    const sourceFaceId = db.prepare(`
+      INSERT INTO faces (hash, person_id, box, score)
+      VALUES ('merge-portrait', ?, '{"x":10,"y":10,"width":80,"height":80}', 0.99)
+    `).run(sourceId).lastInsertRowid;
+    const targetFaceId = db.prepare(`
+      INSERT INTO faces (hash, person_id, box, score)
+      VALUES ('merge-portrait', ?, '{"x":100,"y":100,"width":80,"height":80}', 0.98)
+    `).run(targetId).lastInsertRowid;
+    db.prepare('UPDATE people SET avatar_face_id = ? WHERE id = ?').run(sourceFaceId, sourceId);
+
+    const response = await request(app)
+      .post(`/api/faces/people/${sourceId}/merge`)
+      .send({ intoPersonId: Number(targetId) })
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      success: true,
+      result: {
+        fromId: Number(sourceId),
+        intoId: Number(targetId),
+        movedFaces: 1,
+        name: '小满',
+        avatarFaceId: Number(sourceFaceId),
+      },
+    });
+    expect(db.prepare('SELECT * FROM people WHERE id = ?').get(sourceId)).toBeUndefined();
+    expect(db.prepare('SELECT name, avatar_face_id FROM people WHERE id = ?').get(targetId)).toEqual({
+      name: '小满',
+      avatar_face_id: Number(sourceFaceId),
+    });
+    expect(db.prepare('SELECT person_id FROM faces WHERE id = ?').get(sourceFaceId).person_id).toBe(Number(targetId));
+    expect(db.prepare('SELECT person_id FROM faces WHERE id = ?').get(targetFaceId).person_id).toBe(Number(targetId));
+  });
+
+  test('adds a name to an existing unnamed person', async () => {
+    const personId = db.prepare('INSERT INTO people (name) VALUES (NULL)').run().lastInsertRowid;
+
+    await request(app)
+      .patch(`/api/faces/people/${personId}`)
+      .send({ name: '阿夏' })
+      .expect(200, { success: true, id: Number(personId), name: '阿夏' });
+
+    expect(db.prepare('SELECT name FROM people WHERE id = ?').get(personId)).toEqual({ name: '阿夏' });
+  });
+
+  test('does not expose the removed split endpoint', async () => {
+    await request(app)
+      .post('/api/faces/people/1/split')
+      .send({ faceIds: [1] })
+      .expect(404);
+  });
 });
