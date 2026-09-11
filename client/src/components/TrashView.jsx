@@ -6,15 +6,6 @@ import { useResponsiveGridMetrics } from '../hooks/useResponsiveGridMetrics';
 import { AssetThumbCard } from './AssetThumbCard';
 import { formatTimelineDate } from '../utils/assetTime';
 
-function formatDate(ms) {
-  if (!Number.isFinite(Number(ms))) return '—';
-  try {
-    return new Date(Number(ms)).toLocaleDateString();
-  } catch {
-    return '—';
-  }
-}
-
 export function TrashView({ onAssetClick }) {
   "use no memo";
   const parentRef = useRef(null);

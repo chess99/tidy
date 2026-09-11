@@ -1,5 +1,5 @@
 import {
-  X, FolderOpen, Maximize2, Calendar, Camera, Hash, FileType, HardDrive, Users, Sparkles,
+  X, FolderOpen, Maximize2, Calendar, Camera, Hash, FileType, HardDrive, Users, Sparkles, Pencil,
   Image as ImageIcon, Trash2, FolderCheck, FolderSearch
 } from 'lucide-react';
 import { Button } from './ui/button';
@@ -8,7 +8,7 @@ import { apiUrl, openFileLocation, updateAssetTime } from '../api/client';
 import { useState } from 'react';
 import { AssetFacesPanel } from './AssetFacesPanel';
 import { VideoPosterFallback } from './VideoPosterFallback';
-import { captureTimeOf, formatCaptureDateTime, timelineTimeOf, timeSourceLabel } from '../utils/assetTime';
+import { formatTimelineDateTime, timelineTimeOf } from '../utils/assetTime';
 
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes)) return '—';
@@ -16,19 +16,6 @@ function formatBytes(bytes) {
   if (mb < 1) return `${(bytes / 1024).toFixed(1)} KB`;
   if (mb < 1024) return `${mb.toFixed(2)} MB`;
   return `${(mb / 1024).toFixed(2)} GB`;
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return '—';
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return '—';
-  return d.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 function dirPrefixOf(filePath) {
@@ -92,7 +79,6 @@ export function AssetDetail({
   }
 
   const effectiveAsset = timeOverride?.hash === asset.hash ? { ...asset, ...timeOverride } : asset;
-  const capturedAt = captureTimeOf(effectiveAsset);
   const timelineAt = timelineTimeOf(effectiveAsset);
   const isVideo = String(effectiveAsset.mime_type || '').toLowerCase().startsWith('video/');
   const typeLabel = asset.ext?.toUpperCase() || asset.mime_type?.split('/')[1]?.toUpperCase() || 'UNKNOWN';
@@ -117,16 +103,6 @@ export function AssetDetail({
       await openFileLocation(asset.hash);
     } catch (err) {
       console.error('Failed to open file location:', err);
-    }
-  };
-
-  const handleDateFilter = (type) => {
-    if (!timelineAt) return;
-    const d = new Date(timelineAt);
-    if (type === 'from') {
-      onApplyFilter?.({ from: d.setHours(0, 0, 0, 0) });
-    } else {
-      onApplyFilter?.({ to: d.setHours(23, 59, 59, 999) });
     }
   };
 
@@ -322,18 +298,7 @@ export function AssetDetail({
 
           <InfoRow icon={HardDrive} label="文件大小" value={formatBytes(asset.size)} />
 
-          <InfoRow icon={Calendar} label="拍摄时间">
-            <div className="text-sm text-gray-900">
-              {capturedAt ? formatCaptureDateTime(effectiveAsset, 'zh-CN') : '未知'}
-            </div>
-            <div className="mt-1 text-[11px] text-gray-500">
-              {timeSourceLabel(effectiveAsset)}
-              {effectiveAsset.time_confidence ? ` · ${effectiveAsset.time_confidence === 'high' ? '高可信' : '需谨慎'}` : ''}
-              {effectiveAsset.time_zone ? ` · ${effectiveAsset.time_zone}` : ''}
-            </div>
-            {!capturedAt && timelineAt ? (
-              <div className="mt-1 text-[11px] text-amber-700">排序暂用文件时间：{formatDate(timelineAt)}</div>
-            ) : null}
+          <InfoRow icon={Calendar} label="时间">
             {editingTime ? (
               <div className="mt-2 space-y-2">
                 <input
@@ -345,35 +310,27 @@ export function AssetDetail({
                 {timeError ? <div className="text-[11px] text-red-600">{timeError}</div> : null}
                 <div className="flex flex-wrap gap-1.5">
                   <button className="px-2 py-1 rounded border text-[11px]" disabled={!timeDraft || timeSaving} onClick={() => saveManualTime(timeDraft)}>保存</button>
-                  <button className="px-2 py-1 rounded border text-[11px]" disabled={timeSaving} onClick={() => saveManualTime(null)}>标记为未知</button>
+                  <button className="px-2 py-1 rounded border text-[11px]" disabled={timeSaving} onClick={() => saveManualTime(null)}>清除</button>
                   <button className="px-2 py-1 rounded border text-[11px]" disabled={timeSaving} onClick={() => setEditingTime(false)}>取消</button>
                 </div>
               </div>
             ) : (
-              <button
-                className="mt-2 px-2 py-1 rounded border border-gray-200 text-[11px] text-gray-700 hover:bg-gray-50"
-                onClick={() => {
-                  setTimeDraft(capturedAt ? toDateTimeLocalValue(capturedAt) : '');
-                  setTimeError('');
-                  setEditingTime(true);
-                }}
-              >
-                修改时间
-              </button>
-            )}
-            {timelineAt && (
-              <div className="flex gap-2 mt-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm text-gray-900">
+                  {timelineAt != null ? formatTimelineDateTime(effectiveAsset, 'zh-CN') : '—'}
+                </div>
                 <button
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 hover:border-gray-300 transition-colors cursor-pointer"
-                  onClick={() => handleDateFilter('from')}
+                  type="button"
+                  className="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                  aria-label="修改时间"
+                  title="修改时间"
+                  onClick={() => {
+                    setTimeDraft(timelineAt != null ? toDateTimeLocalValue(timelineAt) : '');
+                    setTimeError('');
+                    setEditingTime(true);
+                  }}
                 >
-                  筛选从此日期
-                </button>
-                <button
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 hover:border-gray-300 transition-colors cursor-pointer"
-                  onClick={() => handleDateFilter('to')}
-                >
-                  筛选至此日期
+                  <Pencil className="h-3.5 w-3.5" />
                 </button>
               </div>
             )}
