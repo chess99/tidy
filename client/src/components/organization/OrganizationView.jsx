@@ -31,8 +31,12 @@ import {
   getOrganizationMoves,
   applyOrganization,
   cancelOrganization,
+  importOrganization,
+  rollbackOrganization,
+  pauseOrganization,
 } from "../../api/organization";
 import { SnapshotBrowser } from "./SnapshotBrowser";
+import { PlanFileDialog } from "./PlanFileDialog";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -156,12 +160,12 @@ function RulesDialog({ initial, onClose, onGenerate, working }) {
             >
               <option value="4">4 小时 · 较细</option>
               <option value="8">8 小时 · 标准</option>
-              <option value="18">18 小时 · 合并跨日行程</option>
+              <option value="18">18 小时 · 较宽</option>
               <option value="36">36 小时 · 较宽</option>
             </select>
           </label>
           <label>
-            单次事件最长跨度
+            多日行程最长跨度
             <select
               value={rules.tripDays}
               onChange={(e) => change("tripDays", Number(e.target.value))}
@@ -194,6 +198,32 @@ function RulesDialog({ initial, onClose, onGenerate, working }) {
             >
               <option value="year">按年归拢</option>
               <option value="month">按月归拢</option>
+            </select>
+          </label>
+          <label>
+            夜间停拍容忍
+            <select
+              value={rules.overnightHours ?? 18}
+              onChange={(e) => change("overnightHours", Number(e.target.value))}
+            >
+              {[12, 18, 24].map((n) => (
+                <option key={n} value={n}>
+                  {n} 小时
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            行程中的最长停拍
+            <select
+              value={rules.tripGapHours ?? 72}
+              onChange={(e) => change("tripGapHours", Number(e.target.value))}
+            >
+              {[24, 48, 72, 120].map((n) => (
+                <option key={n} value={n}>
+                  {n / 24} 天
+                </option>
+              ))}
             </select>
           </label>
           <label className="org-check">
@@ -299,11 +329,17 @@ function RunDialog({ root, runId, onClose, onFinished }) {
     }
   };
   const label =
-    run?.status === "done"
-      ? "整理已完成"
-      : run?.status === "failed" || run?.interrupted
-        ? "整理需要处理"
-        : "目录变更";
+    run?.status === "cancelled"
+      ? "检查已取消"
+      : run?.status === "rolled_back"
+        ? "已恢复原目录"
+        : run?.status === "done"
+          ? "整理已完成"
+          : run?.status === "failed" ||
+              run?.status === "paused" ||
+              run?.interrupted
+            ? "整理需要处理"
+            : "目录变更";
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="org-dialog org-run-dialog">
@@ -324,6 +360,12 @@ function RunDialog({ root, runId, onClose, onFinished }) {
             {run.phase}
           </div>
         )}
+        {running && run.currentFile && (
+          <small className="org-current-file" title={run.currentFile}>
+            {run.currentFile}
+            {run.total ? ` · ${fmt(run.checked)} / ${fmt(run.total)}` : ""}
+          </small>
+        )}
         {run?.skipped?.length > 0 && (
           <div className="org-warning">
             {fmt(run.skipped.length)} 个历史文件缺失或内容变化，将跳过。
@@ -339,6 +381,11 @@ function RunDialog({ root, runId, onClose, onFinished }) {
           </div>
         )}
         <div className="org-diff">
+          {run?.directoryChanges?.map((d) => (
+            <div key={d}>
+              <strong>恢复目录：{d}</strong>
+            </div>
+          ))}
           {(page ? movesQuery.data || [] : run?.moves || []).map((m) => (
             <div key={m.from}>
               <span title={m.from}>{m.from}</span>
@@ -367,16 +414,47 @@ function RunDialog({ root, runId, onClose, onFinished }) {
         )}
         <div className="org-dialog-actions">
           <span>恢复目录不会还原被删除或覆盖的文件内容</span>
+          {running && run.status === "preparing" && (
+            <Button
+              variant="outline"
+              disabled={submitting}
+              onClick={() => act(() => cancelOrganization(root, runId))}
+            >
+              取消检查
+            </Button>
+          )}
+          {running && run.status === "applying" && (
+            <Button
+              variant="outline"
+              disabled={submitting}
+              onClick={() => act(() => pauseOrganization(root, runId))}
+            >
+              暂停执行
+            </Button>
+          )}
           {run?.status === "ready" && (
             <Button
-              disabled={submitting || !run.totalMoves}
+              disabled={
+                submitting || (!run.totalMoves && !run.directoryChanges?.length)
+              }
               onClick={() => act(() => applyOrganization(root, runId))}
             >
               应用到磁盘
             </Button>
           )}
-          {(run?.status === "failed" || run?.interrupted) && (
+          {(run?.status === "failed" ||
+            run?.status === "paused" ||
+            run?.interrupted) && (
             <>
+              {run.started && run.direction !== "rollback" && (
+                <Button
+                  variant="outline"
+                  disabled={submitting}
+                  onClick={() => act(() => rollbackOrganization(root, runId))}
+                >
+                  恢复应用前目录
+                </Button>
+              )}
               {!run.started && (
                 <Button
                   variant="outline"
@@ -391,7 +469,7 @@ function RunDialog({ root, runId, onClose, onFinished }) {
                   放弃检查
                 </Button>
               )}
-              {run.started && (
+              {(run.started || run.status === "paused") && (
                 <Button
                   disabled={submitting}
                   onClick={() => act(() => applyOrganization(root, runId))}
@@ -401,7 +479,7 @@ function RunDialog({ root, runId, onClose, onFinished }) {
               )}
             </>
           )}
-          {run?.status === "done" && (
+          {["done", "rolled_back", "cancelled"].includes(run?.status) && (
             <Button onClick={onFinished}>
               <Check size={16} />
               完成
@@ -433,6 +511,7 @@ export function OrganizationView() {
   const [redo, setRedo] = useState([]);
   const [placeName, setPlaceName] = useState("");
   const [candidate, setCandidate] = useState(null);
+  const [planFilesOpen, setPlanFilesOpen] = useState(false);
   const [version, setVersion] = useState(null);
   const [direct, setDirect] = useState(false);
   const query = useQuery({
@@ -546,6 +625,17 @@ export function OrganizationView() {
     });
   const preview = (snapshotId) =>
     perform(async () => {
+      const ready = data.runs?.find(
+        (r) =>
+          r.status === "ready" &&
+          r.snapshotId === snapshotId &&
+          (snapshotId || r.revision === draft?.revision),
+      );
+      if (ready) {
+        setHistoryOpen(false);
+        setRunId(ready.id);
+        return;
+      }
       const run = await previewOrganization({
         root: actualRoot,
         revision: draft?.revision,
@@ -569,7 +659,7 @@ export function OrganizationView() {
   };
   const pendingRun = data?.runs?.find(
     (r) =>
-      ["preparing", "applying"].includes(r.status) ||
+      ["preparing", "applying", "paused"].includes(r.status) ||
       r.interrupted ||
       (r.status === "failed" && r.started),
   );
@@ -618,6 +708,13 @@ export function OrganizationView() {
           <Button variant="outline" onClick={() => setHistoryOpen(true)}>
             <History size={15} />
             历史记录
+          </Button>
+          <Button
+            variant="outline"
+            disabled={!draft || working}
+            onClick={() => setPlanFilesOpen(true)}
+          >
+            方案文件
           </Button>
           <Button disabled={!draft || working} onClick={() => preview()}>
             {working ? (
@@ -983,6 +1080,21 @@ export function OrganizationView() {
             </aside>
           )}
         </div>
+      )}
+      {planFilesOpen && (
+        <PlanFileDialog
+          root={actualRoot}
+          onClose={() => setPlanFilesOpen(false)}
+          onImport={async (plan) => {
+            const next = await importOrganization({
+              root: actualRoot,
+              revision: draft.revision,
+              plan,
+            });
+            setCandidate(next);
+            setPlanFilesOpen(false);
+          }}
+        />
       )}
       {candidate && (
         <Dialog open onOpenChange={(open) => !open && setCandidate(null)}>

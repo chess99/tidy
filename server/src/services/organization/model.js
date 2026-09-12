@@ -3,14 +3,15 @@ const crypto = require("crypto");
 
 const DEFAULT_RULES = {
   gapHours: 8,
-  tripDays: 3,
+  tripDays: 21,
+  overnightHours: 18,
+  tripGapHours: 72,
   minPhotos: 8,
   dailyPeriod: "year",
   preserveNamed: true,
   themes: [],
   places: [],
 };
-const DAY = 86400000;
 const RAW = /\.(dng|cr2|cr3|nef|arw|raf|rw2|orf|pef)$/i;
 const MEDIA =
   /\.(jpe?g|png|webp|gif|heic|heif|tiff?|dng|cr2|cr3|nef|arw|raf|rw2|orf|pef|mp4|mov|avi|m4v|mkv|3gp)$/i;
@@ -44,6 +45,8 @@ function rulesOf(input = {}) {
   for (const [name, min, max] of [
     ["gapHours", 1, 48],
     ["tripDays", 1, 21],
+    ["overnightHours", 8, 24],
+    ["tripGapHours", 12, 120],
     ["minPhotos", 2, 100],
   ]) {
     if (
@@ -155,7 +158,9 @@ function makeBundles(rows, root) {
         gps: coordinate(metadata),
         tags: primary.tags || "",
         originalFolder: path.posix.dirname(primary.relative),
-        camera: primary.camera_model || "",
+        camera: String(primary.camera_model || "")
+          .replace(/\0/g, "")
+          .trim(),
       };
     })
     .sort(
@@ -163,161 +168,18 @@ function makeBundles(rows, root) {
         (a.time ?? Infinity) - (b.time ?? Infinity) || a.id.localeCompare(b.id),
     );
 }
-function placeOf(bundle, rules) {
-  if (!bundle.gps) return "";
-  const named = rules.places.find((p) => distance(bundle.gps, p) <= p.radiusKm);
-  return (
-    named?.name ||
-    `地点 ${bundle.gps.lat.toFixed(1)}, ${bundle.gps.lon.toFixed(1)}`
-  );
-}
 function generateAssignments(
   bundles,
   rawRules,
   previous = {},
   themeMatches = {},
 ) {
-  const rules = rulesOf(rawRules);
-  const result = {};
-  const pending = [];
-  const period = (b) =>
-    new Date(b.time)
-      .toISOString()
-      .slice(0, rules.dailyPeriod === "month" ? 7 : 4);
-  const put = (b, folder, reason, review = false, kind = "event") => {
-    result[b.id] = { folder, reason, review, kind, manual: false };
-  };
-  for (const b of bundles) {
-    if (previous[b.id]?.manual) {
-      result[b.id] = previous[b.id];
-      continue;
-    }
-    if (
-      rules.preserveNamed &&
-      b.originalFolder
-        .split("/")
-        .some(
-          (p) =>
-            /^\d{8}[\s\u4e00-\u9fff_-]/.test(p) ||
-            /^\d{4}-\d{2}-\d{2}\s/.test(p),
-        )
-    ) {
-      put(b, b.originalFolder, "沿用已命名目录", false, "existing");
-      continue;
-    }
-    if (
-      /screenshot|截屏|截图|wallpaper|壁纸|mmexport|\/wechat\/|\/微信\//i.test(
-        b.name + "/" + b.originalFolder,
-      )
-    ) {
-      put(
-        b,
-        `资料/${/screenshot|截屏|截图/i.test(b.name + b.originalFolder) ? "截图" : "保存的图片"}`,
-        "来自截图或应用导出",
-        false,
-        "reference",
-      );
-      continue;
-    }
-    if (!b.time || !Number.isFinite(b.time)) {
-      put(b, "待确认/日期缺失", "缺少可信拍摄日期", true, "unresolved");
-      continue;
-    }
-    pending.push(b);
-  }
-  // A bounded session prevents temporal chaining from swallowing months of daily photos.
-  const sessions = [];
-  for (const b of pending) {
-    const current = sessions.at(-1);
-    const last = current?.at(-1);
-    const gap = last ? b.time - last.time : Infinity;
-    const jump = b.gps && last?.gps ? distance(b.gps, last.gps) : 0;
-    if (
-      !current ||
-      gap > rules.gapHours * 3600000 ||
-      b.time - current[0].time > rules.tripDays * DAY ||
-      (jump > 100 && gap < 1800000)
-    )
-      sessions.push([b]);
-    else current.push(b);
-  }
-  const placeDays = new Map();
-  for (const b of pending) {
-    const location = placeOf(b, rules);
-    if (!location) continue;
-    if (!placeDays.has(location)) placeDays.set(location, new Set());
-    placeDays.get(location).add(new Date(b.time).toISOString().slice(0, 10));
-  }
-  for (const session of sessions) {
-    const first = session[0];
-    const date = new Date(first.time).toISOString().slice(0, 10);
-    const end = new Date(session.at(-1).time).toISOString().slice(0, 10);
-    const place = session.map((b) => placeOf(b, rules)).find(Boolean);
-    const themeCounts = new Map();
-    for (const b of session) {
-      const theme =
-        rules.themes.find(
-          (t) =>
-            b.tags.split("|").includes(t.name) ||
-            b.originalFolder.includes(t.name),
-        )?.name || themeMatches[b.id];
-      if (theme) themeCounts.set(theme, (themeCounts.get(theme) || 0) + 1);
-    }
-    const dominant = [...themeCounts].sort((a, b) => b[1] - a[1])[0];
-    const isEvent =
-      session.length >= rules.minPhotos &&
-      (!dominant || dominant[1] / session.length < 0.7);
-    if (isEvent) {
-      const suffix = new Date(first.time)
-        .toISOString()
-        .slice(11, 16)
-        .replace(":", "");
-      const folder = `事件/${date.slice(0, 4)}/${date}${end !== date ? `—${end}` : ""} ${place || "拍摄记录"} ${suffix}`;
-      for (const b of session)
-        put(
-          b,
-          folder,
-          b.gps ? "连续拍摄，结合时间与位置" : "连续拍摄，地点缺失",
-          !b.gps || !place,
-          "event",
-        );
-      continue;
-    }
-    for (const b of session) {
-      const theme =
-        rules.themes.find(
-          (t) =>
-            b.tags.split("|").includes(t.name) ||
-            b.originalFolder.includes(t.name),
-        )?.name || themeMatches[b.id];
-      const location = placeOf(b, rules);
-      if (theme)
-        put(
-          b,
-          `主题/${segment(theme)}/${period(b)}`,
-          "主题匹配",
-          true,
-          "theme",
-        );
-      else if (location && placeDays.get(location)?.size >= 5)
-        put(
-          b,
-          `日常/${location}/${period(b)}`,
-          "多日反复出现在同一区域",
-          true,
-          "daily",
-        );
-      else
-        put(
-          b,
-          `生活散片/${location || "地点未定"}/${period(b)}`,
-          location ? "零散拍摄记录" : "缺少地点",
-          !location,
-          "life",
-        );
-    }
-  }
-  return result;
+  return require("./clustering").cluster(
+    bundles,
+    rulesOf(rawRules),
+    previous,
+    themeMatches,
+  );
 }
 
 module.exports = {

@@ -6,9 +6,19 @@ const { isUnder } = require("../fileSafety");
 const canonical = (p) => (process.platform === "win32" ? p.toLowerCase() : p);
 const digest = (value) =>
   crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
-async function sha256(file) {
+async function sha256(
+  file,
+  { shouldCancel = () => false, onBytes = () => {} } = {},
+) {
   const hash = crypto.createHash("sha256");
-  for await (const block of fs.createReadStream(file)) hash.update(block);
+  let bytes = 0;
+  for await (const block of fs.createReadStream(file)) {
+    if (shouldCancel())
+      throw Object.assign(new Error("检查已取消"), { code: "CANCELLED" });
+    hash.update(block);
+    bytes += block.length;
+    onBytes(bytes);
+  }
   return hash.digest("hex");
 }
 async function moveExclusive(from, to, expected) {
@@ -55,11 +65,17 @@ async function safePath(root, relative) {
 async function capture(
   db,
   root,
-  { previous, exclude = [], progress = () => {} } = {},
+  {
+    previous,
+    exclude = [],
+    progress = () => {},
+    shouldCancel = () => false,
+  } = {},
 ) {
   const rootStat = await fs.lstat(root);
   if (!rootStat.isDirectory() || rootStat.isSymbolicLink())
     throw new Error("整理范围必须是普通目录");
+  const physicalRoot = await fs.realpath(root);
   const cached = new Map(
     db
       .prepare("SELECT id,path,hash,hash_algo,size,mtime_ms FROM files")
@@ -71,7 +87,10 @@ async function capture(
   );
   const files = [];
   const directories = [];
+  const queue = [];
   async function walk(directory) {
+    if (shouldCancel())
+      throw Object.assign(new Error("检查已取消"), { code: "CANCELLED" });
     for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
       const absolute = path.join(directory, entry.name);
       if (exclude.some((p) => isUnder(p, absolute))) continue;
@@ -86,47 +105,99 @@ async function capture(
         continue;
       }
       if (!entry.isFile()) throw new Error(`不支持的文件类型：${relative}`);
-      const stat = await fs.stat(absolute);
-      const known = cached.get(canonical(absolute));
-      const old = prior.get(canonical(relative));
-      let hash;
-      if (
-        known?.hash_algo === "sha256" &&
-        /^[a-f0-9]{64}$/i.test(known.hash || "") &&
-        known.size === stat.size &&
-        Math.abs(known.mtime_ms - stat.mtimeMs) < 0.01
-      )
-        hash = known.hash;
-      else if (
-        /^[a-f0-9]{64}$/i.test(old?.hash || "") &&
-        old?.size === stat.size &&
-        Math.abs(old.mtime - stat.mtimeMs) < 0.01
-      )
-        hash = old.hash;
-      else hash = await sha256(absolute);
-      const after = await fs.stat(absolute);
-      if (after.size !== stat.size || after.mtimeMs !== stat.mtimeMs)
-        throw new Error(`文件正在变化：${relative}`);
-      files.push({
-        id: known ? `file:${known.id}` : old?.id || crypto.randomUUID(),
-        fileId: known?.id,
-        relative,
-        hash,
-        size: stat.size,
-        mtime: stat.mtimeMs,
-      });
-      if (files.length % 100 === 0)
-        progress({ phase: "检查目录", checked: files.length });
+      queue.push({ absolute, relative });
     }
   }
   await walk(root);
+  let cursor = 0;
+  let lastProgress = 0;
+  let firstError;
+  async function inspect() {
+    try {
+      while (!firstError && cursor < queue.length) {
+        if (shouldCancel())
+          throw Object.assign(new Error("检查已取消"), { code: "CANCELLED" });
+        const { absolute, relative } = queue[cursor++];
+        const stat = await fs.lstat(absolute);
+        if (
+          !stat.isFile() ||
+          stat.isSymbolicLink() ||
+          !isUnder(physicalRoot, await fs.realpath(absolute))
+        )
+          throw new Error(`文件类型或路径已变化：${relative}`);
+        const known = cached.get(canonical(absolute));
+        const old = prior.get(canonical(relative));
+        let hash;
+        if (
+          known?.hash_algo === "sha256" &&
+          /^[a-f0-9]{64}$/i.test(known.hash || "") &&
+          known.size === stat.size &&
+          Math.abs(known.mtime_ms - stat.mtimeMs) < 0.01
+        )
+          hash = known.hash;
+        else if (
+          /^[a-f0-9]{64}$/i.test(old?.hash || "") &&
+          old?.size === stat.size &&
+          Math.abs(old.mtime - stat.mtimeMs) < 0.01
+        )
+          hash = old.hash;
+        else
+          hash = await sha256(absolute, {
+            shouldCancel: () => Boolean(firstError) || shouldCancel(),
+            onBytes: (bytes) => {
+              if (Date.now() - lastProgress > 1000) {
+                lastProgress = Date.now();
+                progress({
+                  phase: "计算校验值",
+                  checked: files.length,
+                  total: queue.length,
+                  currentFile: relative,
+                  currentBytes: bytes,
+                });
+              }
+            },
+          });
+        const after = await fs.stat(absolute);
+        if (after.size !== stat.size || after.mtimeMs !== stat.mtimeMs)
+          throw new Error(`文件正在变化：${relative}`);
+        files.push({
+          id: known ? `file:${known.id}` : old?.id || crypto.randomUUID(),
+          fileId: known?.id,
+          relative,
+          hash,
+          size: stat.size,
+          mtime: stat.mtimeMs,
+        });
+        if (files.length % 100 === 0)
+          progress({
+            phase: "检查目录",
+            checked: files.length,
+            total: queue.length,
+            currentFile: relative,
+          });
+      }
+    } catch (error) {
+      firstError ||= error;
+      throw error;
+    }
+  }
+  // Bounded concurrency hides NAS round trips without opening thousands of files at once.
+  const results = await Promise.allSettled(
+    Array.from({ length: Math.min(4, queue.length) }, inspect),
+  );
+  const failure = results.find((r) => r.status === "rejected");
+  if (failure) throw firstError || failure.reason;
+  if ((await fs.realpath(root)) !== physicalRoot)
+    throw new Error("目录挂载在检查期间变化");
   files.sort((a, b) => a.relative.localeCompare(b.relative, "en"));
   directories.sort();
   return {
     root,
+    physicalRoot,
     files,
     directories,
     fingerprint: digest({
+      physicalRoot,
       files: files.map((f) => [f.relative, f.hash]),
       directories,
     }),

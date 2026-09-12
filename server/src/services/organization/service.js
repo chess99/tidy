@@ -22,7 +22,16 @@ const {
 } = require("./filesystem");
 
 const activeTasks = new Set();
-function busy(db) {
+const verificationEpoch = crypto.randomUUID();
+const cancelledTasks = new Set();
+const pausedTasks = new Set();
+function checkPause(id) {
+  if (pausedTasks.has(id))
+    throw Object.assign(new Error("执行已暂停，可继续或恢复原目录"), {
+      code: "PAUSED",
+    });
+}
+function busy(db, exceptId = "") {
   if (
     !db
       .prepare(
@@ -34,9 +43,9 @@ function busy(db) {
   return (
     db
       .prepare(
-        "SELECT count(*) AS n FROM organization_runs WHERE status IN ('preparing','applying') OR (status = 'failed' AND json_extract(data, '$.started') = 1)",
+        "SELECT count(*) AS n FROM organization_runs WHERE (status IN ('preparing','applying','paused') OR (status = 'failed' AND json_extract(data, '$.started') = 1)) AND id != ?",
       )
-      .get().n > 0
+      .get(exceptId).n > 0
   );
 }
 function runData(db, id) {
@@ -93,7 +102,14 @@ function latestSnapshot(db, root) {
       "SELECT s.data FROM directory_history h JOIN directory_snapshots s ON s.id = h.snapshot_id WHERE h.root = ? ORDER BY h.id DESC LIMIT 1",
     )
     .get(root);
-  return row ? JSON.parse(row.data) : undefined;
+  const cached =
+    row ||
+    db
+      .prepare(
+        "SELECT data FROM directory_snapshots WHERE root = ? ORDER BY created_at DESC LIMIT 1",
+      )
+      .get(root);
+  return cached ? JSON.parse(cached.data) : undefined;
 }
 function remember(db, snapshot, label, runId) {
   const id = digest([snapshot.root, snapshot.fingerprint]);
@@ -123,15 +139,22 @@ function summary(run) {
     id: run.id,
     root: run.root,
     status: run.status,
+    direction: run.rollback ? "rollback" : "apply",
     started: Boolean(run.started),
+    revision: run.revision,
+    snapshotId: run.snapshotId,
     phase: run.phase,
     checked: run.checked,
+    total: run.total,
+    currentFile: run.currentFile,
+    currentBytes: run.currentBytes,
     done: run.done || 0,
     error: run.error,
     interrupted:
       ["preparing", "applying"].includes(run.status) &&
       !activeTasks.has(run.id),
     totalMoves: (run.moves || []).length,
+    directoryChanges: run.directoryChanges || [],
     moves: (run.moves || []).slice(0, 200).map((m) => ({
       from: m.from,
       to: m.to,
@@ -237,6 +260,18 @@ function accept(db, root, id) {
   db.prepare("DELETE FROM organization_candidates WHERE root = ?").run(root);
   return result;
 }
+function importCandidate(db, root, input, revision) {
+  if (busy(db)) throw new Error("整理检查或执行尚未结束");
+  const draft = readDraft(db, root);
+  if (!draft || draft.revision !== revision)
+    throw new Error("草稿已变化，请重新加载后导入");
+  const proposal = require("./plan").importPlan(draft, input);
+  const id = crypto.randomUUID();
+  db.prepare(
+    "INSERT OR REPLACE INTO organization_candidates VALUES (?, ?, ?, ?)",
+  ).run(root, id, revision, JSON.stringify(proposal));
+  return { candidateId: id, draft: proposal };
+}
 function edit(db, root, patch, revision) {
   if (busy(db)) throw new Error("整理检查或执行尚未结束");
   const draft = readDraft(db, root);
@@ -290,6 +325,7 @@ async function prepare(db, root, cfg, { revision, snapshotId } = {}) {
   setImmediate(async () => {
     try {
       run.before = await capture(db, root, {
+        shouldCancel: () => cancelledTasks.has(run.id),
         previous: latestSnapshot(db, root),
         exclude: run.exclude,
         progress: (p) => {
@@ -311,6 +347,9 @@ async function prepare(db, root, cfg, { revision, snapshotId } = {}) {
         run.skipped = restored.skipped;
         run.added = restored.added;
         run.restoreDirectories = old.directories;
+        run.directoryChanges = old.directories.filter(
+          (d) => !run.before.directories.includes(d),
+        );
       } else {
         const known = new Map(
           run.before.files.map((f) => [canonical(f.relative), f]),
@@ -325,12 +364,20 @@ async function prepare(db, root, cfg, { revision, snapshotId } = {}) {
               throw new Error(
                 `文件已变化，请重新扫描并生成方案：${file.relative}`,
               );
-            const targetFolder = assignment.kind === 'existing' && !assignment.manual
-              ? path.posix.dirname(actual.relative) : folder;
+            const targetFolder =
+              assignment.kind === "existing" && !assignment.manual
+                ? path.posix.dirname(actual.relative)
+                : folder;
             targets[actual.relative] =
               `${targetFolder}/${path.posix.basename(actual.relative)}`;
             const stem = file.relative.replace(/\.[^.]+$/, "");
-            for (const side of [`${file.relative}.xmp`, `${stem}.xmp`]) {
+            const companions = [
+              `${file.relative}.xmp`,
+              ...["xmp", "aae", "dop", "pp3", "srt", "lrf", "thm"].map(
+                (ext) => `${stem}.${ext}`,
+              ),
+            ];
+            for (const side of companions) {
               const sidecar = known.get(canonical(side));
               if (sidecar)
                 targets[sidecar.relative] =
@@ -344,50 +391,87 @@ async function prepare(db, root, cfg, { revision, snapshotId } = {}) {
         ...m,
         stage: `${run.stageRoot}/${i}`,
       }));
-      for (const m of run.moves) await safePath(root, m.to);
+      for (const m of run.moves) {
+        if (cancelledTasks.has(run.id))
+          throw Object.assign(new Error("检查已取消"), { code: "CANCELLED" });
+        await safePath(root, m.to);
+      }
       run.status = "ready";
       run.phase = "变更已就绪";
     } catch (error) {
-      run.status = "failed";
-      run.error = error.message;
+      run.status = error.code === "CANCELLED" ? "cancelled" : "failed";
+      run.error = error.code === "CANCELLED" ? null : error.message;
     } finally {
       persist(db, run);
       activeTasks.delete(run.id);
+      cancelledTasks.delete(run.id);
     }
   });
   return summary(run);
 }
 async function verifyFile(file, expected) {
   const stat = await fs.lstat(file);
-  if (
-    !stat.isFile() ||
-    stat.isSymbolicLink() ||
-    stat.size !== expected.size ||
-    (await sha256(file)) !== expected.hash
-  )
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size !== expected.size)
     throw new Error(`文件内容已变化：${file}`);
+  const proof = expected.verified;
+  // A same-volume move preserves the already-verified inode and bytes. Recheck content after restart or any identity/stat change.
+  if (
+    Number.isSafeInteger(stat.ino) &&
+    stat.ino > 0 &&
+    proof?.epoch === verificationEpoch &&
+    proof.hash === expected.hash &&
+    proof.ino === stat.ino &&
+    proof.dev === stat.dev &&
+    proof.mtime === stat.mtimeMs
+  )
+    return;
+  if ((await sha256(file)) !== expected.hash)
+    throw new Error(`文件内容已变化：${file}`);
+  const after = await fs.lstat(file);
+  if (
+    after.ino !== stat.ino ||
+    after.dev !== stat.dev ||
+    after.size !== stat.size ||
+    after.mtimeMs !== stat.mtimeMs
+  )
+    throw new Error(`文件在校验期间变化：${file}`);
+  expected.verified = {
+    epoch: verificationEpoch,
+    ino: stat.ino,
+    dev: stat.dev,
+    mtime: stat.mtimeMs,
+    hash: expected.hash,
+  };
 }
 async function execute(db, id) {
   const run = runData(db, id);
   if (activeTasks.has(id)) return summary(run);
+  if (run.rollback) return rollback(db, id);
   if (
-    !["ready", "applying", "failed"].includes(run.status) ||
+    !["ready", "applying", "failed", "paused"].includes(run.status) ||
     !run.moves ||
     (run.status === "failed" && !run.started)
   )
     throw new Error("请重新检查变更");
-  if (!run.started && busy(db)) throw new Error("已有整理执行未结束");
+  if (!run.started && busy(db, id)) throw new Error("已有整理执行未结束");
   if (
     db.prepare("SELECT count(*) n FROM jobs WHERE status = 'running'").get().n
   )
     throw new Error("后台扫描正在运行，请完成后再应用");
   run.status = "applying";
+  run.phase = "核对磁盘状态";
+  run.checked = 0;
   run.done = run.moves.filter((m) => m.phase === "done").length;
   run.error = null;
   persist(db, run);
   activeTasks.add(id);
   setImmediate(async () => {
     try {
+      if (
+        run.before.physicalRoot &&
+        (await fs.realpath(run.root)) !== run.before.physicalRoot
+      )
+        throw new Error("目录挂载已变化，请恢复原挂载后继续");
       if (!run.started) {
         const draft = readDraft(db, run.root);
         if (!run.snapshotId && draft?.revision !== run.revision)
@@ -395,10 +479,18 @@ async function execute(db, id) {
         const actual = await capture(db, run.root, {
           previous: run.before,
           exclude: run.exclude,
+          progress: (p) => {
+            Object.assign(run, p);
+            persist(db, run);
+          },
         });
         if (actual.fingerprint !== run.before.fingerprint)
           throw new Error("磁盘目录已变化，请重新检查变更");
+        run.checked = 0;
+        run.total = run.moves.length;
         for (const m of run.moves) {
+          checkPause(id);
+          run.currentFile = m.from;
           await verifyFile(await safePath(run.root, m.from), m);
           run.checked = (run.checked || 0) + 1;
           run.phase = "校验原件";
@@ -419,6 +511,7 @@ async function execute(db, id) {
       };
       // Stage all sources first to support swaps. Each checkpoint is durable; recovery verifies bytes before continuing.
       for (const m of run.moves) {
+        checkPause(id);
         if (m.phase !== "source") continue;
         const from = await safePath(run.root, m.from);
         const stage = await safePath(run.root, m.stage);
@@ -440,7 +533,11 @@ async function execute(db, id) {
         persist(db, run);
       }
       for (const m of run.moves) {
-        if (m.phase === "done") continue;
+        checkPause(id);
+        if (m.phase === "done") {
+          await verifyFile(await safePath(run.root, m.to), m);
+          continue;
+        }
         const stage = await safePath(run.root, m.stage);
         const to = await safePath(run.root, m.to);
         if (await fs.pathExists(stage)) {
@@ -545,28 +642,172 @@ async function execute(db, id) {
         persist(db, run);
       })();
     } catch (error) {
-      run.status = "failed";
+      run.status = error.code === "PAUSED" ? "paused" : "failed";
       run.error = error.message;
     } finally {
       persist(db, run);
       activeTasks.delete(id);
+      pausedTasks.delete(id);
     }
   });
   return summary(run);
 }
 function cancelPrepare(db, id) {
   const run = runData(db, id);
+  if (activeTasks.has(id) && run.status === "preparing") {
+    cancelledTasks.add(id);
+    return;
+  }
   if (activeTasks.has(id) || run.started) throw new Error("正在执行，无法取消");
   run.status = "cancelled";
   persist(db, run);
+}
+function pause(db, id) {
+  const run = runData(db, id);
+  if (!activeTasks.has(id) || run.status !== "applying")
+    throw new Error("当前没有正在执行的移动");
+  pausedTasks.add(id);
+}
+async function rollback(db, id) {
+  const run = runData(db, id);
+  if (activeTasks.has(id)) throw new Error("执行尚未停止，请稍后重试");
+  if (!run.started || !["failed", "applying", "paused"].includes(run.status))
+    throw new Error("仅未完成的移动可以撤回；已完成的整理请从历史恢复");
+  run.rollback = true;
+  run.status = "applying";
+  run.error = null;
+  run.phase = "恢复应用前目录";
+  run.done = run.moves.filter((m) => m.rollbackPhase === "restored").length;
+  persist(db, run);
+  activeTasks.add(id);
+  setImmediate(async () => {
+    try {
+      if (
+        run.before.physicalRoot &&
+        (await fs.realpath(run.root)) !== run.before.physicalRoot
+      )
+        throw new Error("目录挂载已变化，请恢复原挂载后继续");
+      // Stage delivered files first, so undoing a swap never overwrites another source.
+      for (const m of run.moves) {
+        checkPause(id);
+        if (m.rollbackPhase) continue;
+        const from = await safePath(run.root, m.from);
+        const stage = await safePath(run.root, m.stage);
+        const to = await safePath(run.root, m.to);
+        if (m.phase === "source" && (await fs.pathExists(from))) {
+          await verifyFile(from, m);
+          if (await fs.pathExists(stage)) {
+            await verifyFile(stage, m);
+            await fs.unlink(stage);
+          }
+          m.rollbackPhase = "restored";
+          run.done++;
+          if (m.fileId)
+            db.prepare(
+              "UPDATE files SET path = ?, missing = 0 WHERE id = ?",
+            ).run(from, m.fileId);
+        } else {
+          if (await fs.pathExists(stage)) {
+            await verifyFile(stage, m);
+            if (m.delivering && (await fs.pathExists(to))) {
+              await verifyFile(to, m);
+              await fs.unlink(to);
+            }
+          } else {
+            await verifyFile(to, m);
+            await moveExclusive(to, stage, m);
+          }
+          m.rollbackPhase = "staged";
+        }
+        checkpointMove(db, run, m);
+        persist(db, run);
+      }
+      for (const m of run.moves) {
+        checkPause(id);
+        if (m.rollbackPhase === "restored") continue;
+        const stage = await safePath(run.root, m.stage);
+        const from = await safePath(run.root, m.from);
+        if (await fs.pathExists(from)) {
+          if (!m.rollbackDelivering)
+            throw new Error(`原路径已被其他文件占用：${m.from}`);
+          await verifyFile(from, m);
+          if (await fs.pathExists(stage)) {
+            await verifyFile(stage, m);
+            await fs.unlink(stage);
+          }
+        } else {
+          await verifyFile(stage, m);
+          m.rollbackDelivering = true;
+          checkpointMove(db, run, m);
+          await moveExclusive(stage, from, m);
+          await verifyFile(from, m);
+        }
+        if (m.fileId) {
+          db.prepare(
+            "UPDATE files SET path = ?, missing = 0, updated_at = ? WHERE id = ?",
+          ).run(from, Date.now(), m.fileId);
+          db.prepare(
+            "INSERT INTO changes(entity, entity_id, type, ts) VALUES ('file', ?, 'moved', ?)",
+          ).run(String(m.fileId), Date.now());
+        }
+        m.rollbackPhase = "restored";
+        run.done++;
+        checkpointMove(db, run, m);
+        persist(db, run);
+      }
+      const stageDir = await safePath(run.root, run.stageRoot);
+      if (await fs.pathExists(stageDir)) await fs.rmdir(stageDir);
+      const originalDirs = new Set(run.before.directories);
+      for (const d of originalDirs)
+        await fs.ensureDir(await safePath(run.root, d));
+      const dirs = new Set();
+      for (const m of run.moves) {
+        let d = path.posix.dirname(m.to);
+        while (d !== ".") {
+          dirs.add(d);
+          d = path.posix.dirname(d);
+        }
+      }
+      for (const d of [...dirs].sort((a, b) => b.length - a.length)) {
+        if (originalDirs.has(d)) continue;
+        try {
+          await fs.rmdir(await safePath(run.root, d));
+        } catch (e) {
+          if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(e.code)) throw e;
+        }
+      }
+      const after = await capture(db, run.root, {
+        previous: run.before,
+        exclude: run.exclude,
+      });
+      const actual = new Map(after.files.map((f) => [f.relative, f.hash]));
+      for (const m of run.moves)
+        if (actual.get(m.from) !== m.hash)
+          throw new Error(`撤回后校验失败：${m.from}`);
+      remember(db, after, "撤销未完成整理", id);
+      run.status = "rolled_back";
+      run.phase = "已恢复原目录";
+    } catch (error) {
+      run.status = error.code === "PAUSED" ? "paused" : "failed";
+      run.error = error.message;
+    } finally {
+      persist(db, run);
+      activeTasks.delete(id);
+      pausedTasks.delete(id);
+    }
+  });
+  return summary(run);
 }
 module.exports = {
   busy,
   generate,
   accept,
+  importCandidate,
   edit,
   prepare,
   execute,
+  rollback,
+  pause,
   history,
   runData,
   summary,

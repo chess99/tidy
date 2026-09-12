@@ -2,6 +2,14 @@ import axios from "axios";
 import { apiUrl } from "./client";
 
 const api = axios.create({ baseURL: apiUrl("/organization") });
+export const pauseOrganization = (root, id) =>
+  api.post(`/runs/${id}/pause`, { root }).then((r) => r.data);
+export const exportOrganization = (root, type) =>
+  api.get(`/export/${type}`, { params: { root } }).then((r) => r.data);
+export const importOrganization = (data) =>
+  api.post("/import", data).then((r) => r.data);
+export const rollbackOrganization = (root, id) =>
+  api.post(`/runs/${id}/rollback`, { root }).then((r) => r.data);
 export const loadOrganization = (root) =>
   api.get("/", { params: { root } }).then((r) => r.data);
 export const getOrganizationMoves = (root, id, offset) =>

@@ -70,6 +70,34 @@ router.post(
   route((req, { db, root }) => service.accept(db, root, req.body.candidateId)),
 );
 router.get(
+  "/export/:type",
+  route((req, { db, root }) => {
+    const draft = readDraft(db, root);
+    if (!draft) throw new Error("请先生成整理草稿");
+    const {
+      exportPlan,
+      exportCatalog,
+    } = require("../services/organization/plan");
+    if (req.params.type === "plan") return exportPlan(draft);
+    if (req.params.type === "catalog") return exportCatalog(draft);
+    throw new Error("不支持的导出类型");
+  }),
+);
+router.post(
+  "/import",
+  route((req, { db, root }) =>
+    service.importCandidate(db, root, req.body.plan, req.body.revision),
+  ),
+);
+router.post(
+  "/runs/:id/rollback",
+  route((req, { db, root }) => {
+    if (service.runData(db, req.params.id).root !== root)
+      throw new Error("执行记录不属于当前目录");
+    return service.rollback(db, req.params.id);
+  }),
+);
+router.get(
   "/snapshots/:id",
   route((req, { db, root }) => {
     const row = db
@@ -122,6 +150,15 @@ router.post(
     if (service.runData(db, req.params.id).root !== root)
       throw new Error("执行记录不属于当前目录");
     service.cancelPrepare(db, req.params.id);
+    return { ok: true };
+  }),
+);
+router.post(
+  "/runs/:id/pause",
+  route((req, { db, root }) => {
+    if (service.runData(db, req.params.id).root !== root)
+      throw new Error("执行记录不属于当前目录");
+    service.pause(db, req.params.id);
     return { ok: true };
   }),
 );

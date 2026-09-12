@@ -44,8 +44,8 @@ describe("organization proposals", () => {
       }),
     );
     rows.push(
-      ...Array.from({ length: 6 }, (_, i) =>
-        row(i + 20, `phone/d${i}.jpg`, start + (i + 2) * 86400000, {
+      ...Array.from({ length: 8 }, (_, i) =>
+        row(i + 20, `phone/d${i}.jpg`, start + (i + 1) * 8 * 86400000, {
           lat: 25.1,
           lon: 102.7,
         }),
@@ -68,7 +68,7 @@ describe("organization proposals", () => {
     );
     expect(counts).toEqual({
       event: 8,
-      daily: 6,
+      daily: 8,
       existing: 1,
       theme: 1,
       unresolved: 1,
@@ -144,6 +144,71 @@ describe("directory versions and execution", () => {
       draft.revision,
     );
   }
+  test("preflight can be cancelled without creating history or moving files", async () => {
+    const a = await seed("source/a.jpg");
+    const draft = await draftTo();
+    const preview = await service.prepare(
+      db,
+      root,
+      {},
+      { revision: draft.revision },
+    );
+    service.cancelPrepare(db, preview.id);
+    expect((await wait(preview.id, "cancelled")).status).toBe("cancelled");
+    expect(service.history(db, root)).toHaveLength(0);
+    expect(service.busy(db)).toBe(false);
+    expect(await sha256(a.file)).toBe(a.hash);
+  });
+  test("pausing before the first move can resume despite holding the workspace reservation", async () => {
+    const a = await seed("source/a.jpg");
+    const draft = await draftTo();
+    const preview = await service.prepare(
+      db,
+      root,
+      {},
+      { revision: draft.revision },
+    );
+    await wait(preview.id, "ready");
+    await service.execute(db, preview.id);
+    service.pause(db, preview.id);
+    const paused = await wait(preview.id, "paused");
+    expect(paused.status).toBe("paused");
+    expect(paused.started).not.toBe(true);
+    expect(await fs.pathExists(a.file)).toBe(true);
+    await service.execute(db, preview.id);
+    expect((await wait(preview.id, "done")).status).toBe("done");
+  });
+  test("pausing between staged files can roll back the partial operation", async () => {
+    const a = await seed("source/a.jpg");
+    const b = await seed("source/b.jpg");
+    const draft = await draftTo();
+    const preview = await service.prepare(
+      db,
+      root,
+      {},
+      { revision: draft.revision },
+    );
+    await wait(preview.id, "ready");
+    const link = fs.link.bind(fs);
+    let requested = false;
+    const spy = jest.spyOn(fs, "link").mockImplementation(async (from, to) => {
+      const result = await link(from, to);
+      if (!requested) {
+        requested = true;
+        service.pause(db, preview.id);
+      }
+      return result;
+    });
+    await service.execute(db, preview.id);
+    const paused = await wait(preview.id, "paused");
+    spy.mockRestore();
+    expect(paused.status).toBe("paused");
+    expect(paused.started).toBe(true);
+    await service.rollback(db, preview.id);
+    expect((await wait(preview.id, "rolled_back")).status).toBe("rolled_back");
+    expect(await sha256(a.file)).toBe(a.hash);
+    expect(await sha256(b.file)).toBe(b.hash);
+  });
   test("application records before/after, includes sidecar; restore preserves new files and can be redone", async () => {
     const a = await seed("source/a.jpg");
     await fs.outputFile(path.join(root, "source/a.jpg.xmp"), "<xmp/>");
@@ -381,5 +446,136 @@ describe("directory versions and execution", () => {
       "unrelated",
     );
     expect(await sha256(source.file)).toBe(source.hash);
+  });
+  test("an interrupted half-delivered run can roll back without losing newly added files", async () => {
+    const a = await seed("source/a.jpg");
+    const b = await seed("source/b.jpg");
+    const draft = await draftTo();
+    const preview = await service.prepare(
+      db,
+      root,
+      {},
+      { revision: draft.revision },
+    );
+    await wait(preview.id, "ready");
+    const link = fs.link.bind(fs);
+    const failure = jest.spyOn(fs, "link").mockImplementation((from, to) =>
+      to.endsWith("b.jpg")
+        ? Promise.reject(
+            Object.assign(new Error("injected write failure"), {
+              code: "EIO",
+            }),
+          )
+        : link(from, to),
+    );
+    await service.execute(db, preview.id);
+    const partial = await wait(preview.id, "done");
+    failure.mockRestore();
+    expect(partial.status).toBe("failed");
+    expect(partial.started).toBe(true);
+    await fs.outputFile(path.join(root, "new.txt"), "added after interruption");
+    await service.rollback(db, preview.id);
+    const recovered = await wait(preview.id, "rolled_back");
+    expect(recovered.error).toBeNull();
+    expect(recovered.status).toBe("rolled_back");
+    expect(await sha256(a.file)).toBe(a.hash);
+    expect(await sha256(b.file)).toBe(b.hash);
+    expect(await fs.readFile(path.join(root, "new.txt"), "utf8")).toBe(
+      "added after interruption",
+    );
+    expect(service.busy(db)).toBe(false);
+    expect(await fs.pathExists(path.join(root, partial.stageRoot))).toBe(false);
+  });
+  test("rollback refuses an occupied original path and can resume after the conflict is resolved", async () => {
+    const a = await seed("source/a.jpg");
+    const draft = await draftTo();
+    const preview = await service.prepare(
+      db,
+      root,
+      {},
+      { revision: draft.revision },
+    );
+    await wait(preview.id, "ready");
+    const run = service.runData(db, preview.id);
+    run.started = true;
+    run.status = "failed";
+    const move = run.moves[0];
+    await fs.ensureDir(path.dirname(path.join(root, move.stage)));
+    await fs.move(a.file, path.join(root, move.stage));
+    move.phase = "staged";
+    db.prepare(
+      "UPDATE organization_moves SET data = ? WHERE run_id = ? AND source = ?",
+    ).run(JSON.stringify(move), run.id, move.from);
+    db.prepare(
+      "UPDATE organization_runs SET status = ?, data = ? WHERE id = ?",
+    ).run(run.status, JSON.stringify(run), run.id);
+    await fs.outputFile(a.file, "new occupant");
+    await service.rollback(db, run.id);
+    expect((await wait(run.id, "rolled_back")).status).toBe("failed");
+    expect(await fs.readFile(a.file, "utf8")).toBe("new occupant");
+    await fs.remove(a.file);
+    await service.rollback(db, run.id);
+    expect((await wait(run.id, "rolled_back")).status).toBe("rolled_back");
+    expect(await sha256(a.file)).toBe(a.hash);
+  });
+  test("empty-directory-only restoration is an executable plan", async () => {
+    await seed("source/a.jpg");
+    await fs.ensureDir(path.join(root, "empty"));
+    const draft = await draftTo();
+    const preview = await service.prepare(
+      db,
+      root,
+      {},
+      { revision: draft.revision },
+    );
+    await wait(preview.id, "ready");
+    await service.execute(db, preview.id);
+    await wait(preview.id, "done");
+    const snapshotId = service.history(db, root)[0].snapshotId;
+    await fs.rmdir(path.join(root, "empty"));
+    const restore = await service.prepare(db, root, {}, { snapshotId });
+    const plan = await wait(restore.id, "ready");
+    expect(plan.moves).toHaveLength(0);
+    expect(plan.directoryChanges).toEqual(["empty"]);
+    await service.execute(db, restore.id);
+    expect((await wait(restore.id, "done")).status).toBe("done");
+    expect(await fs.pathExists(path.join(root, "empty"))).toBe(true);
+  });
+  test("video proxy, subtitles and photo sidecars accompany their media through apply and restore", async () => {
+    await seed("source/clip.mp4");
+    await seed("source/photo.jpg");
+    for (const f of [
+      "clip.lrf",
+      "clip.srt",
+      "clip.thm",
+      "photo.aae",
+      "photo.pp3",
+    ])
+      await fs.outputFile(path.join(root, "source", f), `aux:${f}`);
+    const draft = await draftTo();
+    const preview = await service.prepare(
+      db,
+      root,
+      {},
+      { revision: draft.revision },
+    );
+    expect((await wait(preview.id, "ready")).moves).toHaveLength(7);
+    await service.execute(db, preview.id);
+    expect((await wait(preview.id, "done")).status).toBe("done");
+    const restore = await service.prepare(
+      db,
+      root,
+      {},
+      { snapshotId: service.history(db, root)[1].snapshotId },
+    );
+    await wait(restore.id, "ready");
+    await service.execute(db, restore.id);
+    expect((await wait(restore.id, "done")).status).toBe("done");
+    expect(await fs.readFile(path.join(root, "source/clip.lrf"), "utf8")).toBe(
+      "aux:clip.lrf",
+    );
+    expect(await fs.readFile(path.join(root, "source/photo.pp3"), "utf8")).toBe(
+      "aux:photo.pp3",
+    );
   });
 });

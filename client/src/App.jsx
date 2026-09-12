@@ -21,12 +21,13 @@ import { GRID_PAGE_SIZE } from './utils/gridLayout';
 
 const queryClient = new QueryClient();
 const DEFAULT_SIMILAR_THRESHOLD = 10;
+const initialMainTab = () => window.location.hash === '#organization' ? 'organization' : 'files';
 
 function Main() {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [viewerOpen, setViewerOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('files'); // files | albums | trash | admin | duplicates
-  const [lastMainTab, setLastMainTab] = useState('files');
+  const [activeTab, setActiveTab] = useState(initialMainTab);
+  const [lastMainTab, setLastMainTab] = useState(initialMainTab);
   const [albumsViewerNav, setAlbumsViewerNav] = useState(() => ({ onPrev: undefined, onNext: undefined }));
   const [filesQuery, setFilesQuery] = useState(() => ({
     filter: localStorage.getItem('filesFilter') || 'all',
@@ -68,6 +69,11 @@ function Main() {
 
   const setActiveTabSafe = (nextTab) => {
     setActiveTab(nextTab);
+    if (nextTab === 'organization' || window.location.hash === '#organization') {
+      const url = new URL(window.location.href);
+      url.hash = nextTab === 'organization' ? 'organization' : '';
+      window.history.replaceState(null, '', url);
+    }
     if (['files', 'albums', 'trash', 'organization'].includes(nextTab)) {
       setLastMainTab(nextTab);
     }

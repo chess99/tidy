@@ -62,6 +62,20 @@
   color: #263244;
   font-size: 13px;
 }
+.org-plan-file-actions {
+  display: flex;
+  gap: 12px;
+  padding: 16px 0;
+}
+.org-plan-file-input {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 13px;
+  padding: 16px;
+  border: 1px dashed #bcc8da;
+  border-radius: 8px;
+}
 .org-pages {
   display: flex;
   align-items: center;
@@ -544,10 +558,19 @@
   justify-content: center;
 }
 .org-dialog {
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
   max-width: 640px;
   background: white;
   border: 1px solid #e0e5ef;
   color: #334155;
+}
+.org-current-file {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #7c899c;
 }
 .org-dialog button {
   cursor: pointer;
