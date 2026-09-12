@@ -152,14 +152,43 @@ describe('file workflow routes', () => {
       VALUES (?, NULL, NULL, 0, ?)
     `).run(badPath, Date.now()).lastInsertRowid;
 
-    const res = await request(harness.app).post('/api/duplicates/apply').send({ deleteFileIds: [id] }).expect(200);
-
-    expect(res.body.errors).toBeGreaterThan(0);
+    await request(harness.app).post('/api/duplicates/apply').send({ deleteFileIds: [id] }).expect(400);
     expect(await fs.pathExists(badPath)).toBe(true);
     const op = harness.db.prepare('SELECT op, status, error FROM file_ops WHERE file_id = ?').get(id);
-    expect(op.op).toBe('quarantine');
-    expect(op.status).toBe('error');
-    expect(op.error).toContain('not_regular_file');
+    expect(op).toBeUndefined();
+  });
+
+  test('duplicate review dismisses durably, resets and rejects stale or overlapping decisions', async () => {
+    harness = await makeHarness();
+    const first = seedAssetFile(harness.db, { filePath: path.join(harness.sourceRoot, 'a.jpg'), hash: 'same' });
+    const second = seedAssetFile(harness.db, { filePath: path.join(harness.sourceRoot, 'b.jpg'), hash: 'same' });
+    const result = await request(harness.app).get('/api/duplicates/groups').expect(200);
+    const groupId = result.body.groups[0].id;
+    expect(result.body.groups).toHaveLength(1);
+    await request(harness.app).post('/api/duplicates/dismiss').send({ groupId }).expect(200);
+    expect((await request(harness.app).get('/api/duplicates/groups')).body.groups).toEqual([]);
+    await request(harness.app).post('/api/duplicates/reset').send({}).expect(200);
+    expect((await request(harness.app).get('/api/duplicates/groups')).body.groups).toHaveLength(1);
+    await request(harness.app).post('/api/duplicates/apply').send({ groupId, keepFileIds: [first], deleteFileIds: [first, second] }).expect(400);
+    await request(harness.app).post('/api/duplicates/apply').send({ groupId: 'stale', keepFileIds: [first], deleteFileIds: [second] }).expect(409);
+    await fs.appendFile(path.join(harness.sourceRoot, 'b.jpg'), 'changed');
+    await request(harness.app).post('/api/duplicates/apply').send({ groupId, keepFileIds: [first], deleteFileIds: [second] }).expect(409);
+    expect(harness.db.prepare('SELECT count(*) n FROM file_ops').get().n).toBe(0);
+  });
+
+  test('duplicate apply moves only the selected physical copy and preserves its keeper', async () => {
+    harness = await makeHarness();
+    const a = path.join(harness.sourceRoot, 'a.jpg'), b = path.join(harness.sourceRoot, 'b.jpg');
+    const first = seedAssetFile(harness.db, { filePath: a, hash: 'same' });
+    const second = seedAssetFile(harness.db, { filePath: b, hash: 'same' });
+    const groupId = (await request(harness.app).get('/api/duplicates/groups')).body.groups[0].id;
+    const result = await request(harness.app).post('/api/duplicates/apply')
+      .send({ groupId, keepFileIds: [first], deleteFileIds: [second] }).expect(200);
+    expect(result.body.errors).toBe(0);
+    expect(result.body.deletedFiles).toBe(1);
+    expect(await fs.pathExists(a)).toBe(true);
+    expect(await fs.pathExists(b)).toBe(false);
+    expect((await request(harness.app).get('/api/duplicates/groups')).body.groups).toEqual([]);
   });
 
   test('PATCH /api/assets/:hash/time stores a locked manual capture time and can mark it unknown', async () => {

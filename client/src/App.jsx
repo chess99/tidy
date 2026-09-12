@@ -339,7 +339,7 @@ function Main() {
                         <div className="min-w-0">
                           <div className="text-sm font-semibold text-gray-900">检查重复项</div>
                           <div className="text-xs text-gray-600 mt-1 leading-5">
-                            按 hash + 图片相似度分组，逐组保留/删除副本（全选同 hash 可升级为删除 asset）。
+                            并排比较重复文件，选择要保留的版本。
                           </div>
                         </div>
                       </div>
@@ -371,12 +371,7 @@ function Main() {
           {activeTab === 'admin' ? (
             <SystemAdminView />
           ) : activeTab === 'duplicates' ? (
-            <DuplicatesToolView
-              onAssetClick={(asset) => {
-                setSelectedAsset(asset);
-                filesCtrl.reset();
-              }}
-            />
+            <DuplicatesToolView />
           ) : activeTab === 'trash' ? (
             <TrashView
               onAssetClick={(asset) => {
@@ -409,7 +404,7 @@ function Main() {
           )}
         </div>
 
-        {activeTab !== 'admin' ? (
+        {activeTab !== 'admin' && activeTab !== 'duplicates' ? (
           <div
             className={`inset-y-0 right-0 z-30 2xl:shrink-0 ${
               selectedAsset ? 'absolute 2xl:static' : 'hidden 2xl:block'

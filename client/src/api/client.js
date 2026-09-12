@@ -228,14 +228,12 @@ export const mergePerson = (fromPersonId, intoPersonId) =>
   api.post(`/faces/people/${fromPersonId}/merge`, { intoPersonId }).then((res) => res.data);
 
 // Duplicates tool
-export const getDuplicateGroups = ({ kind = 'phash', threshold = 10, limit = 20, cursor } = {}) => {
-  const params = { kind, threshold, limit };
-  if (cursor != null) params.cursor = cursor;
-  return api.get('/duplicates/groups', { params }).then((res) => res.data);
-};
+export const getDuplicateGroups = () => api.get('/duplicates/groups').then((res) => res.data);
+export const dismissDuplicateGroup = (groupId) => api.post('/duplicates/dismiss', { groupId }).then((res) => res.data);
+export const resetDuplicateReviews = () => api.post('/duplicates/reset').then((res) => res.data);
 
-export const applyDuplicateActions = ({ keepFileIds = [], deleteFileIds = [] } = {}) =>
-  api.post('/duplicates/apply', { keepFileIds, deleteFileIds }).then((res) => res.data);
+export const applyDuplicateActions = ({ groupId, keepFileIds = [], deleteFileIds = [] } = {}) =>
+  api.post('/duplicates/apply', { groupId, keepFileIds, deleteFileIds }).then((res) => res.data);
 
 // Open file location in system file manager
 export const openFileLocation = (hash) => api.post(`/assets/${hash}/open-location`).then((res) => res.data);

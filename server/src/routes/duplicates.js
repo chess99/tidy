@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs-extra');
 const { getDB } = require('../db');
-const { hamming64 } = require('../scanner/phash');
+const { getReview, invalidateReview } = require('../services/duplicateReview');
 const { loadConfig } = require('../configStore');
 const { createFileOp, applyFileOp } = require('../services/fileOps');
 const { makeQuarantinePath } = require('../services/fileSafety');
@@ -10,116 +10,7 @@ const { trashAssetKeepOne } = require('../services/assetTrash');
 const { canTreatAsSameContentForDestructiveDedupe } = require('../services/hashPolicy');
 
 const router = express.Router();
-
-function safeJsonParse(v) {
-  if (v == null) return null;
-  if (typeof v !== 'string') return v;
-  try {
-    return JSON.parse(v);
-  } catch {
-    return null;
-  }
-}
-
-function parseIntSafe(v, fallback) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.trunc(n);
-}
-
-function clampInt(v, { min, max, fallback }) {
-  const n = parseIntSafe(v, fallback);
-  if (!Number.isFinite(n)) return fallback;
-  if (n < min) return min;
-  if (n > max) return max;
-  return n;
-}
-
-function toItemRow(r) {
-  const p = r?.path ? String(r.path) : null;
-  const fileName = p ? path.basename(p) : null;
-  const meta = safeJsonParse(r?.asset_metadata) || null;
-  return {
-    file_id: r?.file_id,
-    path: p,
-    file_name: fileName,
-    size: r?.size ?? null,
-    mtime_ms: r?.mtime_ms ?? null,
-    width: meta?.width ?? null,
-    height: meta?.height ?? null,
-    lat: meta?.lat ?? null,
-    lon: meta?.lon ?? null,
-    hash: r?.hash ?? null,
-    hash_algo: r?.hash_algo ?? null,
-    phash: r?.phash ?? null,
-    asset_captured_at: r?.asset_captured_at ?? null,
-    asset_time_source: r?.asset_time_source ?? null,
-    asset_time_confidence: r?.asset_time_confidence ?? null,
-    asset_mime_type: r?.asset_mime_type ?? null,
-    asset_status: r?.asset_status ?? null,
-    organized_to: r?.organized_to ?? null,
-  };
-}
-
-function scoreKeepCandidate(item) {
-  // Prefer higher resolution and larger file size.
-  const w = Number(item?.width) || 0;
-  const h = Number(item?.height) || 0;
-  const pixels = w > 0 && h > 0 ? w * h : 0;
-  const size = Number(item?.size) || 0;
-  return pixels * 1e3 + size; // pixels dominates
-}
-
-function pickSuggestedKeepFileId(items) {
-  let best = null;
-  let bestScore = -Infinity;
-  for (const it of Array.isArray(items) ? items : []) {
-    const sc = scoreKeepCandidate(it);
-    if (!best || sc > bestScore) {
-      best = it;
-      bestScore = sc;
-    }
-  }
-  return best?.file_id ?? null;
-}
-
-function organizedToSubquery(aliasHash) {
-  return `
-    (
-      SELECT al.name
-      FROM album_assets aa2
-      JOIN albums al ON al.id = aa2.album_id
-      WHERE aa2.hash = ${aliasHash}
-      ORDER BY COALESCE(aa2.added_at, 0) DESC, aa2.album_id DESC
-      LIMIT 1
-    )`;
-}
-
-function selectItemSql() {
-  return `
-    SELECT
-      f.id AS file_id,
-      f.path,
-      f.size,
-      f.mtime_ms,
-      f.hash,
-      f.hash_algo,
-      f.phash,
-      a.captured_at AS asset_captured_at,
-      a.time_source AS asset_time_source,
-      a.time_confidence AS asset_time_confidence,
-      a.mime_type AS asset_mime_type,
-      a.status AS asset_status,
-      a.metadata AS asset_metadata,
-      ${organizedToSubquery('f.hash')} AS organized_to
-    FROM files f
-    LEFT JOIN assets a ON a.hash = f.hash
-  `;
-}
-
-function isNonTrashAssetExpr() {
-  return `(a.status IS NULL OR a.status != 'trash')`;
-}
+const applying = new WeakSet();
 
 function insertChange(db, entity, entityId, type) {
   try {
@@ -173,12 +64,6 @@ async function quarantineFileInstance(db, { hash, fileId, filePath, trashDir, al
   return opSucceeded(db, op.id);
 }
 
-function chunk(arr, n) {
-  const out = [];
-  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
-  return out;
-}
-
 function makeInClause(values) {
   const params = values.slice();
   const clause = `(${params.map(() => '?').join(',')})`;
@@ -207,185 +92,72 @@ function cleanupOrphanAsset(db, hash) {
   }
 }
 
-// GET /api/duplicates/groups?kind=hash|phash&threshold=10&limit=20&cursor=...
-router.get('/groups', (req, res) => {
+// The complete candidate set is verified before returning it to the reviewer.
+router.get('/groups', async (req, res) => {
+  try { res.json(await getReview(getDB())); }
+  catch (error) { res.status(500).json({ error: String(error.message || error) }); }
+});
+
+router.post('/dismiss', async (req, res) => {
   const db = getDB();
-  const kind = String(req.query.kind || 'phash').trim();
-  const threshold = clampInt(req.query.threshold, { min: 0, max: 32, fallback: 10 });
-  const limit = clampInt(req.query.limit, { min: 1, max: 50, fallback: 20 });
-  const cursorRaw = req.query.cursor;
-
-  if (kind !== 'hash' && kind !== 'phash') {
-    return res.status(400).json({ error: 'invalid kind' });
-  }
-
   try {
-    if (kind === 'hash') {
-      const cursor = cursorRaw != null ? String(cursorRaw) : '';
-      const hashes = db.prepare(`
-        SELECT h, algo, sz, group_key
-        FROM (
-          SELECT
-            f.hash AS h,
-            COALESCE(f.hash_algo, 'md5') AS algo,
-            COALESCE(f.size, -1) AS sz,
-            f.hash || '|' || COALESCE(f.hash_algo, 'md5') || '|' || COALESCE(f.size, -1) AS group_key
-          FROM files f
-          WHERE f.hash IS NOT NULL
-          GROUP BY f.hash, COALESCE(f.hash_algo, 'md5'), COALESCE(f.size, -1)
-          HAVING COUNT(*) > 1
-        )
-        WHERE group_key > ?
-        ORDER BY group_key ASC
-        LIMIT ?
-      `).all(cursor, limit);
-
-      const groups = [];
-      for (const row of hashes) {
-        const h = String(row.h);
-        const algo = String(row.algo || 'md5');
-        const size = Number(row.sz);
-        const itemsRaw = db.prepare(`
-          ${selectItemSql()}
-          WHERE f.hash = ?
-            AND COALESCE(f.hash_algo, 'md5') = ?
-            AND COALESCE(f.size, -1) = ?
-            AND f.missing = 0
-            AND ${isNonTrashAssetExpr()}
-          ORDER BY COALESCE(f.mtime_ms, f.updated_at, f.discovered_at, f.scanned_at, 0) DESC, f.id DESC
-        `).all(h, algo, size);
-        const items = itemsRaw.map(toItemRow);
-        if (items.length < 2) continue;
-        groups.push({
-          id: String(row.group_key),
-          kind: 'hash',
-          hash: h,
-          hash_algo: algo,
-          size,
-          items,
-          suggested_keep_file_id: pickSuggestedKeepFileId(items),
-        });
-      }
-
-      const nextCursor = groups.length ? String(groups[groups.length - 1].id) : null;
-      return res.json({ kind, threshold, groups, nextCursor });
+    const { groups } = await getReview(db);
+    if (!groups.some((g) => g.id === req.body?.groupId)) {
+      return res.status(409).json({ error: '这一组已发生变化，请刷新后重试。' });
     }
+    db.prepare('INSERT OR REPLACE INTO duplicate_reviews (signature, reviewed_at) VALUES (?, ?)')
+      .run(req.body.groupId, Date.now());
+    res.json({ ok: true });
+  } catch (error) { res.status(500).json({ error: String(error.message || error) }); }
+});
 
-    // kind === 'phash'
-    const cursor = parseIntSafe(cursorRaw, 0) || 0;
-    const seedLimit = Math.max(200, limit * 30);
-    const seeds = db.prepare(`
-      SELECT f.id, f.phash
-      FROM files f
-      LEFT JOIN assets a ON a.hash = f.hash
-      WHERE f.id > ?
-        AND f.missing = 0
-        AND f.phash IS NOT NULL
-        AND f.phash_status = 'done'
-        AND ${isNonTrashAssetExpr()}
-        AND COALESCE(a.mime_type, f.mime_guess) LIKE 'image/%'
-      ORDER BY f.id ASC
-      LIMIT ?
-    `).all(cursor, seedLimit);
-
-    const groups = [];
-    let lastSeedId = cursor;
-
-    const candStmt = db.prepare(`
-      ${selectItemSql()}
-      WHERE f.missing = 0
-        AND f.phash IS NOT NULL
-        AND f.phash_status = 'done'
-        AND ${isNonTrashAssetExpr()}
-        AND COALESCE(a.mime_type, f.mime_guess) LIKE 'image/%'
-        AND (
-          substr(f.phash, 1, 4) = ?
-          OR substr(f.phash, 5, 4) = ?
-          OR substr(f.phash, 9, 4) = ?
-          OR substr(f.phash, 13, 4) = ?
-        )
-      LIMIT 500
-    `);
-
-    for (const s of seeds) {
-      const seedId = Number(s.id);
-      const seedHash = String(s.phash || '');
-      if (!Number.isFinite(seedId) || !seedHash) continue;
-      lastSeedId = seedId;
-
-      const b1 = seedHash.slice(0, 4);
-      const b2 = seedHash.slice(4, 8);
-      const b3 = seedHash.slice(8, 12);
-      const b4 = seedHash.slice(12, 16);
-
-      const raw = candStmt.all(b1, b2, b3, b4);
-      const near = [];
-      let hasEarlier = false;
-
-      for (const r of raw) {
-        const pid = Number(r.file_id);
-        const ph = String(r.phash || '');
-        const d = hamming64(seedHash, ph);
-        if (d == null || d > threshold) continue;
-        if (pid < seedId) {
-          hasEarlier = true;
-          break;
-        }
-        near.push(r);
-      }
-
-      if (hasEarlier) continue;
-      if (near.length < 2) continue; // must be a group
-
-      // De-dup by file_id (cand query may include duplicates in weird DB states)
-      const seen = new Set();
-      const items = [];
-      for (const r of near) {
-        const id = Number(r.file_id);
-        if (!Number.isFinite(id)) continue;
-        if (seen.has(id)) continue;
-        seen.add(id);
-        items.push(toItemRow(r));
-      }
-      if (items.length < 2) continue;
-
-      groups.push({
-        id: seedId,
-        kind: 'phash',
-        threshold,
-        items,
-        suggested_keep_file_id: pickSuggestedKeepFileId(items),
-      });
-
-      if (groups.length >= limit) break;
-    }
-
-    const nextCursor = lastSeedId > cursor ? String(lastSeedId) : null;
-    return res.json({ kind, threshold, groups, nextCursor });
-  } catch (e) {
-    return res.status(500).json({ error: String(e.message || e) });
-  }
+router.post('/reset', (req, res) => {
+  const db = getDB();
+  db.prepare('DELETE FROM duplicate_reviews').run();
+  invalidateReview(db);
+  res.json({ ok: true });
 });
 
 // POST /api/duplicates/apply
-// { keepFileIds: number[], deleteFileIds: number[] }
-router.post('/apply', async (req, res) => {
+// { groupId: string, keepFileIds: number[], deleteFileIds: number[] }
+async function applyReview(req, res) {
   const db = getDB();
   const cfg = await loadConfig();
   const trashDir = cfg.workspace?.trashDir;
   if (!trashDir) return res.status(500).json({ error: 'workspace.trashDir not configured' });
   const allowedRoots = allowedRootsFromConfig(cfg);
 
-  const keepFileIds = Array.isArray(req.body?.keepFileIds) ? req.body.keepFileIds.map((n) => Number(n)).filter(Number.isFinite) : [];
-  const deleteFileIds = Array.isArray(req.body?.deleteFileIds) ? req.body.deleteFileIds.map((n) => Number(n)).filter(Number.isFinite) : [];
-
-  const keepSet = new Set(keepFileIds);
-  const deleteSet = new Set(deleteFileIds);
-  // Resolve conflicts: keep wins over delete.
-  for (const id of keepSet) deleteSet.delete(id);
-
-  const ids = Array.from(new Set([...keepSet, ...deleteSet])).slice(0, 2000);
-  if (!ids.length) return res.status(400).json({ error: 'no file ids' });
+  const validIds = (ids) => Array.isArray(ids) && ids.length <= 2000 &&
+    ids.every((id) => Number.isSafeInteger(id) && id > 0) && new Set(ids).size === ids.length;
+  const { keepFileIds, deleteFileIds, groupId } = req.body || {};
+  if (!validIds(keepFileIds) || !validIds(deleteFileIds) || !keepFileIds.length || !deleteFileIds.length ||
+      keepFileIds.some((id) => deleteFileIds.includes(id))) {
+    return res.status(400).json({ error: '请选择要移入回收站的文件，并至少保留一份。' });
+  }
+  const keepSet = new Set(keepFileIds), deleteSet = new Set(deleteFileIds);
+  const ids = [...keepFileIds, ...deleteFileIds];
+  try {
+    const { groups } = await getReview(db);
+    const group = groups.find((g) => g.id === groupId);
+    if (!group || group.items.length !== ids.length || !group.items.every((i) => ids.includes(i.file_id))) {
+      return res.status(409).json({ error: '这一组已发生变化，请刷新后重试。' });
+    }
+    for (const item of group.items) {
+      const current = db.prepare(`SELECT f.path, f.hash, f.missing, a.status
+        FROM files f JOIN assets a ON a.hash = f.hash WHERE f.id = ?`).get(item.file_id);
+      if (!current || current.missing || current.status === 'trash' || current.path !== item.path || current.hash !== item.hash) {
+        invalidateReview(db);
+        return res.status(409).json({ error: '这一组已发生变化，请刷新后重试。' });
+      }
+      const st = await fs.lstat(item.path);
+      if (!st.isFile() || st.size !== item.size || Math.abs(st.mtimeMs - item.mtime_ms) > 2) {
+        invalidateReview(db);
+        return res.status(409).json({ error: '文件已发生变化，请重新扫描后重试。' });
+      }
+    }
+  } catch (error) {
+    return res.status(409).json({ error: '无法核实原文件，请检查磁盘连接并重新扫描。' });
+  }
 
   const report = { trashedAssets: 0, deletedFiles: 0, deletedAssets: 0, errors: 0, messages: [] };
 
@@ -527,10 +299,20 @@ router.post('/apply', async (req, res) => {
       if (orphan.deleted) report.deletedAssets++;
     }
 
+    invalidateReview(db);
     return res.json(report);
   } catch (e) {
     return res.status(500).json({ error: String(e.message || e) });
   }
+}
+
+router.post('/apply', async (req, res, next) => {
+  const db = getDB();
+  if (applying.has(db)) return res.status(409).json({ error: '正在处理另一组文件，请稍后重试。' });
+  applying.add(db);
+  try { await applyReview(req, res); }
+  catch (error) { next(error); }
+  finally { applying.delete(db); }
 });
 
 module.exports = router;

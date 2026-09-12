@@ -108,6 +108,11 @@ const dbSchema = `
     ts INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS duplicate_reviews (
+    signature TEXT PRIMARY KEY,
+    reviewed_at INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS people (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
