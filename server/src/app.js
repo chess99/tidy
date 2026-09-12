@@ -5,7 +5,15 @@ function createApp({ includeConfig = true } = {}) {
   const app = express();
 
   app.use(cors());
+  app.use('/api/organization', require('./routes/organization'));
   app.use(express.json());
+  app.use((req, res, next) => {
+    const { getDB } = require('./db');
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && require('./services/organization/service').busy(getDB())) {
+      return res.status(409).json({ error: '目录整理正在检查或执行，请完成后再进行其他操作' });
+    }
+    next();
+  });
 
   app.use('/api/health', require('./routes/health'));
   app.use('/api/jobs', require('./routes/jobs'));

@@ -225,6 +225,7 @@ function initDB() {
     db.pragma('journal_mode = WAL');
     db.exec(schema);
     migrateDB(db);
+    require('../services/organization/store').initOrganization(db);
     return db;
   } catch (error) {
     db.close();

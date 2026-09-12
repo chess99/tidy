@@ -35,6 +35,8 @@ describe('job runner result classification', () => {
 test('runner checks auto-recovery before picking the next queued job', async () => {
   jest.resetModules();
   const calls = [];
+  jest.doMock('../../db', () => ({ getDB: jest.fn(() => ({})) }));
+  jest.doMock('../../services/organization/service', () => ({ busy: jest.fn(() => false) }));
 
   jest.doMock('../../services/taskAutoRecovery', () => ({
     runTaskAutoRecovery: jest.fn(async () => calls.push('recovery')),
@@ -60,4 +62,14 @@ test('runner checks auto-recovery before picking the next queued job', async () 
   await tick();
 
   expect(calls).toEqual(['recovery', 'interrupt', 'pick']);
+});
+
+test('runner waits while a directory operation owns the workspace', async () => {
+  jest.resetModules();
+  jest.doMock('../../db', () => ({ getDB: jest.fn(() => ({})) }));
+  jest.doMock('../../services/organization/service', () => ({ busy: jest.fn(() => true) }));
+  const recovery = jest.fn();
+  jest.doMock('../../services/taskAutoRecovery', () => ({ runTaskAutoRecovery: recovery }));
+  await require('../runner').tick();
+  expect(recovery).not.toHaveBeenCalled();
 });

@@ -7,6 +7,7 @@ import { FilesFilters } from './components/FilesFilters';
 import { FilesGrid } from './components/FilesGrid';
 import { AssetDetail } from './components/AssetDetail';
 import { AlbumsView } from './components/AlbumsView';
+import { OrganizationView } from './components/organization/OrganizationView';
 import { TrashView } from './components/TrashView';
 import { DuplicatesToolView } from './components/DuplicatesToolView';
 import { AssetFacesPanel } from './components/AssetFacesPanel';
@@ -67,7 +68,7 @@ function Main() {
 
   const setActiveTabSafe = (nextTab) => {
     setActiveTab(nextTab);
-    if (['files', 'albums', 'trash'].includes(nextTab)) {
+    if (['files', 'albums', 'trash', 'organization'].includes(nextTab)) {
       setLastMainTab(nextTab);
     }
     if (nextTab !== 'files') {
@@ -312,6 +313,7 @@ function Main() {
               <Tabs value={activeTab} onValueChange={setActiveTabSafe}>
                 <TabsList>
                   <TabsTrigger value="files">全部文件</TabsTrigger>
+                  <TabsTrigger value="organization">整理</TabsTrigger>
                   <TabsTrigger value="albums">文件夹/归档</TabsTrigger>
                   <TabsTrigger value="trash">回收站</TabsTrigger>
                 </TabsList>
@@ -368,7 +370,9 @@ function Main() {
         ) : null}
 
         <div className="flex-1 relative flex flex-col min-w-0">
-          {activeTab === 'admin' ? (
+          {activeTab === 'organization' ? (
+            <OrganizationView />
+          ) : activeTab === 'admin' ? (
             <SystemAdminView />
           ) : activeTab === 'duplicates' ? (
             <DuplicatesToolView />
@@ -404,7 +408,7 @@ function Main() {
           )}
         </div>
 
-        {activeTab !== 'admin' && activeTab !== 'duplicates' ? (
+        {activeTab !== 'admin' && activeTab !== 'duplicates' && activeTab !== 'organization' ? (
           <div
             className={`inset-y-0 right-0 z-30 2xl:shrink-0 ${
               selectedAsset ? 'absolute 2xl:static' : 'hidden 2xl:block'

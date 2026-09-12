@@ -130,11 +130,13 @@ async function runOne(job) {
 
 async function tick() {
   if (_running) return;
+  if (require('../services/organization/service').busy(require('../db').getDB())) return;
   _running = true;
   try {
     await runTaskAutoRecovery().catch((err) => {
       console.warn('[jobs] auto-recovery skipped:', err?.message || err);
     });
+    if (require('../services/organization/service').busy(require('../db').getDB())) return;
     // Jobs like CLIP embedding can spend minutes in one inference step (model warmup/download).
     // Stale interruption should be conservative to avoid killing healthy long-running jobs.
     interruptStaleRunningJobs({ staleAfterMs: 60 * 60_000 });
