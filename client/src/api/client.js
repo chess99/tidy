@@ -228,7 +228,7 @@ export const mergePerson = (fromPersonId, intoPersonId) =>
   api.post(`/faces/people/${fromPersonId}/merge`, { intoPersonId }).then((res) => res.data);
 
 // Duplicates tool
-export const getDuplicateGroups = () => api.get('/duplicates/groups').then((res) => res.data);
+export const getDuplicateGroups = ({ refresh = false } = {}) => api.get('/duplicates/groups', { params: refresh ? { refresh: '1' } : undefined }).then((res) => res.data);
 export const dismissDuplicateGroup = (groupId) => api.post('/duplicates/dismiss', { groupId }).then((res) => res.data);
 export const resetDuplicateReviews = () => api.post('/duplicates/reset').then((res) => res.data);
 

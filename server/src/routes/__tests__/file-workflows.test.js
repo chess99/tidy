@@ -191,6 +191,25 @@ describe('file workflow routes', () => {
     expect((await request(harness.app).get('/api/duplicates/groups')).body.groups).toEqual([]);
   });
 
+  test('review queue stays stable until explicit refresh and returns local replacement groups after apply', async () => {
+    harness = await makeHarness();
+    const first = seedAssetFile(harness.db, { filePath: path.join(harness.sourceRoot, 'a.jpg'), hash: 'same' });
+    const second = seedAssetFile(harness.db, { filePath: path.join(harness.sourceRoot, 'b.jpg'), hash: 'same' });
+    const initial = (await request(harness.app).get('/api/duplicates/groups')).body.groups[0];
+    const third = seedAssetFile(harness.db, { filePath: path.join(harness.sourceRoot, 'c.jpg'), hash: 'same' });
+    expect((await request(harness.app).get('/api/duplicates/groups')).body.groups[0].id).toBe(initial.id);
+    const refreshed = (await request(harness.app).get('/api/duplicates/groups?refresh=1')).body.groups[0];
+    expect(refreshed.items).toHaveLength(3);
+    expect(refreshed.id).not.toBe(initial.id);
+    const result = await request(harness.app).post('/api/duplicates/apply')
+      .send({groupId:refreshed.id,keepFileIds:[first,third],deleteFileIds:[second]}).expect(200);
+    expect(result.body.removedGroupIds).toEqual([refreshed.id]);
+    expect(result.body.updatedGroups).toHaveLength(1);
+    expect(result.body.updatedGroups[0].items.map(i=>i.file_id)).toEqual([first,third]);
+    const queue = (await request(harness.app).get('/api/duplicates/groups')).body.groups;
+    expect(queue).toEqual(result.body.updatedGroups);
+  });
+
   test('PATCH /api/assets/:hash/time stores a locked manual capture time and can mark it unknown', async () => {
     harness = await makeHarness();
     const hash = 'hash-manual-time';

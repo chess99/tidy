@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs-extra');
 const { getDB } = require('../db');
-const { getReview, invalidateReview } = require('../services/duplicateReview');
+const { getReview, invalidateReview, settleReview } = require('../services/duplicateReview');
 const { loadConfig } = require('../configStore');
 const { createFileOp, applyFileOp } = require('../services/fileOps');
 const { makeQuarantinePath } = require('../services/fileSafety');
@@ -94,7 +94,7 @@ function cleanupOrphanAsset(db, hash) {
 
 // The complete candidate set is verified before returning it to the reviewer.
 router.get('/groups', async (req, res) => {
-  try { res.json(await getReview(getDB())); }
+  try { res.json(await getReview(getDB(), { refresh: req.query.refresh === '1' })); }
   catch (error) { res.status(500).json({ error: String(error.message || error) }); }
 });
 
@@ -107,14 +107,13 @@ router.post('/dismiss', async (req, res) => {
     }
     db.prepare('INSERT OR REPLACE INTO duplicate_reviews (signature, reviewed_at) VALUES (?, ?)')
       .run(req.body.groupId, Date.now());
-    res.json({ ok: true });
+    res.json({ ok: true, removedGroupIds: [req.body.groupId], updatedGroups: [] });
   } catch (error) { res.status(500).json({ error: String(error.message || error) }); }
 });
 
 router.post('/reset', (req, res) => {
   const db = getDB();
   db.prepare('DELETE FROM duplicate_reviews').run();
-  invalidateReview(db);
   res.json({ ok: true });
 });
 
@@ -299,10 +298,11 @@ async function applyReview(req, res) {
       if (orphan.deleted) report.deletedAssets++;
     }
 
-    invalidateReview(db);
-    return res.json(report);
+    const delta = await settleReview(db, groupId);
+    return res.json({ ...report, ...delta });
   } catch (e) {
-    return res.status(500).json({ error: String(e.message || e) });
+    const delta = await settleReview(db, groupId);
+    return res.status(500).json({ error: String(e.message || e), ...delta });
   }
 }
 

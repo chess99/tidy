@@ -55,18 +55,22 @@ class HashTree {
 
 function comparePixels(a, b) {
   if (!a || !b || a.length !== b.length || !a.length) return false;
+  const n = a.length;
+  const maxError = n * (255 * 0.055) ** 2;
   let error = 0, sx = 0, sy = 0, xx = 0, yy = 0, xy = 0;
   for (let i = 0; i < a.length; i++) {
-    const x = a[i] / 255, y = b[i] / 255;
+    const x = a[i], y = b[i];
     error += (x - y) ** 2;
+    // Squared error only increases; reject impossible matches without reading
+    // the remaining pixels. Keep the same full-image threshold as before.
+    if (error > maxError) return false;
     sx += x; sy += y; xx += x * x; yy += y * y; xy += x * y;
   }
-  const n = a.length;
   const vx = xx - sx * sx / n, vy = yy - sy * sy / n;
   // Flat pictures have unstable perceptual hashes and no useful evidence.
-  if (vx / n < 0.002 || vy / n < 0.002) return false;
+  if (vx / n < 0.002 * 255 ** 2 || vy / n < 0.002 * 255 ** 2) return false;
   const correlation = (xy - sx * sy / n) / Math.sqrt(vx * vy);
-  return Math.sqrt(error / n) <= 0.055 && correlation >= 0.99;
+  return correlation >= 0.99;
 }
 
 function cosine(a, b) {
@@ -175,14 +179,43 @@ function readItems(db) {
 
 function invalidateReview(db) { caches.delete(db); }
 
-async function getReview(db) {
-  const stamp = JSON.stringify([
-    db.prepare('SELECT count(*) n, max(updated_at) t, max(thumb_updated_at) th FROM files').get(),
-    db.prepare('SELECT count(*) n, max(updated_at) t FROM assets').get(),
-    db.prepare('SELECT count(*) n, max(updated_at) t FROM clip_embeddings').get(),
-  ]);
+function filterReviewed(db, result) {
+  const dismissed = new Set(db.prepare('SELECT signature FROM duplicate_reviews').all().map((r) => r.signature));
+  return { ...result, groups: result.groups.filter((g) => !dismissed.has(g.id)), dismissed: dismissed.size };
+}
+
+// Reviewing a queue must not trigger another library-wide scan. Writes still
+// revalidate the group's current rows and physical files at the route boundary.
+async function settleReview(db, groupId) {
+  const cached = caches.get(db);
+  if (!cached) return { removedGroupIds: [groupId], updatedGroups: [] };
+  const result = await cached.pending;
+  const source = result.groups.find((g) => g.id === groupId);
+  const affected = new Set(source?.items.map((i) => i.file_id) || []);
+  const current = db.prepare(`SELECT f.hash, f.path, f.size, f.mtime_ms FROM files f
+    JOIN assets a ON a.hash = f.hash WHERE f.id = ? AND f.missing = 0 AND a.status != 'trash'`);
+  const removedGroupIds = [], updatedGroups = [];
+  const groups = [];
+  for (const group of result.groups) {
+    if (!group.items.some((i) => affected.has(i.file_id))) { groups.push(group); continue; }
+    const remaining = group.items.filter((item) => {
+      const row = current.get(item.file_id);
+      return row && row.hash === item.hash && row.path === item.path && row.size === item.size && row.mtime_ms === item.mtime_ms;
+    });
+    if (remaining.length === group.items.length) { groups.push(group); continue; }
+    removedGroupIds.push(group.id);
+    if (remaining.length > 1) {
+      const replacement = makeGroup(remaining, group.kind);
+      groups.push(replacement); updatedGroups.push(replacement);
+    }
+  }
+  cached.pending = Promise.resolve({ ...result, groups });
+  return { removedGroupIds, updatedGroups };
+}
+
+async function getReview(db, { refresh = false } = {}) {
   let cached = caches.get(db);
-  if (!cached || (cached.done && (cached.stamp !== stamp || Date.now() - cached.time > 60000))) {
+  if (!cached || (cached.done && refresh)) {
     if (!imageCaches.has(db)) imageCaches.set(db, new Map());
     const images = imageCaches.get(db);
     const items = readItems(db);
@@ -200,14 +233,12 @@ async function getReview(db) {
       },
       loadEmbedding: (item) => embeddingQuery.get(item.file_id, item.hash),
     });
-    cached = { stamp, time: Date.now(), pending, done: false };
+    cached = { pending, done: false };
     caches.set(db, cached);
-    pending.then(() => { cached.done = true; cached.time = Date.now(); }, () => {});
+    pending.then(() => { cached.done = true; }, () => {});
     pending.catch(() => { if (caches.get(db) === cached) caches.delete(db); });
   }
-  const result = await cached.pending;
-  const dismissed = new Set(db.prepare('SELECT signature FROM duplicate_reviews').all().map((r) => r.signature));
-  return { ...result, groups: result.groups.filter((g) => !dismissed.has(g.id)), dismissed: dismissed.size };
+  return filterReviewed(db, await cached.pending);
 }
 
-module.exports = { buildReview, comparePixels, cosine, HashTree, isCompanion, getReview, invalidateReview };
+module.exports = { buildReview, comparePixels, cosine, HashTree, isCompanion, getReview, invalidateReview, settleReview };
