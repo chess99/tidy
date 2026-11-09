@@ -28,6 +28,8 @@ InsightFace 默认机制下载模型到用户缓存目录。
 
 `requirements-torch.txt` 固定 PyTorch 与 torchvision 的配套版本；Windows 打包先从官方 CPU 索引安装这组依赖，避免混入 CUDA 运行库。
 
+默认 Jina CLIP v2 的官方实现仍引用 Transformers 4 的内部接口，当前固定到 4.57.6。4.x 没有覆盖全部上游漏洞的修复版本；切换到 5.x 需要同步迁移模型，并处理已有搜索向量的重建。
+
 安装依赖后可运行 `python -m unittest discover -s tests -v`。测试使用本地随机初始化的微型 CLIP，验证文本、图片嵌入及服务健康状态，不下载生产模型权重；两个打包脚本均在生成可执行文件前运行这些测试。生成后还会启动实际可执行文件，检查健康接口与人脸、CLIP 模块是否可用。
 
 ### 打包为可执行文件（桌面分发）

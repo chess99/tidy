@@ -14,7 +14,8 @@ insightface==1.0.1
 
 # CLIP / smart search; Windows installs the same pinned pair from the CPU index.
 -r requirements-torch.txt
-transformers==5.22.2
+# Jina CLIP v2 imports CLIP internals removed in Transformers 5.
+transformers==4.57.6
 
 # Jina CLIP v2 and similar vision encoders often depend on these utilities
 einops==0.8.1
