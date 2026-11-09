@@ -26,6 +26,10 @@ uvicorn app.main:app --host 0.0.0.0 --port 8002
 `insightface==1.0.1`，该版本提供通用 wheel；首次调用人脸接口时仍会按
 InsightFace 默认机制下载模型到用户缓存目录。
 
+`requirements-torch.txt` 固定 PyTorch 与 torchvision 的配套版本；Windows 打包先从官方 CPU 索引安装这组依赖，避免混入 CUDA 运行库。
+
+安装依赖后可运行 `python -m unittest discover -s tests -v`。测试使用本地随机初始化的微型 CLIP，验证文本、图片嵌入及服务健康状态，不下载生产模型权重；两个打包脚本均在生成可执行文件前运行这些测试。生成后还会启动实际可执行文件，检查健康接口与人脸、CLIP 模块是否可用。
+
 ### 打包为可执行文件（桌面分发）
 
 桌面应用通过 `desktop/scripts/prepare-resources.mjs` 收集构建产物；完整分发流程见 `docs/桌面分发.md`。

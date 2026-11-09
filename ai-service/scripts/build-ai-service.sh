@@ -10,6 +10,7 @@ python -m pip install --upgrade pip
 python -m pip install --only-binary=:all: -r requirements.txt
 python -m pip install --only-binary=:all: pyinstaller
 python -m pip check
+python -m unittest discover -s tests -v
 
 rm -rf dist build
 
@@ -18,6 +19,7 @@ pyinstaller \
   --noconfirm \
   --clean \
   --onedir \
+  --paths . \
   --name tidy-ai-service \
   app/entrypoint.py
 
@@ -47,5 +49,6 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   cp -f "$OPENSSL_LIB/libcrypto.3.dylib" "$OUT_DIR/_internal/libcrypto.3.dylib"
 fi
 
+python scripts/check-packaged-service.py "$OUT_DIR/tidy-ai-service"
 echo "Built: $OUT_DIR/"
 

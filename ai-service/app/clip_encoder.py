@@ -93,6 +93,10 @@ class ClipEncoder:
         return ClipEncoder(model=model, processor=processor, model_id=mid, device=device)
 
     def _to_numpy(self, t: Any) -> np.ndarray:
+        # Transformers CLIP returns a pooled ModelOutput; Jina returns embeddings directly.
+        pooled = getattr(t, "pooler_output", None)
+        if pooled is not None:
+            t = pooled
         # Some remote-code models return numpy arrays directly.
         if isinstance(t, np.ndarray):
             arr = t.astype(np.float32, copy=False)
@@ -144,7 +148,9 @@ class ClipEncoder:
                         out = profile.wrap("clip.encode_text.model.forward", lambda: self.model(**inputs))
                     else:
                         out = self.model(**inputs)
-                    feats = getattr(out, "pooler_output", None) or getattr(out, "text_embeds", None)
+                    feats = getattr(out, "pooler_output", None)
+                    if feats is None:
+                        feats = getattr(out, "text_embeds", None)
                     if feats is None:
                         raise RuntimeError("model does not support text encoding (missing encode_text/get_text_features)")
 
@@ -192,7 +198,9 @@ class ClipEncoder:
                         out = profile.wrap("clip.encode_image.model.forward", lambda: self.model(**inputs))
                     else:
                         out = self.model(**inputs)
-                    feats = getattr(out, "pooler_output", None) or getattr(out, "image_embeds", None)
+                    feats = getattr(out, "pooler_output", None)
+                    if feats is None:
+                        feats = getattr(out, "image_embeds", None)
                     if feats is None:
                         raise RuntimeError("model does not support image encoding (missing encode_image/get_image_features)")
 
