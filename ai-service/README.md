@@ -13,6 +13,8 @@
 
 ### 本地运行（开发）
 
+使用 Python 3.12；固定的 SciPy 1.18 依赖不再支持 Python 3.11。
+
 ```bash
 cd ai-service
 python -m venv .venv && source .venv/bin/activate

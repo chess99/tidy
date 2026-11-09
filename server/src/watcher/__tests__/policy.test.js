@@ -34,7 +34,7 @@ describe('watcher policy', () => {
 
   test('classifies UNC roots as skipped in auto mode', () => {
     const { decideWatcherRoots } = loadPolicy();
-    const out = decideWatcherRoots(['\\\\server\\share\\photos'], { mode: 'auto' });
+    const out = decideWatcherRoots(['\\\\server\\share\\photos'], { mode: 'auto', platform: 'win32' });
 
     expect(out.watchRoots).toEqual([]);
     expect(out.decisions[0]).toMatchObject({

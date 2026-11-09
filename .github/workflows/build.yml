@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: "20"
+  NODE_VERSION: "24"
 
 jobs:
   build:
@@ -23,51 +23,50 @@ jobs:
           - platform: windows
             os: windows-latest
             name: windows-x64
-            electron_target: win
-
-          - platform: macos-intel
-            os: macos-14
-            name: macos-intel
-            electron_target: mac
 
           - platform: macos-arm64
-            os: macos-14
+            os: macos-15
             name: macos-arm64
-            electron_target: mac
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup Python (for ai-service)
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install root dependencies
-        run: npm install
+        run: npm ci
 
       - name: Install client dependencies
         run: |
           cd client
-          npm install
+          npm ci
 
       - name: Install server dependencies
         run: |
           cd server
-          npm install
+          npm ci
 
       - name: Install desktop dependencies
         run: |
           cd desktop
-          npm install
+          npm ci
+
+      - name: Test server
+        run: npm --prefix server test -- --runInBand
+
+      - name: Test desktop
+        run: npm --prefix desktop test
 
       - name: Build client
         run: |
@@ -95,16 +94,6 @@ jobs:
           npm run prepare:resources
           npx electron-builder --win --x64
 
-      - name: Build desktop app (macOS Intel)
-        if: matrix.platform == 'macos-intel'
-        env:
-          ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: true
-        run: |
-          cd desktop
-          npm run generate:icons
-          npm run prepare:resources
-          npx electron-builder --mac --x64
-
       - name: Build desktop app (macOS ARM64)
         if: matrix.platform == 'macos-arm64'
         env:
@@ -117,21 +106,20 @@ jobs:
 
       - name: Upload artifacts (Windows)
         if: matrix.platform == 'windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Tidy-${{ matrix.name }}
           path: |
             desktop/dist/*.exe
             desktop/dist/*.zip
-          if-no-files-found: ignore
+          if-no-files-found: error
 
       - name: Upload artifacts (macOS)
         if: startsWith(matrix.platform, 'macos')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Tidy-${{ matrix.name }}
           path: |
             desktop/dist/*.dmg
             desktop/dist/*.zip
-            desktop/dist/*.app
-          if-no-files-found: ignore
+          if-no-files-found: error

@@ -27,14 +27,14 @@
     "chokidar": "4.0.3",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
-    "exiftool-vendored": "^34.2.0",
+    "exiftool-vendored": "^39.2.0",
     "express": "^5.2.1",
     "fastq": "^1.20.1",
     "fs-extra": "^11.3.3",
     "hnsw": "^1.1.1",
     "mime-types": "^3.0.2",
     "picomatch": "^4.0.3",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "jest": "^29.7.0",
